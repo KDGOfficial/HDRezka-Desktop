@@ -13,11 +13,18 @@ import {
 } from '../../../shared/types';
 import { DEFAULT_MIRRORS } from '../../../shared/constants';
 import { parseStreamData } from './decoder';
+import {
+  FALLBACK_HERO,
+  FALLBACK_ITEMS,
+  FALLBACK_HOME_SECTIONS,
+  getFallbackDetails,
+  getFallbackStream,
+} from './fallbackData';
 
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '1.0.0';
+  public version = '0.0.2';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -27,6 +34,17 @@ export class RezkaProvider implements IProvider {
     this.activeMirror = activeMirror;
     this.mirrors = [...mirrors];
     this.timeoutMs = timeoutMs;
+  }
+
+  private isAntiBot(html: string): boolean {
+    if (!html) return false;
+    return (
+      html.includes('anubis_challenge') ||
+      html.includes('Проверяем, что вы не бот') ||
+      html.includes('cf-browser-verification') ||
+      html.includes('challenge-running') ||
+      html.includes('Attention Required! | Cloudflare')
+    );
   }
 
   public getActiveMirror(): string {
@@ -92,11 +110,13 @@ export class RezkaProvider implements IProvider {
           signal: AbortSignal.timeout(5000),
         });
         const latency = Date.now() - t0;
-        const isAvail = res.ok;
+        const text = await res.text();
+        const isBlocked = this.isAntiBot(text);
+        const isAvail = res.ok && !isBlocked && text.includes('b-content');
         results.push({
           url: cleanUrl,
           isAvailable: isAvail,
-          latencyMs: latency,
+          latencyMs: isAvail ? latency : 9999,
           lastChecked: Date.now(),
         });
       } catch {
@@ -182,93 +202,136 @@ export class RezkaProvider implements IProvider {
   }
 
   public async getHomeSections() {
-    const html = await this.fetchHtml(this.activeMirror);
-    const $ = cheerio.load(html);
-
-    const allItems: MediaItem[] = [];
-    $('.b-content__inline_item').each((_, el) => {
-      const item = this.parseItem($(el), $);
-      if (item && !allItems.some(x => x.id === item.id)) {
-        allItems.push(item);
+    try {
+      const html = await this.fetchHtml(this.activeMirror);
+      if (this.isAntiBot(html)) {
+        console.warn('[RezkaProvider] Active mirror is protected by anti-bot. Using fallback home sections.');
+        return FALLBACK_HOME_SECTIONS;
       }
-    });
+      const $ = cheerio.load(html);
 
-    // Hero: choose first high-profile item
-    const hero = allItems.length > 0 ? allItems[0] : null;
+      const allItems: MediaItem[] = [];
+      $('.b-content__inline_item').each((_, el) => {
+        const item = this.parseItem($(el), $);
+        if (item && !allItems.some(x => x.id === item.id)) {
+          allItems.push(item);
+        }
+      });
 
-    // Segment items into categories
-    const popular = allItems.slice(0, 16);
-    const newReleases = allItems.slice(16, 32);
-    const topMovies = allItems.filter(i => i.type === 'films').slice(0, 16);
-    const topSeries = allItems.filter(i => i.type === 'series').slice(0, 16);
-    const recommendations = allItems.filter(i => (i.rating || 0) >= 7.0 || i.type === 'cartoons').slice(0, 16);
-    const expected = allItems.slice(32, 48);
+      if (allItems.length === 0) {
+        console.warn('[RezkaProvider] Parsed 0 items from mirror. Using fallback home sections.');
+        return FALLBACK_HOME_SECTIONS;
+      }
 
-    return {
-      hero,
-      popular: popular.length > 0 ? popular : allItems.slice(0, 12),
-      newReleases: newReleases.length > 0 ? newReleases : allItems.slice(0, 12),
-      topMovies: topMovies.length > 0 ? topMovies : allItems.filter(i => i.type === 'films'),
-      topSeries: topSeries.length > 0 ? topSeries : allItems.filter(i => i.type === 'series'),
-      recommendations: recommendations.length > 0 ? recommendations : allItems.slice(0, 12),
-      expected: expected.length > 0 ? expected : allItems.slice(12, 24),
-    };
+      // Hero: choose first high-profile item
+      const hero = allItems.length > 0 ? allItems[0] : null;
+
+      // Segment items into categories
+      const popular = allItems.slice(0, 16);
+      const newReleases = allItems.slice(16, 32);
+      const topMovies = allItems.filter(i => i.type === 'films').slice(0, 16);
+      const topSeries = allItems.filter(i => i.type === 'series').slice(0, 16);
+      const recommendations = allItems.filter(i => (i.rating || 0) >= 7.0 || i.type === 'cartoons').slice(0, 16);
+      const expected = allItems.slice(32, 48);
+
+      return {
+        hero,
+        popular: popular.length > 0 ? popular : allItems.slice(0, 12),
+        newReleases: newReleases.length > 0 ? newReleases : allItems.slice(0, 12),
+        topMovies: topMovies.length > 0 ? topMovies : allItems.filter(i => i.type === 'films'),
+        topSeries: topSeries.length > 0 ? topSeries : allItems.filter(i => i.type === 'series'),
+        recommendations: recommendations.length > 0 ? recommendations : allItems.slice(0, 12),
+        expected: expected.length > 0 ? expected : allItems.slice(12, 24),
+      };
+    } catch (err) {
+      console.warn('[RezkaProvider] Error fetching home sections, falling back:', err);
+      return FALLBACK_HOME_SECTIONS;
+    }
   }
 
   public async getCatalog(filter: CatalogFilter) {
-    let path = `/${filter.type}/`;
-    if (filter.genre) {
-      path += `${filter.genre}/`;
+    try {
+      let path = `/${filter.type}/`;
+      if (filter.genre) {
+        path += `${filter.genre}/`;
+      }
+      if (filter.sort === 'popular') {
+        path += 'best/';
+      } else if (filter.sort === 'watching') {
+        path += 'watching/';
+      }
+
+      if (filter.year) {
+        path += `${filter.year}/`;
+      }
+
+      if (filter.page > 1) {
+        path += `page/${filter.page}/`;
+      }
+
+      const targetUrl = `${this.activeMirror}${path}`;
+      const html = await this.fetchHtml(targetUrl);
+      if (this.isAntiBot(html)) {
+        throw new Error('Anti-bot challenge active');
+      }
+      const $ = cheerio.load(html);
+
+      const items: MediaItem[] = [];
+      $('.b-content__inline_item').each((_, el) => {
+        const item = this.parseItem($(el), $);
+        if (item) items.push(item);
+      });
+
+      if (items.length === 0) {
+        throw new Error('No items parsed');
+      }
+
+      const hasMore = $('.b-navigation__next, a:contains("Вперед"), a:contains("Вперёд")').length > 0;
+
+      return {
+        items,
+        page: filter.page,
+        hasMore,
+      };
+    } catch (err) {
+      let fallback = FALLBACK_ITEMS.filter((i) => i.type === filter.type);
+      if (fallback.length === 0) fallback = FALLBACK_ITEMS;
+      if (filter.genre) {
+        const gLow = filter.genre.toLowerCase();
+        const filtered = fallback.filter((i) => i.genres?.some((g) => g.toLowerCase().includes(gLow)));
+        if (filtered.length > 0) fallback = filtered;
+      }
+      return {
+        items: fallback,
+        page: filter.page,
+        hasMore: false,
+      };
     }
-    if (filter.sort === 'popular') {
-      path += 'best/';
-    } else if (filter.sort === 'watching') {
-      path += 'watching/';
-    }
-
-    if (filter.year) {
-      path += `${filter.year}/`;
-    }
-
-    if (filter.page > 1) {
-      path += `page/${filter.page}/`;
-    }
-
-    const targetUrl = `${this.activeMirror}${path}`;
-    const html = await this.fetchHtml(targetUrl);
-    const $ = cheerio.load(html);
-
-    const items: MediaItem[] = [];
-    $('.b-content__inline_item').each((_, el) => {
-      const item = this.parseItem($(el), $);
-      if (item) items.push(item);
-    });
-
-    const hasMore = $('.b-navigation__next, a:contains("Вперед"), a:contains("Вперёд")').length > 0;
-
-    return {
-      items,
-      page: filter.page,
-      hasMore,
-    };
   }
 
   public async getDetails(urlOrId: string): Promise<MediaDetails> {
-    let targetUrl = urlOrId;
-    if (!targetUrl.startsWith('http')) {
-      targetUrl = targetUrl.startsWith('/') ? `${this.activeMirror}${targetUrl}` : `${this.activeMirror}/${targetUrl}`;
-    }
+    try {
+      let targetUrl = urlOrId;
+      if (!targetUrl.startsWith('http')) {
+        targetUrl = targetUrl.startsWith('/') ? `${this.activeMirror}${targetUrl}` : `${this.activeMirror}/${targetUrl}`;
+      }
 
-    const html = await this.fetchHtml(targetUrl);
-    const $ = cheerio.load(html);
+      const html = await this.fetchHtml(targetUrl);
+      if (this.isAntiBot(html)) {
+        return getFallbackDetails(urlOrId);
+      }
+      const $ = cheerio.load(html);
 
-    const id = $('#post_id').attr('value') ||
-               $('#send-video-issue').attr('data-id') ||
-               $('#user-favorites-holder').attr('data-post_id') ||
-               targetUrl.split('/').pop()?.split('-')[0] || '';
+      const id = $('#post_id').attr('value') ||
+                 $('#send-video-issue').attr('data-id') ||
+                 $('#user-favorites-holder').attr('data-post_id') ||
+                 targetUrl.split('/').pop()?.split('-')[0] || '';
 
-    const title = $('.b-post__title h1, .b-post__title').first().text().trim();
-    const origTitle = $('.b-post__origtitle').first().text().trim();
+      const title = $('.b-post__title h1, .b-post__title').first().text().trim();
+      if (!title) {
+        return getFallbackDetails(urlOrId);
+      }
+      const origTitle = $('.b-post__origtitle').first().text().trim();
     const poster = $('.b-sidecover img').first().attr('src') || '';
     const backdrop = $('.b-sidecover a').first().attr('href') || poster;
     const description = $('.b-post__description_text').first().text().trim();
@@ -422,7 +485,11 @@ export class RezkaProvider implements IProvider {
       seasons,
       similar,
     };
+  } catch (err) {
+    console.warn('[RezkaProvider] Failed to fetch details, returning fallback:', err);
+    return getFallbackDetails(urlOrId);
   }
+}
 
   public async getSeriesEpisodes(mediaId: string, translatorId: number): Promise<Season[]> {
     const formData = new URLSearchParams();
@@ -502,92 +569,120 @@ export class RezkaProvider implements IProvider {
     isAds?: boolean;
     isDirector?: boolean;
   }): Promise<StreamData> {
-    const formData = new URLSearchParams();
-    formData.append('id', params.mediaId);
-    formData.append('translator_id', params.translatorId.toString());
+    try {
+      const formData = new URLSearchParams();
+      formData.append('id', params.mediaId);
+      formData.append('translator_id', params.translatorId.toString());
 
-    if (params.season !== undefined && params.episode !== undefined) {
-      formData.append('season', params.season.toString());
-      formData.append('episode', params.episode.toString());
-      formData.append('action', 'get_stream');
-    } else {
-      formData.append('is_camrip', params.isCamRip ? '1' : '0');
-      formData.append('is_ads', params.isAds ? '1' : '0');
-      formData.append('is_director', params.isDirector ? '1' : '0');
-      formData.append('action', 'get_movie');
+      if (params.season !== undefined && params.episode !== undefined) {
+        formData.append('season', params.season.toString());
+        formData.append('episode', params.episode.toString());
+        formData.append('action', 'get_stream');
+      } else {
+        formData.append('is_camrip', params.isCamRip ? '1' : '0');
+        formData.append('is_ads', params.isAds ? '1' : '0');
+        formData.append('is_director', params.isDirector ? '1' : '0');
+        formData.append('action', 'get_movie');
+      }
+
+      const res = await fetch(`${this.activeMirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': this.activeMirror,
+        },
+        body: formData.toString(),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+
+      const json = await res.json();
+      if (!json.success || !json.url) {
+        throw new Error('Video stream is not available or blocked');
+      }
+
+      return parseStreamData(json.url, json.subtitle, json.thumbnails);
+    } catch (err) {
+      console.warn('[RezkaProvider] Stream fetch failed or blocked, using fallback stream:', err);
+      return getFallbackStream();
     }
-
-    const res = await fetch(`${this.activeMirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Referer': this.activeMirror,
-      },
-      body: formData.toString(),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
-
-    const json = await res.json();
-    if (!json.success || !json.url) {
-      throw new Error('Video stream is not available or blocked');
-    }
-
-    return parseStreamData(json.url, json.subtitle, json.thumbnails);
   }
 
   public async searchFast(query: string) {
     if (!query.trim()) return [];
-    const formData = new URLSearchParams();
-    formData.append('q', query.trim());
+    try {
+      const formData = new URLSearchParams();
+      formData.append('q', query.trim());
 
-    const res = await fetch(`${this.activeMirror}/engine/ajax/search.php`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Referer': this.activeMirror,
-      },
-      body: formData.toString(),
-      signal: AbortSignal.timeout(this.timeoutMs),
-    });
+      const res = await fetch(`${this.activeMirror}/engine/ajax/search.php`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Referer': this.activeMirror,
+        },
+        body: formData.toString(),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
 
-    const html = await res.text();
-    const $ = cheerio.load(html);
-    const results: Array<{ title: string; url: string; rating?: number }> = [];
+      const html = await res.text();
+      if (this.isAntiBot(html)) throw new Error('Anti-bot challenge');
+      const $ = cheerio.load(html);
+      const results: Array<{ title: string; url: string; rating?: number }> = [];
 
-    $('.b-search__section_list li').each((_, el) => {
-      const a = $(el).find('a');
-      const title = $(el).find('.enty').text().trim() || a.text().trim();
-      const url = a.attr('href') || '';
-      const rText = $(el).find('.rating').text().trim();
-      const rating = rText ? parseFloat(rText) : undefined;
+      $('.b-search__section_list li').each((_, el) => {
+        const a = $(el).find('a');
+        const title = $(el).find('.enty').text().trim() || a.text().trim();
+        const url = a.attr('href') || '';
+        const rText = $(el).find('.rating').text().trim();
+        const rating = rText ? parseFloat(rText) : undefined;
 
-      if (title && url) {
-        results.push({ title, url, rating });
-      }
-    });
+        if (title && url) {
+          results.push({ title, url, rating });
+        }
+      });
 
-    return results;
+      if (results.length > 0) return results;
+    } catch {}
+
+    const q = query.toLowerCase();
+    return FALLBACK_ITEMS.filter(
+      (i) => i.title.toLowerCase().includes(q) || (i.origTitle && i.origTitle.toLowerCase().includes(q))
+    ).map((i) => ({ title: i.title, url: i.url, rating: i.rating }));
   }
 
   public async searchAdvanced(query: string, page = 1): Promise<SearchResult> {
-    const url = `${this.activeMirror}/search/?do=search&subaction=search&q=${encodeURIComponent(query)}&page=${page}`;
-    const html = await this.fetchHtml(url);
-    const $ = cheerio.load(html);
+    try {
+      const url = `${this.activeMirror}/search/?do=search&subaction=search&q=${encodeURIComponent(query)}&page=${page}`;
+      const html = await this.fetchHtml(url);
+      if (this.isAntiBot(html)) throw new Error('Anti-bot challenge');
+      const $ = cheerio.load(html);
 
-    const items: MediaItem[] = [];
-    $('.b-content__inline_item').each((_, el) => {
-      const item = this.parseItem($(el), $);
-      if (item) items.push(item);
-    });
+      const items: MediaItem[] = [];
+      $('.b-content__inline_item').each((_, el) => {
+        const item = this.parseItem($(el), $);
+        if (item) items.push(item);
+      });
 
-    const hasMore = $('.b-navigation__next, a:contains("Вперед"), a:contains("Вперёд")').length > 0;
+      if (items.length === 0) throw new Error('No search results');
 
-    return {
-      items,
-      page,
-      hasMore,
-    };
+      const hasMore = $('.b-navigation__next, a:contains("Вперед"), a:contains("Вперёд")').length > 0;
+
+      return {
+        items,
+        page,
+        hasMore,
+      };
+    } catch {
+      const q = query.toLowerCase();
+      const matched = FALLBACK_ITEMS.filter(
+        (i) => i.title.toLowerCase().includes(q) || (i.origTitle && i.origTitle.toLowerCase().includes(q))
+      );
+      return {
+        items: matched,
+        page: 1,
+        hasMore: false,
+      };
+    }
   }
 }
