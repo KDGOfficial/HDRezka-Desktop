@@ -6,13 +6,13 @@
   <p><strong>Современный, быстрый и удобный неофициальный десктопный клиент HDRezka для Windows</strong></p>
 
   <p>
-    <img src="https://img.shields.io/badge/version-0.0.2-crimson.svg?style=flat-square" alt="Version" />
+    <a href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"><img src="https://img.shields.io/badge/version-0.0.2-crimson.svg?style=flat-square" alt="Version" /></a>
     <img src="https://img.shields.io/badge/platform-Windows-blue.svg?style=flat-square&logo=windows" alt="Platform" />
     <img src="https://img.shields.io/badge/Electron-34.x-47848F.svg?style=flat-square&logo=electron" alt="Electron" />
     <img src="https://img.shields.io/badge/React-19.x-61DAFB.svg?style=flat-square&logo=react" alt="React" />
     <img src="https://img.shields.io/badge/TypeScript-5.7-3178C6.svg?style=flat-square&logo=typescript" alt="TypeScript" />
     <img src="https://img.shields.io/badge/TailwindCSS-3.4-38B2AC.svg?style=flat-square&logo=tailwindcss" alt="Tailwind CSS" />
-    <img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License" />
+    <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg?style=flat-square" alt="License" /></a>
   </p>
 </div>
 
