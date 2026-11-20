@@ -286,9 +286,21 @@ export function registerIpcHandlers(): void {
 
   function downloadFile(url: string, destPath: string, onProgress: (transferred: number, total: number) => void): Promise<void> {
     return new Promise((resolve, reject) => {
+      let isDone = false;
+      const finishOnce = (err?: any) => {
+        if (isDone) return;
+        isDone = true;
+        if (err) {
+          fs.unlink(destPath, () => {});
+          reject(err);
+        } else {
+          resolve();
+        }
+      };
+
       const makeRequest = (currentUrl: string, redirectCount = 0) => {
         if (redirectCount > 8) {
-          return reject(new Error('Too many redirects'));
+          return finishOnce(new Error('Too many redirects'));
         }
         const client = currentUrl.startsWith('https') ? https : http;
         const req = client.get(
@@ -301,33 +313,49 @@ export function registerIpcHandlers(): void {
           },
           (res) => {
             if ([301, 302, 303, 307, 308].includes(res.statusCode || 0) && res.headers.location) {
+              res.resume();
               return makeRequest(res.headers.location, redirectCount + 1);
             }
             if ((res.statusCode || 0) >= 400) {
-              return reject(new Error(`Download failed with status ${res.statusCode}`));
+              return finishOnce(new Error(`Download failed with status ${res.statusCode}`));
             }
             const total = parseInt(res.headers['content-length'] || '0', 10);
             let transferred = 0;
             const file = fs.createWriteStream(destPath);
+
             res.on('data', (chunk: Buffer) => {
               transferred += chunk.length;
               onProgress(transferred, total);
+              if (total > 0 && transferred >= total) {
+                setTimeout(() => finishOnce(), 250);
+              }
             });
+
             res.pipe(file);
+
             file.on('finish', () => {
-              file.close(() => resolve());
+              finishOnce();
             });
+
             file.on('error', (err) => {
-              fs.unlink(destPath, () => {});
-              reject(err);
+              finishOnce(err);
+            });
+
+            res.on('error', (err) => {
+              finishOnce(err);
             });
           }
         );
+
         req.on('error', (err) => {
-          fs.unlink(destPath, () => {});
-          reject(err);
+          finishOnce(err);
+        });
+
+        req.setTimeout(60000, () => {
+          req.destroy(new Error('Download connection timeout'));
         });
       };
+
       makeRequest(url);
     });
   }
@@ -483,7 +511,17 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.INSTALL_UPDATE, async () => {
     if (!downloadedUpdatePath || !fs.existsSync(downloadedUpdatePath)) {
-      return false;
+      const tempDir = app.getPath('temp');
+      const candidatePaths = [
+        path.join(tempDir, 'HDREZKA-Setup-update.exe'),
+        path.join(tempDir, 'HDREZKA-Setup.exe'),
+      ];
+      const found = candidatePaths.find((p) => fs.existsSync(p));
+      if (found) {
+        downloadedUpdatePath = found;
+      } else {
+        return false;
+      }
     }
     const win = getMainWindow();
     try {
