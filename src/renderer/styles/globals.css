@@ -91,3 +91,40 @@
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
+
+/* Subtitles position and readability styling */
+video::-webkit-media-text-track-container {
+  bottom: 85px !important;
+  transform: translateY(-16px) !important;
+}
+
+video::-webkit-media-text-track-display {
+  padding-bottom: 24px !important;
+}
+
+video::cue {
+  background-color: rgba(0, 0, 0, 0.8) !important;
+  color: #ffffff !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  padding: 0.25rem 0.65rem !important;
+  border-radius: 6px !important;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9) !important;
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeInScale 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}

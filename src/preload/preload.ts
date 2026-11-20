@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import { IPC_CHANNELS } from '../shared/constants';
 import {
   CatalogFilter,
@@ -14,6 +14,12 @@ export const api = {
   maximize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MAXIMIZE),
   close: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
   isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
+  setAlwaysOnTop: (flag?: boolean): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, flag),
+  isAlwaysOnTop: (): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_ALWAYS_ON_TOP),
+  setZoomFactor: (factor: number): void => webFrame.setZoomFactor(factor),
+  getZoomFactor: (): number => webFrame.getZoomFactor(),
 
   // Provider & Content
   getHomeSections: () => ipcRenderer.invoke(IPC_CHANNELS.GET_HOME_SECTIONS),

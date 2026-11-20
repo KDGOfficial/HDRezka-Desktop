@@ -48,6 +48,8 @@ export const IPC_CHANNELS = {
   WINDOW_MAXIMIZE: 'window:maximize',
   WINDOW_CLOSE: 'window:close',
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
+  WINDOW_SET_ALWAYS_ON_TOP: 'window:setAlwaysOnTop',
+  WINDOW_IS_ALWAYS_ON_TOP: 'window:isAlwaysOnTop',
 
   // Provider & Catalog
   GET_HOME_SECTIONS: 'provider:getHomeSections',

@@ -19,6 +19,8 @@ import {
   Sliders,
   Tv,
   ShieldCheck,
+  Pin,
+  EyeOff,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
@@ -66,13 +68,70 @@ export const VideoPlayer: React.FC = () => {
   const [showControls, setShowControls] = useState(true);
   const [isVerifying, setIsVerifying] = useState(false);
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
+  const [isUiLocked, setIsUiLocked] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
+  const [videoFit, setVideoFit] = useState<'contain' | 'cover' | 'fill'>('contain');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const hideTimerRef = useRef<any>(null);
+  const toastTimerRef = useRef<any>(null);
   const lastVolumeRef = useRef(volume > 0 ? volume : 0.8);
 
   const subtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
   const effectiveVolume = isMuted ? 0 : volume;
   const effectivePercent = Math.round(effectiveVolume * 100);
+
+  // Sync window pin state on mount or open
+  useEffect(() => {
+    if (isOpen && window.api?.isAlwaysOnTop) {
+      window.api.isAlwaysOnTop().then(setIsPinned);
+    }
+  }, [isOpen]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => {
+      setToastMessage(null);
+    }, 2600);
+  };
+
+  const toggleUiLock = () => {
+    setIsUiLocked((prev) => {
+      const next = !prev;
+      if (next) {
+        setShowControls(false);
+        showToast(t.player.uiLocked);
+      } else {
+        setShowControls(true);
+        showToast(t.player.uiUnlocked);
+      }
+      return next;
+    });
+  };
+
+  const handleTogglePin = async () => {
+    if (window.api?.setAlwaysOnTop) {
+      const next = await window.api.setAlwaysOnTop();
+      setIsPinned(next);
+      showToast(next ? t.player.pinned : t.player.unpinned);
+    }
+  };
+
+  const cycleVideoFit = () => {
+    setVideoFit((prev) => {
+      if (prev === 'contain') {
+        showToast(t.player.scaleCover);
+        return 'cover';
+      } else if (prev === 'cover') {
+        showToast(t.player.scaleFill);
+        return 'fill';
+      } else {
+        showToast(t.player.scaleOriginal);
+        return 'contain';
+      }
+    });
+  };
 
   // Dynamically inserted <track default> is not always shown by Chromium; force it on
   useEffect(() => {
@@ -82,6 +141,7 @@ export const VideoPlayer: React.FC = () => {
 
   // Auto-hide controls
   const resetHideTimer = () => {
+    if (isUiLocked) return;
     setShowControls(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
@@ -92,13 +152,15 @@ export const VideoPlayer: React.FC = () => {
   };
 
   useEffect(() => {
-    const handleMouseMove = () => resetHideTimer();
+    const handleMouseMove = () => {
+      if (!isUiLocked) resetHideTimer();
+    };
     window.addEventListener('mousemove', handleMouseMove);
     return () => {
       window.removeEventListener('mousemove', handleMouseMove);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, [isPlaying, activeMenu]);
+  }, [isPlaying, activeMenu, isUiLocked]);
 
   // HLS & Video Stream initialization
   useEffect(() => {
@@ -217,6 +279,18 @@ export const VideoPlayer: React.FC = () => {
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
 
       switch (e.code) {
+        case 'KeyH':
+          e.preventDefault();
+          toggleUiLock();
+          break;
+        case 'KeyP':
+          e.preventDefault();
+          handleTogglePin();
+          break;
+        case 'KeyZ':
+          e.preventDefault();
+          cycleVideoFit();
+          break;
         case 'Space':
           e.preventDefault();
           togglePlay();
@@ -247,7 +321,11 @@ export const VideoPlayer: React.FC = () => {
           break;
         case 'Escape':
           e.preventDefault();
-          if (activeMenu !== 'none') {
+          if (isUiLocked) {
+            setIsUiLocked(false);
+            setShowControls(true);
+            showToast(t.player.uiUnlocked);
+          } else if (activeMenu !== 'none') {
             setActiveMenu('none');
           } else if (document.fullscreenElement) {
             document.exitFullscreen();
@@ -256,12 +334,14 @@ export const VideoPlayer: React.FC = () => {
           }
           break;
       }
-      resetHideTimer();
+      if (!isUiLocked) {
+        resetHideTimer();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isPlaying, isMuted, volume, activeMenu]);
+  }, [isOpen, isPlaying, isMuted, volume, activeMenu, isUiLocked, t]);
 
   if (!isOpen) return null;
 
@@ -377,12 +457,23 @@ export const VideoPlayer: React.FC = () => {
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden"
+      className={`fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden ${
+        isUiLocked ? 'cursor-none' : ''
+      }`}
     >
+      {/* On-screen Toast Notification */}
+      {toastMessage && (
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full bg-black/85 backdrop-blur-md border border-white/20 text-white text-sm font-semibold shadow-2xl flex items-center space-x-2.5 pointer-events-none animate-fade-in transition-all">
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* Video Element */}
       <video
         ref={videoRef}
-        className="w-full h-full object-contain cursor-pointer"
+        className={`w-full h-full cursor-pointer transition-all duration-200 ${
+          videoFit === 'cover' ? 'object-cover' : videoFit === 'fill' ? 'object-fill' : 'object-contain'
+        }`}
         onClick={togglePlay}
         onTimeUpdate={() => {
           if (videoRef.current) {
@@ -525,6 +616,31 @@ export const VideoPlayer: React.FC = () => {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Top Bar Quick Action Controls */}
+          <div className="flex items-center space-x-2">
+            {/* UI Hide / Lock Shortcut button */}
+            <button
+              onClick={toggleUiLock}
+              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white backdrop-blur-md transition-colors"
+              title={t.player.hideUi}
+            >
+              <EyeOff className="w-4 h-4" />
+            </button>
+
+            {/* Pin / Always On Top Button */}
+            <button
+              onClick={handleTogglePin}
+              className={`p-2 rounded-xl backdrop-blur-md transition-colors ${
+                isPinned
+                  ? 'bg-brand-red text-white shadow-glow'
+                  : 'bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white'
+              }`}
+              title={isPinned ? t.player.unpinWindow : t.player.pinWindow}
+            >
+              <Pin className={`w-4 h-4 ${isPinned ? 'fill-current rotate-45' : ''}`} />
+            </button>
           </div>
         </div>
 
@@ -724,6 +840,15 @@ export const VideoPlayer: React.FC = () => {
                 className="px-2 py-1 rounded-lg hover:bg-white/10 text-xs font-medium text-zinc-300 hover:text-white transition-colors"
               >
                 {playbackSpeed}x
+              </button>
+
+              {/* Video Fit / Aspect Ratio Scale Toggle */}
+              <button
+                onClick={cycleVideoFit}
+                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold text-zinc-300 hover:text-white border border-white/10 transition-colors"
+                title={t.player.scale}
+              >
+                {videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? 'Кадр' : 'Растянуть'}
               </button>
 
               {/* Fullscreen */}

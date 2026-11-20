@@ -37,6 +37,18 @@ export function registerIpcHandlers(): void {
     return getMainWindow()?.isMaximized() ?? false;
   });
 
+  ipcMain.handle(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, (_, flag?: boolean) => {
+    const win = getMainWindow();
+    if (!win) return false;
+    const newState = flag !== undefined ? flag : !win.isAlwaysOnTop();
+    win.setAlwaysOnTop(newState);
+    return newState;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WINDOW_IS_ALWAYS_ON_TOP, () => {
+    return getMainWindow()?.isAlwaysOnTop() ?? false;
+  });
+
   // --- Provider & Catalog ---
   ipcMain.handle(IPC_CHANNELS.GET_HOME_SECTIONS, async () => {
     const provider = providerManager.getProvider();

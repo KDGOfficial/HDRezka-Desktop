@@ -8,8 +8,8 @@ export function createMainWindow(): BrowserWindow {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 980,
-    minHeight: 640,
+    minWidth: 480,
+    minHeight: 320,
     frame: false,
     backgroundColor: '#090a0f',
     icon: path.join(__dirname, '../../resources/icon.ico'),
