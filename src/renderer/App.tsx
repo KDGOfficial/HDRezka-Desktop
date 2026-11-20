@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Sparkles } from 'lucide-react';
 import { TitleBar } from './components/TitleBar';
 import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
@@ -7,6 +8,7 @@ import { CollectionModal } from './components/CollectionModal';
 import { UpdateModal } from './components/UpdateModal';
 import { useMediaStore } from './stores/useMediaStore';
 import { useSettingsStore } from './stores/useSettingsStore';
+import { useTranslation } from './i18n';
 
 // Pages
 import { HomePage } from './pages/HomePage';
@@ -20,12 +22,18 @@ import { SettingsPage } from './pages/SettingsPage';
 
 export const App: React.FC = () => {
   const { currentPage, loadFavorites, loadWatchHistory } = useMediaStore();
-  const { loadSettings } = useSettingsStore();
+  const { loadSettings, updateInfo, isUpdateModalOpen, setUpdateModalOpen } = useSettingsStore();
+  const { t } = useTranslation();
 
   useEffect(() => {
     loadSettings();
     loadFavorites();
     loadWatchHistory();
+    // Check for updates periodically every 30 minutes
+    const interval = setInterval(() => {
+      useSettingsStore.getState().checkForUpdates(false);
+    }, 30 * 60 * 1000);
+    return () => clearInterval(interval);
   }, []);
 
   const renderCurrentPage = () => {
@@ -63,6 +71,24 @@ export const App: React.FC = () => {
     <div className="flex flex-col h-screen w-screen bg-dark-bg text-white overflow-hidden">
       {/* Electron custom titlebar */}
       <TitleBar />
+
+      {/* Global Update Notification Banner */}
+      {updateInfo?.hasUpdate && !isUpdateModalOpen && (
+        <div className="bg-gradient-to-r from-brand-red/90 via-orange-600/90 to-brand-red/90 text-white px-6 py-2 flex items-center justify-between text-xs font-semibold shadow-glow animate-fade-in z-30 select-none border-b border-white/10">
+          <div className="flex items-center space-x-2.5">
+            <Sparkles className="w-4 h-4 text-orange-200 animate-pulse flex-shrink-0" />
+            <span>{t.header.updateBanner.replace('{version}', updateInfo.latestVersion)}</span>
+          </div>
+          <div className="flex items-center space-x-2 flex-shrink-0 ml-4">
+            <button
+              onClick={() => setUpdateModalOpen(true)}
+              className="px-3 py-1 rounded-lg bg-white text-black font-bold text-xs hover:bg-zinc-200 transition-all shadow-md active:scale-95 cursor-pointer"
+            >
+              {t.header.updateNow}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Main app body */}
       <div className="flex flex-1 overflow-hidden">

@@ -24,6 +24,8 @@ export const translations = {
       notifications: 'Обновления и статус',
       updateAvailable: 'Доступно обновление',
       newBadge: 'NEW',
+      updateBanner: 'Доступна новая версия HDRezka Desktop v{version}! Обновитесь для стабильной работы и новых функций.',
+      updateNow: 'Обновить сейчас',
     },
     home: {
       premiere: 'Премьера',
@@ -258,6 +260,8 @@ export const translations = {
       notifications: 'Оновлення та статус',
       updateAvailable: 'Доступне оновлення',
       newBadge: 'NEW',
+      updateBanner: 'Доступна нова версія HDRezka Desktop v{version}! Оновіться для стабільної роботи та нових функцій.',
+      updateNow: 'Оновити зараз',
     },
     home: {
       premiere: 'Прем\'єра',
@@ -492,6 +496,8 @@ export const translations = {
       notifications: 'Updates and status',
       updateAvailable: 'Update available',
       newBadge: 'NEW',
+      updateBanner: 'A new version of HDRezka Desktop v{version} is available! Update now for new features and fixes.',
+      updateNow: 'Update now',
     },
     home: {
       premiere: 'Premiere',
