@@ -393,7 +393,15 @@ export function registerIpcHandlers(): void {
       }
 
       if (!targetUrl) {
-        return { success: false, error: 'No download asset URL available' };
+        // If no direct .exe asset is attached to GitHub release yet,
+        // open the GitHub releases page in default browser
+        const fallbackUrl = 'https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest';
+        shell.openExternal(fallbackUrl);
+        return {
+          success: true,
+          openedInBrowser: true,
+          error: 'Файл обновления формируется на CI/CD или доступен на странице релиза GitHub.',
+        };
       }
 
       const tempDir = app.getPath('temp');

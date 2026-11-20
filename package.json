@@ -47,6 +47,11 @@
     "directories": {
       "output": "release"
     },
+    "publish": {
+      "provider": "github",
+      "owner": "KDGOfficial",
+      "repo": "HDRezka-Desktop"
+    },
     "files": [
       "dist/**/*",
       "package.json"

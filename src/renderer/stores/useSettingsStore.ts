@@ -131,6 +131,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
     try {
       const res = await window.api.downloadUpdate(updateInfo.assetUrl);
+      if (res.openedInBrowser) {
+        set({
+          updateProgress: {
+            percent: 100,
+            transferredBytes: 0,
+            totalBytes: 0,
+            status: 'opened_in_browser',
+            error: res.error,
+          },
+        });
+        return;
+      }
       if (!res.success) {
         set({
           updateProgress: {

@@ -15,6 +15,7 @@ export const UpdateModal: React.FC = () => {
   const isDownloading = updateProgress?.status === 'downloading';
   const isReady = updateProgress?.status === 'ready';
   const isError = updateProgress?.status === 'error';
+  const isOpenedInBrowser = updateProgress?.status === 'opened_in_browser';
 
   const formatBytes = (bytes: number) => {
     if (!bytes || bytes === 0) return '0 MB';
@@ -98,6 +99,16 @@ export const UpdateModal: React.FC = () => {
             <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center space-x-3 text-xs text-emerald-400">
               <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400" />
               <span>Обновление успешно загружено и готово к установке.</span>
+            </div>
+          )}
+
+          {isOpenedInBrowser && (
+            <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/30 flex items-center space-x-3 text-xs text-amber-300">
+              <ExternalLink className="w-5 h-5 flex-shrink-0 text-amber-400" />
+              <span>
+                {updateProgress?.error ||
+                  'Страница релиза открыта в браузере. Вы можете скачать установочный файл напрямую с GitHub.'}
+              </span>
             </div>
           )}
 
