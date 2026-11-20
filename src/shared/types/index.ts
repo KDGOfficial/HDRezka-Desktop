@@ -160,7 +160,7 @@ export interface UserSettings {
     recommendations: boolean;
     expected: boolean;
   };
-  language: 'ru' | 'en';
+  language: 'ru' | 'uk' | 'en';
   player: {
     autoPlay: boolean;
     autoPlayNextEpisode: boolean;

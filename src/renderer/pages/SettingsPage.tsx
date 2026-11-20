@@ -137,6 +137,12 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       <div className="space-y-8">
+        <div className="p-5 rounded-2xl bg-dark-surface border border-white/5 flex items-center justify-between">
+          <div><h2 className="text-sm font-bold text-white">Язык интерфейса</h2><p className="text-xs text-zinc-500 mt-1">Русский · Українська · English</p></div>
+          <select aria-label="Язык интерфейса" value={settings.language} onChange={(e) => updateSettings({ language: e.target.value as 'ru' | 'uk' | 'en' })} className="bg-dark-bg border border-white/10 rounded-xl px-4 py-2 text-sm text-white">
+            <option value="ru">Русский</option><option value="uk">Українська</option><option value="en">English</option>
+          </select>
+        </div>
         {/* Section: Mirrors & Network */}
         <div className="p-6 rounded-2xl bg-dark-surface border border-white/5 shadow-card space-y-4">
           <div className="flex items-center justify-between pb-3 border-b border-white/5">

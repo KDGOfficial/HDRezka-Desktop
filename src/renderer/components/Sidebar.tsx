@@ -72,7 +72,7 @@ export const Sidebar: React.FC = () => {
   };
 
   return (
-    <aside className="w-56 h-full bg-dark-surface/60 border-r border-dark-border flex flex-col justify-between p-3 select-none flex-shrink-0">
+    <aside className="w-60 h-full bg-dark-surface/60 border-r border-dark-border flex flex-col justify-between p-4 select-none flex-shrink-0 sidebar-redesign">
       <div className="flex-1 overflow-y-auto pr-1">
         {renderNavSection('main')}
         {renderNavSection('library', 'Моя библиотека')}

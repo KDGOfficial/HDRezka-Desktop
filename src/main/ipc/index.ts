@@ -1,4 +1,4 @@
-import { ipcMain, app, BrowserWindow } from 'electron';
+import { ipcMain, app, BrowserWindow, shell } from 'electron';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { getMainWindow } from '../window';
 import { ProviderManager } from '../../core/providers/manager';
@@ -277,7 +277,7 @@ export function registerIpcHandlers(): void {
         return {
           currentVersion,
           latestVersion: latestTag,
-          hasUpdate: latestTag !== currentVersion,
+          hasUpdate: latestTag.localeCompare(currentVersion, undefined, { numeric: true }) > 0,
           releaseNotes: release.body,
           releaseDate: release.published_at,
           downloadUrl: release.html_url,
@@ -290,6 +290,11 @@ export function registerIpcHandlers(): void {
       latestVersion: app.getVersion(),
       hasUpdate: false,
     };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL_URL, (_, url: string) => {
+    if (typeof url === 'string' && /^https:\/\/(github\.com|objects\.githubusercontent\.com)\//.test(url)) return shell.openExternal(url);
+    return false;
   });
 
   ipcMain.handle(IPC_CHANNELS.CLEAR_CACHE, async () => {

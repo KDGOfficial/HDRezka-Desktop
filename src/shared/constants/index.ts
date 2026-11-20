@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.10';
+export const APP_VERSION = '0.0.11';
 
 export const DEFAULT_MIRRORS = [
   'https://hdrezka-home.tv',
