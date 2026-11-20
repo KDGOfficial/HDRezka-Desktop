@@ -236,6 +236,23 @@ export const DetailsPage: React.FC = () => {
         </div>
       </div>
 
+      {/* Translator selection stays visible on the title page, before opening the player. */}
+      {details.translators && details.translators.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2 mb-5 sm:pl-64" aria-label="Выбор озвучки">
+          <span className="text-sm text-zinc-400 mr-1">Озвучка:</span>
+          {details.translators.map((tr) => (
+            <button
+              key={tr.id}
+              onClick={() => handleTranslatorChange(tr.id)}
+              aria-pressed={selectedTranslatorId === tr.id}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold transition-all ${selectedTranslatorId === tr.id ? 'bg-brand-red text-white' : 'bg-dark-surface border border-white/10 text-zinc-300 hover:text-white'}`}
+            >
+              {tr.name}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Action Buttons bar */}
       <div className="flex flex-wrap items-center gap-3 mb-8 sm:pl-64">
         <button

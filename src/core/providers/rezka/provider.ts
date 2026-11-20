@@ -696,11 +696,12 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    // If still 0 or only 1 generic fallback, probe HDRezka API for available translators
-    if (translators.length === 0 && id) {
+    // A single guessed/default translator is not a real choice; discover the available options.
+    if (translators.length <= 1 && id) {
       try {
         const probed = await this.probeTranslators(id, type === 'films');
         if (probed.length > 0) {
+          translators.length = 0;
           translators.push(...probed);
         }
       } catch {}
