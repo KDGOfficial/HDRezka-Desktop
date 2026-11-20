@@ -35,7 +35,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.11';
+  public version = '0.0.12';
 
   private activeMirror: string;
   private mirrors: string[];
