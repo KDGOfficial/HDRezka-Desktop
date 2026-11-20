@@ -22,11 +22,11 @@ test('App version must be 0.0.6', () => {
   assert.equal(packageJson.version, '0.0.6');
 });
 
-test('Fallback stream must provide playable streams with qualities', () => {
+test('Fallback stream must return empty streams (no Big Buck Bunny)', () => {
   const { getFallbackStream } = m.exports;
   const fbStream = getFallbackStream();
-  assert.ok(fbStream.streams && fbStream.streams.length > 0, 'Fallback stream must have qualities');
-  assert.ok(fbStream.streams.some((s) => s.quality === '1080p' || s.quality === '720p'), 'Must have HD quality');
+  assert.ok(fbStream.streams.length === 0, 'Fallback stream must be empty — real content only');
+  assert.ok(fbStream.subtitles.length === 0, 'Fallback subtitles must be empty');
 });
 
 test('Fallback details must return Spider-Man when given Spider-Man URLs (never Dune!)', () => {

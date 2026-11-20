@@ -511,31 +511,7 @@ export function getFallbackDetails(urlOrId: string, meta?: Partial<MediaItem>): 
 
 export function getFallbackStream(): StreamData {
   return {
-    streams: [
-      {
-        quality: '1080p',
-        hls: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-        mp4: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        isPremium: false,
-      },
-      {
-        quality: '720p',
-        hls: 'https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8',
-        mp4: 'https://vjs.zencdn.net/v/oceans.mp4',
-        isPremium: false,
-      },
-      {
-        quality: '480p',
-        hls: '',
-        mp4: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-        isPremium: false,
-      },
-    ],
-    subtitles: [
-      {
-        language: 'Русский',
-        url: 'https://raw.githubusercontent.com/brenopolanski/html5-video-webvtt-example/master/subtitles/subtitles-en.vtt',
-      },
-    ],
+    streams: [],
+    subtitles: [],
   };
 }

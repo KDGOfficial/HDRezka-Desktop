@@ -71,7 +71,7 @@ export const DetailsPage: React.FC = () => {
 
   const handleTranslatorChange = async (trId: number) => {
     setSelectedTranslatorId(trId);
-    if ((details?.type === 'series' || details?.type === 'animation') && window.api) {
+    if ((details?.type === 'series' || details?.type === 'animation' || details?.type === 'cartoons') && window.api) {
       setLoadingEpisodes(true);
       try {
         const newSeasons = await window.api.getSeriesEpisodes(details.id, trId);

@@ -18,7 +18,6 @@ import {
   FALLBACK_ITEMS,
   FALLBACK_HOME_SECTIONS,
   getFallbackDetails,
-  getFallbackStream,
 } from './fallbackData';
 
 export class RezkaProvider implements IProvider {
@@ -607,8 +606,6 @@ export class RezkaProvider implements IProvider {
   public async getSeriesEpisodes(mediaId: string, translatorId: number): Promise<Season[]> {
     const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
     const translatorsToTry = [translatorId];
-    if (translatorId !== 56) translatorsToTry.push(56);
-    if (!translatorsToTry.includes(238)) translatorsToTry.push(238);
 
     for (const mirror of mirrorsToTry) {
       for (const trId of translatorsToTry) {
@@ -699,23 +696,7 @@ export class RezkaProvider implements IProvider {
     isDirector?: boolean;
   }): Promise<StreamData> {
     const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
-    const translatorsToTry = Array.from(
-      new Set([
-        params.translatorId,
-        56,
-        238,
-        1,
-        4,
-        70,
-        89,
-        417,
-        379,
-        111,
-        2,
-        3,
-        0,
-      ])
-    ).filter((t) => typeof t === 'number');
+    const translatorsToTry = [params.translatorId];
 
     const actionsToTry: Array<{ action: 'get_stream' | 'get_movie'; season?: number; episode?: number }> = [];
     if (params.season !== undefined && params.episode !== undefined) {
@@ -781,14 +762,8 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    const fallback = getFallbackStream();
-    if (fallback.streams && fallback.streams.length > 0) {
-      console.warn('[RezkaProvider] Live stream unavailable on HDRezka mirrors, using fallback stream');
-      return fallback;
-    }
-
     throw new Error(
-      'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте выбрать другое зеркало в Настройках или открыть другой фильм.'
+      'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте выбрать другую озвучку, другое зеркало в Настройках или открыть другой фильм.'
     );
   }
 
