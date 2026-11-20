@@ -223,17 +223,14 @@ export function registerIpcHandlers(): void {
       }
     }
 
-    // Normalize known dead/broken mirrors (hdrezka.ag, rezka-ua.tv, rezka.fi) to active or stable mirror
-    const isBadMirror = !mirror || mirror.includes('hdrezka.ag') || mirror.includes('rezka-ua.tv') || mirror.includes('rezka.fi');
+    // Normalize known dead/broken/kinogo mirrors to active stable HDRezka mirror
+    const isBadMirror = !mirror || mirror.includes('hdrezka.ag') || mirror.includes('rezka-ua.tv') || mirror.includes('rezka.fi') || mirror.includes('kinogo');
     if (isBadMirror) {
       mirror = 'https://hdrezka.kim';
       loadUrl = 'https://hdrezka.kim';
       providerManager.getProvider().setActiveMirror(mirror);
       db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
     }
-
-    // Clear stale verification cookies before opening the window to avoid HTTP 500 empty body
-    await clearStaleVerificationCookies(mirror);
 
     return new Promise<boolean>((resolve) => {
       const win = new BrowserWindow({
@@ -305,7 +302,7 @@ export function registerIpcHandlers(): void {
             db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
             setTimeout(() => {
               if (!win.isDestroyed()) win.close();
-            }, 800);
+            }, 600);
           }
         } catch (_) {}
       };
@@ -313,7 +310,7 @@ export function registerIpcHandlers(): void {
       // Instantly react when Anubis sets a newly solved auth cookie in session
       const onCookieChanged = (_: any, cookie: any, __: any, removed: boolean) => {
         if (!removed && cookie?.name && cookie.name.toLowerCase().includes('anubis-auth') && cookie.value && cookie.value.length > 10) {
-          setTimeout(checkPassed, 500);
+          setTimeout(checkPassed, 400);
         }
       };
       session.defaultSession.cookies.on('changed', onCookieChanged);
@@ -322,30 +319,6 @@ export function registerIpcHandlers(): void {
           session.defaultSession.cookies.removeListener('changed', onCookieChanged);
         } catch (_) {}
       };
-
-      // If server returns HTTP >= 500 on main frame due to cached tokens, clear and reload once
-      let didRetryOn500 = false;
-      const onCompletedListener = async (details: Electron.OnCompletedListenerDetails) => {
-        if (
-          !isClosed &&
-          !win.isDestroyed() &&
-          details.webContentsId === win.webContents.id &&
-          details.resourceType === 'mainFrame' &&
-          details.statusCode >= 500 &&
-          !didRetryOn500
-        ) {
-          didRetryOn500 = true;
-          await clearStaleVerificationCookies(mirror);
-          setTimeout(() => {
-            if (!win.isDestroyed()) {
-              win.loadURL(loadUrl).catch(() => {});
-            }
-          }, 300);
-        }
-      };
-      try {
-        session.defaultSession.webRequest.onCompleted({ urls: ['*://*/*'] }, onCompletedListener);
-      } catch (_) {}
 
       const timer = setInterval(checkPassed, 800);
       win.webContents.on('did-finish-load', () => setTimeout(checkPassed, 400));

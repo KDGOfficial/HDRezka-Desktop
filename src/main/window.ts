@@ -51,15 +51,6 @@ export function createMainWindow(): BrowserWindow {
       return callback({ requestHeaders: details.requestHeaders });
     }
 
-    // Support Kinogo CDN (cinemar.cc / cinemap.cc)
-    if (url.includes('cinemar') || url.includes('cinemap')) {
-      details.requestHeaders['Referer'] = 'https://cinemar.cc/';
-      details.requestHeaders['Origin'] = 'https://cinemar.cc';
-      details.requestHeaders['User-Agent'] =
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
-      return callback({ requestHeaders: details.requestHeaders });
-    }
-
     const activeMirror = provider.getActiveMirror();
 
     const isStreamOrApi =

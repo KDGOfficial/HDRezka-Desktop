@@ -142,19 +142,19 @@ test('checkMirrors marks fake login screen as unavailable', async () => {
 });
 
 test('selectBestMirror selects mirror without bot verification if active mirror is challenged', async () => {
-  const provider = new RezkaProvider('https://hdrezka.kim', ['https://hdrezka.kim', 'https://kinogo.film']);
+  const provider = new RezkaProvider('https://hdrezka.kim', ['https://hdrezka.kim', 'https://rezka-unblocked.org']);
   const origFetch = globalThis.fetch;
   globalThis.fetch = async (url) => {
     const s = String(url);
     if (s.includes('hdrezka.kim')) {
       return new Response('<html><head><title>Проверяем, что вы не бот!</title><script id="anubis_challenge"></script></head><body><div class="within.website">' + 'x'.repeat(400) + '</div></body></html>', { status: 200 });
     }
-    return new Response('<html><head><title>KinoGo.film</title></head><body><div class="shortStory">' + 'x'.repeat(400) + '</div></body></html>', { status: 200 });
+    return new Response('<html><head><title>HDRezka</title></head><body><div class="b-content">' + 'x'.repeat(400) + '</div></body></html>', { status: 200 });
   };
 
   try {
     const best = await provider.selectBestMirror();
-    assert.equal(best, 'https://kinogo.film', 'Should choose unblocked mirror when active mirror is challenged');
+    assert.equal(best, 'https://rezka-unblocked.org', 'Should choose unblocked mirror when active mirror is challenged');
   } finally {
     globalThis.fetch = origFetch;
   }
@@ -184,31 +184,4 @@ test('getStream reports clear message when future title is unreleased', async ()
   } finally {
     globalThis.fetch = origFetch;
   }
-});
-
-test('checkMirrors marks kinogo.film as available without bot verification', async () => {
-  const provider = new RezkaProvider('https://kinogo.film', ['https://kinogo.film']);
-  const origFetch = globalThis.fetch;
-  globalThis.fetch = async () => new Response('<html><head><title>KinoGo.film</title></head><body><div class="shortStory">' + 'x'.repeat(400) + '</div></body></html>', { status: 200 });
-
-  try {
-    const statuses = await provider.checkMirrors();
-    const kinogoStatus = statuses.find(s => s.url === 'https://kinogo.film');
-    assert.ok(kinogoStatus, 'Kinogo status must be reported');
-    assert.equal(kinogoStatus.isAvailable, true, 'Kinogo must be available');
-    assert.equal(kinogoStatus.needsVerification, false, 'Kinogo must not require bot verification');
-  } finally {
-    globalThis.fetch = origFetch;
-  }
-});
-
-test('decodeCinemarFile decodes player playlist correctly', () => {
-  const provider = new RezkaProvider('https://kinogo.film', ['https://kinogo.film']);
-  // Valid Cinemar #2 base64 sample
-  const playlist = [{ id: 'tr-1', title: 'Дубляж', data: 'sample-data' }];
-  const encoded = Buffer.from(JSON.stringify(playlist)).toString('base64');
-  // Cinemar uses #2<dm><sliced> format where dm is 2 digits
-  // Test fallback or object input
-  assert.deepEqual(provider['decodeCinemarFile'](playlist), playlist);
-  assert.equal(provider['decodeCinemarFile']('invalid-string'), null);
 });
