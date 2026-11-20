@@ -21,12 +21,14 @@ async function startDev() {
   // 3. Launch Electron
   console.log('[dev] Launching Electron...');
   const electronPath = require('electron');
+  const childEnv = {
+    ...process.env,
+    VITE_DEV_SERVER_URL: 'http://localhost:5173',
+  };
+  delete childEnv.ELECTRON_RUN_AS_NODE;
   const electronProcess = spawn(electronPath, ['.'], {
     stdio: 'inherit',
-    env: {
-      ...process.env,
-      VITE_DEV_SERVER_URL: 'http://localhost:5173',
-    },
+    env: childEnv,
   });
 
   electronProcess.on('close', () => {

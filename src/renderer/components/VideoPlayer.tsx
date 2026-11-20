@@ -332,6 +332,7 @@ export const VideoPlayer: React.FC = () => {
           duration: dur,
           percent: Math.min(100, Math.round(percent)),
           lastWatchedAt: Date.now(),
+          url: mediaDetails.url || undefined,
         });
       }
     }, 5000);

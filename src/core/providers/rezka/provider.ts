@@ -58,7 +58,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.22';
+  public version = '0.0.23';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -711,10 +711,41 @@ export class RezkaProvider implements IProvider {
 
     try {
       let targetUrl = cachedMeta?.url || urlOrId;
+      if (!targetUrl.includes('.html')) {
+        const cachedCanonical = this.mediaUrlCache.get(normId);
+        if (cachedCanonical && cachedCanonical.includes('.html')) {
+          targetUrl = cachedCanonical;
+        } else {
+          for (const item of this.mediaCache.values()) {
+            if ((item.id === normId || item.url?.includes(`/${normId}-`)) && item.url?.includes('.html')) {
+              targetUrl = item.url;
+              break;
+            }
+          }
+        }
+
+        if (!targetUrl.includes('.html')) {
+          const rawTitle = cachedMeta?.title || meta?.title || meta?.origTitle || '';
+          const query = rawTitle.split('/')[0].replace(/[^\p{L}\p{N}\s]/gu, ' ').trim();
+          if (query) {
+            try {
+              const searchResults = await this.searchFast(query);
+              const found = searchResults.find(
+                (r) => r.id === normId || (normId && r.url?.includes(`/${normId}-`))
+              );
+              if (found && found.url) {
+                targetUrl = found.url;
+              }
+            } catch {}
+          }
+        }
+      }
+
       if (!targetUrl.startsWith('http')) {
         targetUrl = targetUrl.startsWith('/') ? `${this.activeMirror}${targetUrl}` : `${this.activeMirror}/${targetUrl}`;
       }
       this.mediaUrlCache.set(normId, targetUrl);
+      if (cachedMeta) cachedMeta.url = targetUrl;
 
       // Extract the path so we can try other mirrors
       let urlPath = '';
@@ -980,10 +1011,12 @@ export class RezkaProvider implements IProvider {
       currentTranslatorId,
       seasons,
       similar,
+      url: targetUrl,
     };
   } catch (err) {
     console.warn('[RezkaProvider] Failed to fetch details, returning fallback:', err);
     const fb = getFallbackDetails(urlOrId, cachedMeta);
+    fb.url = targetUrl;
     if (fb.id) {
       try {
         const probed = await this.probeTranslators(fb.id, fb.type === 'films', this.mediaUrlCache.get(fb.id));
@@ -1152,7 +1185,20 @@ export class RezkaProvider implements IProvider {
               formData.append('action', 'get_movie');
             }
 
-            const referer = this.mediaUrlCache.get(params.mediaId)?.replace(/^https?:\/\/[^/]+/, mirror) || `${mirror}/`;
+            let referer = this.mediaUrlCache.get(params.mediaId)?.replace(/^https?:\/\/[^/]+/, mirror);
+            if (!referer || !referer.includes('.html')) {
+              for (const item of this.mediaCache.values()) {
+                if ((item.id === params.mediaId || item.url?.includes(`/${params.mediaId}-`)) && item.url?.includes('.html')) {
+                  referer = item.url.startsWith('http')
+                    ? item.url.replace(/^https?:\/\/[^/]+/, mirror)
+                    : `${mirror}${item.url.startsWith('/') ? '' : '/'}${item.url}`;
+                  break;
+                }
+              }
+            }
+            if (!referer || !referer.includes('.html')) {
+              referer = `${mirror}/`;
+            }
 
             const res = await appFetch(`${mirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
               method: 'POST',

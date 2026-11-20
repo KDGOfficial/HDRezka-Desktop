@@ -146,13 +146,38 @@ export function registerIpcHandlers(): void {
   // Opens the mirror in a visible window so the user passes the site's bot check; cookies land in the shared session
   ipcMain.handle(IPC_CHANNELS.VERIFY_MIRROR, (event, targetMirrorOrUrl?: string) => {
     return new Promise<boolean>((resolve) => {
-      let loadUrl = targetMirrorOrUrl || providerManager.getProvider().getActiveMirror();
-      let mirror = loadUrl;
-      try {
-        if (loadUrl.startsWith('http')) {
-          mirror = new URL(loadUrl).origin;
+      const activeMirror = providerManager.getProvider().getActiveMirror();
+      let mirror = activeMirror;
+      let loadUrl = targetMirrorOrUrl?.trim() || activeMirror;
+
+      if (loadUrl.startsWith('http')) {
+        try {
+          const parsed = new URL(loadUrl);
+          mirror = parsed.origin;
+          if (/^\/\d+(\.html)?\/?$/.test(parsed.pathname)) {
+            const id = parsed.pathname.replace(/[^\d]/g, '');
+            const canonical = (providerManager.getProvider() as any).mediaUrlCache?.get(id);
+            if (canonical && canonical.startsWith('http')) {
+              loadUrl = canonical;
+            } else {
+              loadUrl = mirror;
+            }
+          }
+        } catch (_) {
+          loadUrl = activeMirror;
+          mirror = activeMirror;
         }
-      } catch (_) {}
+      } else if (loadUrl.startsWith('/') && loadUrl.includes('.html')) {
+        loadUrl = `${mirror}${loadUrl}`;
+      } else {
+        const id = loadUrl.replace(/[^\d]/g, '');
+        const canonical = id ? (providerManager.getProvider() as any).mediaUrlCache?.get(id) : '';
+        if (canonical && canonical.startsWith('http')) {
+          loadUrl = canonical;
+        } else {
+          loadUrl = mirror;
+        }
+      }
 
       // Normalize known dead/broken mirrors (hdrezka.ag, rezka-ua.tv) to stable working mirror
       const isBadMirror = !mirror || mirror.includes('hdrezka.ag') || mirror.includes('rezka-ua.tv');

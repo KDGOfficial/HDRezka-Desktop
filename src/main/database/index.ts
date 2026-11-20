@@ -19,6 +19,72 @@ try {
   // node:sqlite is not available in Electron (runs Node 20.x without node:sqlite)
 }
 
+const WIN1251_MAP: Record<number, number> = {
+  0x80: 0x0402, 0x81: 0x0403, 0x82: 0x201A, 0x83: 0x0453, 0x84: 0x201E, 0x85: 0x2026, 0x86: 0x2020, 0x87: 0x2021,
+  0x88: 0x20AC, 0x89: 0x2030, 0x8A: 0x0409, 0x8B: 0x2039, 0x8C: 0x040A, 0x8D: 0x040C, 0x8E: 0x040B, 0x8F: 0x040F,
+  0x90: 0x0452, 0x91: 0x2018, 0x92: 0x2019, 0x93: 0x201C, 0x94: 0x201D, 0x95: 0x2022, 0x96: 0x2013, 0x97: 0x2014,
+  0x99: 0x2122, 0x9A: 0x0459, 0x9B: 0x203A, 0x9C: 0x045A, 0x9D: 0x045C, 0x9E: 0x045B, 0x9F: 0x045F,
+  0xA0: 0x00A0, 0xA1: 0x040E, 0xA2: 0x045E, 0xA3: 0x0408, 0xA4: 0x00A4, 0xA5: 0x0490, 0xA6: 0x00A6, 0xA7: 0x00A7,
+  0xA8: 0x0401, 0xA9: 0x00A9, 0xAA: 0x0404, 0xAB: 0x00AB, 0xAC: 0x00AC, 0xAD: 0x00AD, 0xAE: 0x00AE, 0xAF: 0x0407,
+  0xB0: 0x00B0, 0xB1: 0x00B1, 0xB2: 0x0406, 0xB3: 0x0456, 0xB4: 0x0491, 0xB5: 0x00B5, 0xB6: 0x00B6, 0xB7: 0x00B7,
+  0xB8: 0x0451, 0xB9: 0x2116, 0xBA: 0x0454, 0xBB: 0x00BB, 0xBC: 0x0458, 0xBD: 0x0405, 0xBE: 0x0455, 0xBF: 0x0457,
+};
+const U_TO_CP1251 = new Map<number, number>();
+for (let b = 0; b < 128; b++) U_TO_CP1251.set(b, b);
+for (const [b, u] of Object.entries(WIN1251_MAP)) U_TO_CP1251.set(u, Number(b));
+for (let b = 0xC0; b <= 0xFF; b++) U_TO_CP1251.set(b + 0x0350, b);
+
+export function fixMojibake(str: string): string {
+  if (typeof str !== 'string' || !str) return str;
+  if (!/[Рр][\u0400-\u04ff\u2010-\u203a\x80-\xff]/.test(str)) return str;
+  try {
+    const bytes: number[] = [];
+    for (let i = 0; i < str.length; i++) {
+      const code = str.charCodeAt(i);
+      const byte = U_TO_CP1251.get(code);
+      if (byte === undefined) return str;
+      bytes.push(byte);
+    }
+    const decoded = new TextDecoder('utf-8', { fatal: true }).decode(Uint8Array.from(bytes));
+    return decoded || str;
+  } catch {
+    return str;
+  }
+}
+
+export function sanitizeStorageMojibake(data: StorageData): StorageData {
+  if (!data) return data;
+  if (Array.isArray(data.watchHistory)) {
+    for (const item of data.watchHistory) {
+      if (item.title) item.title = fixMojibake(item.title);
+      if (item.origTitle) item.origTitle = fixMojibake(item.origTitle);
+    }
+  }
+  if (Array.isArray(data.favorites)) {
+    for (const item of data.favorites) {
+      if (item.title) item.title = fixMojibake(item.title);
+      if (item.origTitle) item.origTitle = fixMojibake(item.origTitle);
+    }
+  }
+  if (Array.isArray(data.collections)) {
+    for (const col of data.collections) {
+      if (col.name) col.name = fixMojibake(col.name);
+      if (col.description) col.description = fixMojibake(col.description);
+    }
+  }
+  if (Array.isArray(data.collectionItems)) {
+    for (const item of data.collectionItems) {
+      if (item.title) item.title = fixMojibake(item.title);
+    }
+  }
+  if (Array.isArray(data.searchHistory)) {
+    for (const item of data.searchHistory) {
+      if (item.query) item.query = fixMojibake(item.query);
+    }
+  }
+  return data;
+}
+
 interface StorageData {
   watchHistory: WatchHistoryEntry[];
   playbackProgress: Record<string, { currentTime: number; duration: number }>;
@@ -95,11 +161,12 @@ export class AppDatabase {
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === 'object') {
-            return {
+            const data: StorageData = {
               ...this.createDefaultStorage(),
               ...parsed,
               settings: { ...DEFAULT_USER_SETTINGS, ...(parsed.settings || {}) },
             };
+            return sanitizeStorageMojibake(data);
           }
         }
       }
@@ -231,6 +298,7 @@ export class AppDatabase {
   private saveStorage(): void {
     if (!this.storage) return;
     try {
+      this.storage = sanitizeStorageMojibake(this.storage);
       const dataStr = JSON.stringify(this.storage, null, 2);
       const tmpPath = `${this.jsonPath}.tmp`;
       fs.writeFileSync(tmpPath, dataStr, 'utf8');
@@ -294,6 +362,9 @@ export class AppDatabase {
   }
 
   public saveWatchHistory(entry: WatchHistoryEntry): void {
+    if (entry.title) entry.title = fixMojibake(entry.title);
+    if (entry.origTitle) entry.origTitle = fixMojibake(entry.origTitle);
+
     if (this.db) {
       const stmt = this.db.prepare(`
         INSERT INTO watch_history (id, media_id, title, orig_title, poster, type, season, episode, current_time, duration, percent, last_watched_at)
@@ -327,6 +398,7 @@ export class AppDatabase {
     const idx = list.findIndex((w) => w.id === entry.id || w.mediaId === entry.mediaId);
     const updated: WatchHistoryEntry = {
       ...entry,
+      url: entry.url || (idx >= 0 ? list[idx].url : undefined),
       lastWatchedAt: entry.lastWatchedAt || Date.now(),
     };
     if (idx >= 0) {
@@ -412,6 +484,9 @@ export class AppDatabase {
   }
 
   public addFavorite(item: FavoriteItem): void {
+    if (item.title) item.title = fixMojibake(item.title);
+    if (item.origTitle) item.origTitle = fixMojibake(item.origTitle);
+
     if (this.db) {
       const stmt = this.db.prepare(`
         INSERT INTO favorites (media_id, title, orig_title, poster, type, year, rating, added_at)
@@ -498,6 +573,8 @@ export class AppDatabase {
   }
 
   public createCollection(name: string, description?: string): Collection {
+    name = fixMojibake(name);
+    if (description) description = fixMojibake(description);
     const id = 'col_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
     const now = Date.now();
     if (this.db) {
@@ -572,6 +649,7 @@ export class AppDatabase {
   }
 
   public addToCollection(item: CollectionItem): void {
+    if (item.title) item.title = fixMojibake(item.title);
     if (this.db) {
       const stmt = this.db.prepare(`
         INSERT INTO collection_items (collection_id, media_id, title, poster, type, year, rating, added_at)
@@ -631,7 +709,7 @@ export class AppDatabase {
   }
 
   public addSearchHistory(query: string): void {
-    const q = query.trim();
+    const q = fixMojibake(query).trim();
     if (!q) return;
     if (this.db) {
       this.db.prepare(`

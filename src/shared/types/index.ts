@@ -109,6 +109,7 @@ export interface WatchHistoryEntry {
   duration: number;
   percent: number;
   lastWatchedAt: number;
+  url?: string;
 }
 
 export interface FavoriteItem {

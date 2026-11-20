@@ -57,7 +57,7 @@ export const HomePage: React.FC = () => {
       h.season && h.episode
         ? `${t.details.season} ${h.season}, ${t.details.episode} ${h.episode}`
         : `${h.percent}% ${t.history.watched}`,
-    url: h.mediaId,
+    url: h.url || h.mediaId,
   }));
 
   if (loading) {

@@ -88,7 +88,7 @@ export const HistoryPage: React.FC = () => {
               {/* Left: Poster + Info */}
               <div
                 className="flex items-center space-x-4 cursor-pointer flex-1 min-w-0"
-                onClick={() => openDetails(item.mediaId, item)}
+                onClick={() => openDetails(item.url || item.mediaId, item)}
               >
                 <div className="relative w-16 h-24 rounded-2xl overflow-hidden bg-dark-bg flex-shrink-0 shadow-md border border-white/5">
                   <img src={item.poster} alt={item.title} className="w-full h-full object-cover" />
