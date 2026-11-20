@@ -118,7 +118,7 @@ async function solveAnubisChallenge(mirrorOrUrl: string, html: string): Promise<
   }
 }
 
-async function appFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+async function appFetch(input: string | URL | Request, init?: RequestInit & { skipAutoSolve?: boolean }): Promise<Response> {
   const urlStr = typeof input === 'string' ? input : (input as any).url || input.toString();
   let electron: any;
   try {
@@ -158,14 +158,17 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
   const res = await makeReq();
 
   // If Anubis PoW challenge page was encountered, automatically solve it and retry once
-  if (res.status === 200 && res.clone) {
+  if (!init?.skipAutoSolve && res.status === 200 && res.clone) {
     try {
       const clone = res.clone();
       const text = await clone.text();
       if (text.includes('id="anubis_challenge"') && text.includes('anubis')) {
         const solved = await solveAnubisChallenge(urlStr, text);
         if (solved) {
-          return await makeReq();
+          const retried = await makeReq();
+          if (retried.ok) {
+            return retried;
+          }
         }
       }
     } catch (_) {}
@@ -177,7 +180,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.27';
+  public version = '0.0.28';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -280,6 +283,7 @@ export class RezkaProvider implements IProvider {
         const res = await appFetch(cleanUrl, {
           headers: this.getHeaders(),
           signal: AbortSignal.timeout(5000),
+          skipAutoSolve: true,
         });
         const latency = Date.now() - t0;
         const text = await res.text();
@@ -288,7 +292,7 @@ export class RezkaProvider implements IProvider {
         const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
         const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
         const isLiveSite = isLiveRezka && text.length > 200;
-        const isAvail = res.ok && isLiveSite;
+        const isAvail = (res.ok || res.status === 403) && isLiveSite;
         results.push({
           url: cleanUrl,
           isAvailable: isAvail,
@@ -378,6 +382,7 @@ export class RezkaProvider implements IProvider {
           const res = await appFetch(src, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) HDRezka-Desktop' },
             signal: AbortSignal.timeout(4000),
+            skipAutoSolve: true,
           });
           if (res.ok) {
             const text = await res.text();
@@ -405,6 +410,7 @@ export class RezkaProvider implements IProvider {
           const res = await appFetch(url, {
             headers: this.getHeaders(),
             signal: AbortSignal.timeout(4500),
+            skipAutoSolve: true,
           });
           const text = await res.text();
           const isAlive = (res.ok || res.status === 403) && (
