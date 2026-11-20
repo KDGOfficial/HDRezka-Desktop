@@ -107,6 +107,22 @@ test('checkMirrors does not consider 403 or empty responses as available', async
   }
 });
 
+test('checkMirrors marks 200 anti-bot challenge as available with needsVerification=true', async () => {
+  const provider = new RezkaProvider('https://hdrezka-home.tv', ['https://challenge-mirror.org']);
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    return new Response('<html><head><title>Проверяем, что вы не бот!</title></head><body><div class="within.website">' + 'x'.repeat(300) + '</div></body></html>', { status: 200 });
+  };
+  try {
+    const statuses = await provider.checkMirrors();
+    assert.equal(statuses[0].isAvailable, true, 'Anti-bot challenge mirror must be marked available');
+    assert.equal(statuses[0].needsVerification, true, 'Must have needsVerification=true');
+    assert.ok(statuses[0].latencyMs < 9000, 'Latency must be real latency, not 9999');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
 test('RezkaProvider constructor and selectBestMirror sanitize rezka-ua.tv to hdrezka-home.tv', async () => {
   const provider = new RezkaProvider('https://rezka-ua.tv', ['https://rezka-ua.tv', 'https://hdrezka-home.tv']);
   assert.equal(provider.getActiveMirror(), 'https://hdrezka-home.tv', 'Constructor must sanitize broken mirror');

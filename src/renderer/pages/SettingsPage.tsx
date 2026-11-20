@@ -382,6 +382,21 @@ export const SettingsPage: React.FC = () => {
           )}
 
           {/* Mirrors List */}
+          {mirrorsStatus.length > 0 && mirrorsStatus.some((m) => m.isAvailable && m.needsVerification) && (
+            <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3 animate-fadeIn">
+              <div className="flex items-center space-x-2.5 min-w-0">
+                <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span className="leading-snug">{t.settings.needsVerificationHint}</span>
+              </div>
+              <button
+                onClick={handleVerifyMirror}
+                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
+              >
+                {t.details.passVerification}
+              </button>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {settings.app.mirrors?.map((mirror) => {
               const isActive = settings.app.activeMirror === mirror;
@@ -400,7 +415,9 @@ export const SettingsPage: React.FC = () => {
                     <span
                       className={`w-2 h-2 rounded-full flex-shrink-0 ${
                         status?.isAvailable
-                          ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
+                          ? status.needsVerification
+                            ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]'
+                            : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
                           : 'bg-red-500'
                       }`}
                     />
@@ -410,7 +427,9 @@ export const SettingsPage: React.FC = () => {
                   <div className="flex items-center space-x-2 flex-shrink-0">
                     {status && (
                       <span className="text-[10px] text-zinc-500 font-mono">
-                        {status.latencyMs < 9000 ? `${status.latencyMs}ms` : t.settings.error}
+                        {status.latencyMs < 9000
+                          ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
+                          : t.settings.error}
                       </span>
                     )}
                     {isActive && (

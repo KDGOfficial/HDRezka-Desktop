@@ -1,3 +1,5 @@
+
+
 import * as cheerio from 'cheerio';
 import { IProvider } from '../types';
 import {
@@ -58,7 +60,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.23';
+  public version = '0.0.24';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -145,6 +147,17 @@ export class RezkaProvider implements IProvider {
 
     for (const mirror of this.mirrors) {
       const cleanUrl = mirror.replace(/\/$/, '');
+      if (cleanUrl.includes('rezka-ua.tv') || cleanUrl.includes('hdrezka.ag')) {
+        results.push({
+          url: cleanUrl,
+          isAvailable: false,
+          latencyMs: 9999,
+          lastChecked: Date.now(),
+          needsVerification: false,
+        });
+        continue;
+      }
+
       const t0 = Date.now();
       try {
         const res = await appFetch(cleanUrl, {
@@ -155,12 +168,14 @@ export class RezkaProvider implements IProvider {
         const text = await res.text();
         const isBlocked = this.isAntiBot(text);
         const hasRezkaContent = text.includes('b-content') || text.includes('b-post') || text.includes('b-top');
-        const isAvail = res.ok && hasRezkaContent && !isBlocked && text.length > 500;
+        const isLiveRezka = (hasRezkaContent || isBlocked || /rezka/i.test(text) || text.includes('within.website')) && text.length > 200;
+        const isAvail = res.ok && isLiveRezka;
         results.push({
           url: cleanUrl,
           isAvailable: isAvail,
           latencyMs: isAvail ? latency : 9999,
           lastChecked: Date.now(),
+          needsVerification: isAvail && isBlocked,
         });
       } catch {
         results.push({
@@ -168,6 +183,7 @@ export class RezkaProvider implements IProvider {
           isAvailable: false,
           latencyMs: 9999,
           lastChecked: Date.now(),
+          needsVerification: false,
         });
       }
     }
@@ -190,7 +206,12 @@ export class RezkaProvider implements IProvider {
 
     const available = statuses.filter(s => s.isAvailable);
     if (available.length > 0) {
-      available.sort((a, b) => a.latencyMs - b.latencyMs);
+      available.sort((a, b) => {
+        if (a.needsVerification !== b.needsVerification) {
+          return a.needsVerification ? 1 : -1;
+        }
+        return a.latencyMs - b.latencyMs;
+      });
       this.activeMirror = available[0].url;
       return this.activeMirror;
     }

@@ -184,6 +184,7 @@ export interface MirrorStatus {
   isAvailable: boolean;
   latencyMs: number;
   lastChecked: number;
+  needsVerification?: boolean;
 }
 
 export interface UpdateInfo {
