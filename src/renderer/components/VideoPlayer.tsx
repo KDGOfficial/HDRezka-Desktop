@@ -3,6 +3,7 @@ import Hls from 'hls.js';
 import {
   Play,
   Pause,
+  Volume1,
   Volume2,
   VolumeX,
   Maximize,
@@ -67,6 +68,8 @@ export const VideoPlayer: React.FC = () => {
   const hideTimerRef = useRef<any>(null);
 
   const subtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
+  const effectiveVolume = isMuted ? 0 : volume;
+  const effectivePercent = Math.round(effectiveVolume * 100);
 
   // Dynamically inserted <track default> is not always shown by Chromium; force it on
   useEffect(() => {
@@ -283,20 +286,52 @@ export const VideoPlayer: React.FC = () => {
     }
   };
 
-  const adjustVolume = (delta: number) => {
-    const next = Math.max(0, Math.min(1, volume + delta));
-    setVolume(next);
-    if (videoRef.current) {
-      videoRef.current.volume = next;
-      setIsMuted(next === 0);
+  const lastVolumeRef = useRef(volume > 0 ? volume : 0.8);
+
+  const handleVolumeChange = (newVol: number) => {
+    const clamped = Math.max(0, Math.min(1, Math.round(newVol * 100) / 100));
+    setVolume(clamped);
+    if (clamped > 0) {
+      lastVolumeRef.current = clamped;
+      setIsMuted(false);
+      if (videoRef.current) {
+        videoRef.current.muted = false;
+        videoRef.current.volume = clamped;
+      }
+    } else {
+      setIsMuted(true);
+      if (videoRef.current) {
+        videoRef.current.muted = true;
+        videoRef.current.volume = 0;
+      }
     }
+  };
+
+  const adjustVolume = (delta: number) => {
+    const current = isMuted ? 0 : volume;
+    handleVolumeChange(current + delta);
   };
 
   const toggleMute = () => {
     if (!videoRef.current) return;
-    const nextMuted = !isMuted;
-    setIsMuted(nextMuted);
-    videoRef.current.muted = nextMuted;
+    if (isMuted) {
+      const restored = lastVolumeRef.current > 0 ? lastVolumeRef.current : 0.8;
+      setIsMuted(false);
+      setVolume(restored);
+      videoRef.current.muted = false;
+      videoRef.current.volume = restored;
+    } else {
+      lastVolumeRef.current = volume > 0 ? volume : 0.8;
+      setIsMuted(true);
+      videoRef.current.muted = true;
+    }
+  };
+
+  const handleVolumeWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const delta = e.deltaY < 0 ? 0.05 : -0.05;
+    adjustVolume(delta);
   };
 
   const toggleFullscreen = () => {
@@ -566,30 +601,61 @@ export const VideoPlayer: React.FC = () => {
                 </button>
               )}
 
-              {/* Volume */}
-              <div className="flex items-center space-x-2 group relative">
+              {/* Volume Control */}
+              <div
+                className="flex items-center space-x-2 group relative py-1"
+                onWheel={handleVolumeWheel}
+                title={`Громкость: ${effectivePercent}% (колесико мыши)`}
+              >
                 <button
                   onClick={toggleMute}
-                  className="p-2 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition-colors"
+                  className="p-2 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                  title={isMuted || volume === 0 ? 'Включить звук (M)' : 'Выключить звук (M)'}
+                  aria-label="Тумблер звука"
                 >
-                  {isMuted || volume === 0 ? <VolumeX className="w-5 h-5" /> : <Volume2 className="w-5 h-5" />}
+                  {isMuted || volume === 0 ? (
+                    <VolumeX className="w-5 h-5 text-red-400" />
+                  ) : volume < 0.5 ? (
+                    <Volume1 className="w-5 h-5" />
+                  ) : (
+                    <Volume2 className="w-5 h-5" />
+                  )}
                 </button>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={isMuted ? 0 : volume}
-                  onChange={(e) => {
-                    const v = parseFloat(e.target.value);
-                    setVolume(v);
-                    if (videoRef.current) {
-                      videoRef.current.volume = v;
-                      setIsMuted(v === 0);
-                    }
-                  }}
-                  className="w-20 h-1 bg-white/30 accent-brand-red rounded-lg cursor-pointer"
-                />
+
+                {/* Slider with styled filled track and thumb */}
+                <div className="relative flex items-center w-24 h-6">
+                  {/* Track background */}
+                  <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
+                    {/* Active filled track */}
+                    <div
+                      className="h-full bg-brand-red rounded-full transition-all duration-75"
+                      style={{ width: `${effectivePercent}%` }}
+                    />
+                  </div>
+
+                  {/* Range input overlay for clicking and dragging */}
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={effectiveVolume}
+                    onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    aria-label="Регулировка громкости"
+                  />
+
+                  {/* Thumb dot */}
+                  <div
+                    className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-md pointer-events-none transform -translate-x-1/2 transition-all duration-75"
+                    style={{ left: `${effectivePercent}%` }}
+                  />
+                </div>
+
+                {/* Percentage label */}
+                <span className="text-[11px] font-semibold text-zinc-400 w-8 select-none tabular-nums">
+                  {effectivePercent}%
+                </span>
               </div>
 
               {/* Time display */}
