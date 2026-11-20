@@ -23,7 +23,7 @@ import {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.7';
+  public version = '0.0.8';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -639,7 +639,8 @@ export class RezkaProvider implements IProvider {
     // Translators: the list holds <li> or <a> items depending on the mirror
     const translators: Translator[] = [];
     let currentTranslatorId = 0;
-    $('#translators-list [data-translator_id], .b-translator__list [data-translator_id], .b-translators__list [data-translator_id], [data-translator_id]').each((_, el) => {
+    const translatorSelector = '#translators-list [data-translator_id], .b-translator__list [data-translator_id], .b-translators__list [data-translator_id], [data-translator_id]';
+    $(translatorSelector).each((_, el) => {
       const trId = parseInt($(el).attr('data-translator_id') || '0', 10);
       const titleAttr = $(el).attr('title') || '';
       const textAttr = $(el).text() || '';
@@ -659,6 +660,19 @@ export class RezkaProvider implements IProvider {
         if ($(el).hasClass('active') || $(el).hasClass('current')) currentTranslatorId = trId;
       }
     });
+
+    // Some mirrors render translator choices only in the player's initialization script.
+    if (translators.length === 0) {
+      const scriptText = $('script').map((_, script) => $(script).html() || '').get().join('\n');
+      const translatorIds = new Set<number>();
+      for (const match of scriptText.matchAll(/(?:translator_id|translatorId|translator)\s*[=:]\s*["']?(\d+)/gi)) {
+        const trId = Number(match[1]);
+        if (trId > 0) translatorIds.add(trId);
+      }
+      for (const trId of translatorIds) {
+        translators.push({ id: trId, name: RezkaProvider.POPULAR_TRANSLATORS[trId] || `Перевод #${trId}`, premium: false });
+      }
+    }
 
     // The player init script always carries the default translator of the page
     const matchTr = $('script').text().match(/initCDN(?:Series|Movies)Events\(\s*\d+\s*,\s*(\d+)/i);
