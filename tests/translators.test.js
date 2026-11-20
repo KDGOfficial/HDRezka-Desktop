@@ -59,3 +59,34 @@ test('getDetails flags anti-bot pages and shows no fake translators', async () =
   assert.equal(d.antiBot, true);
   assert.equal(d.translators.length, 0);
 });
+
+test('getDetails parses translators from .b-translator__list without translators-list id', async () => {
+  const html = page(`<div class="b-translator__list">
+    <li class="b-translator__item" data-translator_id="1" title="Дубляж">Дубляж</li>
+    <li class="b-translator__item" data-translator_id="238" title="LostFilm">LostFilm</li>
+  </div>`);
+  const d = await withFetch(html, () => new RezkaProvider().getDetails('/films/action/12345-test.html'));
+  assert.deepEqual(d.translators.map((t) => t.id), [1, 238]);
+});
+
+test('probeTranslators finds real dubbings when ajax endpoint returns success', async () => {
+  const provider = new RezkaProvider();
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, opts) => {
+    const body = opts?.body?.toString() || '';
+    const params = new URLSearchParams(body);
+    const trId = params.get('translator_id');
+    if (trId === '1' || trId === '238') {
+      return new Response(JSON.stringify({ success: true, url: '[1080p]http://test.m3u8' }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ success: false, message: 'none' }), { status: 200 });
+  };
+  try {
+    const probed = await provider.probeTranslators('1481', true);
+    assert.deepEqual(probed.map((t) => t.id), [1, 238]);
+    assert.equal(probed[0].name, 'Дубляж');
+    assert.equal(probed[1].name, 'LostFilm');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

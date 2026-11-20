@@ -161,7 +161,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   switchTranslator: async (translatorId: number) => {
-    const { mediaDetails, seasonId, episodeId } = get();
+    const { mediaDetails, seasonId, episodeId, currentTime } = get();
     if (!mediaDetails) return;
 
     let updatedDetails = { ...mediaDetails, currentTranslatorId: translatorId };
@@ -182,7 +182,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       translatorId,
       seasonId,
       episodeId,
-      startTime: 0,
+      startTime: currentTime || 0,
     });
   },
 

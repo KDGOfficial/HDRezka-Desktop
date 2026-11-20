@@ -23,7 +23,7 @@ import {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.7';
+  public version = '0.0.8';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -396,6 +396,107 @@ export class RezkaProvider implements IProvider {
     }
   }
 
+  public static readonly POPULAR_TRANSLATORS: Record<number, string> = {
+    1: 'Дубляж',
+    56: 'HDRezka Studio',
+    238: 'LostFilm',
+    4: 'Оригинал (+субтитры)',
+    111: 'AlexFilm',
+    70: 'Кубик в Кубе',
+    89: 'NewStudio',
+    379: 'Red Head Sound',
+    417: 'Flarrow Films',
+    53: 'BaibaKo',
+    62: 'TVShows',
+    30: 'Кураж-Бамбей',
+    2: 'Многоголосый закадровый',
+    3: 'Двуголосый закадровый',
+    5: 'Одноголосый закадровый',
+    6: 'Субтитры',
+    18: 'Украинский дубляж',
+    54: 'Coldfilm',
+    80: 'AniDUB',
+    84: 'SHIZA Project',
+    100: 'AniLibria',
+    102: 'AniMedia',
+    107: 'AnimeVost',
+    110: 'Good People',
+    115: 'HamsterStudio',
+    145: 'IdeaFilm',
+    244: 'RuDub',
+    345: 'Невафильм',
+    355: 'Пифагор',
+    374: 'СВ-Дубль',
+    430: 'HDRezka (18+)',
+  };
+
+  public async probeTranslators(mediaId: string, isMovie?: boolean): Promise<Translator[]> {
+    if (!mediaId) return [];
+    const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
+    const primaryMirrors = mirrorsToTry.slice(0, 2);
+    const action = isMovie ? 'get_movie' : 'get_episodes';
+    const trIds = Object.keys(RezkaProvider.POPULAR_TRANSLATORS).map(Number);
+
+    const checkTr = async (trId: number, act: string): Promise<Translator | null> => {
+      for (const mirror of primaryMirrors) {
+        try {
+          const formData = new URLSearchParams();
+          formData.append('id', mediaId);
+          formData.append('translator_id', trId.toString());
+          formData.append('action', act);
+
+          const res = await fetch(`${mirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+              'X-Requested-With': 'XMLHttpRequest',
+              'Referer': mirror + '/',
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            },
+            body: formData.toString(),
+            signal: AbortSignal.timeout(2500),
+          });
+
+          if (!res.ok) continue;
+          const text = await res.text();
+          if (!text || text.trim().startsWith('<') || text.includes('<!doctype') || text.includes('<!DOCTYPE')) continue;
+          const json = JSON.parse(text);
+          if (json && json.success) {
+            return {
+              id: trId,
+              name: RezkaProvider.POPULAR_TRANSLATORS[trId] || `Перевод #${trId}`,
+              premium: false,
+            };
+          }
+        } catch (_) {}
+      }
+      return null;
+    };
+
+    const results: Translator[] = [];
+    const chunkSize = 6;
+    for (let i = 0; i < trIds.length; i += chunkSize) {
+      const chunk = trIds.slice(i, i + chunkSize);
+      const chunkRes = await Promise.all(chunk.map((id) => checkTr(id, action)));
+      for (const item of chunkRes) {
+        if (item) results.push(item);
+      }
+    }
+
+    if (results.length === 0) {
+      const altAction = isMovie ? 'get_episodes' : 'get_movie';
+      for (let i = 0; i < trIds.length; i += chunkSize) {
+        const chunk = trIds.slice(i, i + chunkSize);
+        const chunkRes = await Promise.all(chunk.map((id) => checkTr(id, altAction)));
+        for (const item of chunkRes) {
+          if (item) results.push(item);
+        }
+      }
+    }
+
+    return results;
+  }
+
   public async getDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails> {
     const normId = urlOrId.split('/').pop()?.split('-')[0] || urlOrId;
     let cachedMeta = meta || this.mediaCache.get(urlOrId) || this.mediaCache.get(normId);
@@ -439,9 +540,23 @@ export class RezkaProvider implements IProvider {
       }
 
       if (this.isAntiBot(html) || !html) {
-        // All mirrors are behind the bot check: the real translator list is only on the page itself
+        // All mirrors are behind the bot check: probe working translators from AJAX stream endpoint
         const fb = getFallbackDetails(urlOrId, cachedMeta);
         fb.antiBot = true;
+        if (fb.id) {
+          try {
+            const probed = await this.probeTranslators(fb.id, fb.type === 'films');
+            if (probed.length > 0) {
+              fb.translators = probed;
+              const preferred = probed.find((t) => t.id === 1) || probed.find((t) => t.id === 56) || probed[0];
+              fb.currentTranslatorId = preferred.id;
+              if (fb.type === 'series' || fb.type === 'animation' || fb.type === 'cartoons') {
+                const loaded = await this.getSeriesEpisodes(fb.id, fb.currentTranslatorId);
+                if (loaded && loaded.length > 0) fb.seasons = loaded;
+              }
+            }
+          } catch {}
+        }
         return fb;
       }
       const $ = cheerio.load(html);
@@ -524,10 +639,15 @@ export class RezkaProvider implements IProvider {
     // Translators: the list holds <li> or <a> items depending on the mirror
     const translators: Translator[] = [];
     let currentTranslatorId = 0;
-    $('#translators-list [data-translator_id], .b-translators__list [data-translator_id]').each((_, el) => {
+    $('#translators-list [data-translator_id], .b-translator__list [data-translator_id], .b-translators__list [data-translator_id], [data-translator_id]').each((_, el) => {
       const trId = parseInt($(el).attr('data-translator_id') || '0', 10);
-      const trName = ($(el).attr('title') || $(el).text()).replace(/\s+/g, ' ').trim();
-      if (trId > 0 && trName && !translators.some((t) => t.id === trId)) {
+      const titleAttr = $(el).attr('title') || '';
+      const textAttr = $(el).text() || '';
+      let trName = (titleAttr || textAttr).replace(/\s+/g, ' ').trim();
+      if (!trName || trName.length < 2) {
+        trName = RezkaProvider.POPULAR_TRANSLATORS[trId] || `Перевод #${trId}`;
+      }
+      if (trId > 0 && !translators.some((t) => t.id === trId)) {
         translators.push({
           id: trId,
           name: trName,
@@ -536,7 +656,7 @@ export class RezkaProvider implements IProvider {
           ads: $(el).attr('data-ads') === '1',
           director: $(el).attr('data-director') === '1',
         });
-        if ($(el).hasClass('active')) currentTranslatorId = trId;
+        if ($(el).hasClass('active') || $(el).hasClass('current')) currentTranslatorId = trId;
       }
     });
 
@@ -553,14 +673,41 @@ export class RezkaProvider implements IProvider {
           singleTrName = $(row).find('td').last().text().trim();
         }
       });
+      if (singleTrName) {
+        translators.push({
+          id: pageTranslatorId || 56,
+          name: singleTrName,
+          premium: false,
+        });
+      }
+    }
+
+    // If still 0 or only 1 generic fallback, probe HDRezka API for available translators
+    if (translators.length === 0 && id) {
+      try {
+        const probed = await this.probeTranslators(id, type === 'films');
+        if (probed.length > 0) {
+          translators.push(...probed);
+        }
+      } catch {}
+    }
+
+    // Final fallback if probing also found nothing
+    if (translators.length === 0) {
       translators.push({
         id: pageTranslatorId || 56,
-        name: singleTrName || 'Оригинал / По умолчанию',
+        name: 'Оригинал / По умолчанию',
         premium: false,
       });
     }
+
     if (!currentTranslatorId) {
-      currentTranslatorId = translators.some((t) => t.id === pageTranslatorId) ? pageTranslatorId : translators[0].id;
+      if (pageTranslatorId && translators.some((t) => t.id === pageTranslatorId)) {
+        currentTranslatorId = pageTranslatorId;
+      } else {
+        const preferred = translators.find((t) => t.id === 1) || translators.find((t) => t.id === 56) || translators[0];
+        currentTranslatorId = preferred ? preferred.id : 56;
+      }
     }
 
     // Similar
@@ -622,7 +769,20 @@ export class RezkaProvider implements IProvider {
   } catch (err) {
     console.warn('[RezkaProvider] Failed to fetch details, returning fallback:', err);
     const fb = getFallbackDetails(urlOrId, cachedMeta);
-    if ((fb.type === 'series' || fb.type === 'animation' || fb.type === 'cartoons') && fb.id) {
+    if (fb.id) {
+      try {
+        const probed = await this.probeTranslators(fb.id, fb.type === 'films');
+        if (probed.length > 0) {
+          fb.translators = probed;
+          const preferred = probed.find((t) => t.id === 1) || probed.find((t) => t.id === 56) || probed[0];
+          fb.currentTranslatorId = preferred.id;
+          if (fb.type === 'series' || fb.type === 'animation' || fb.type === 'cartoons') {
+            const loaded = await this.getSeriesEpisodes(fb.id, fb.currentTranslatorId);
+            if (loaded && loaded.length > 0) fb.seasons = loaded;
+          }
+        }
+      } catch (_) {}
+    } else if ((fb.type === 'series' || fb.type === 'animation' || fb.type === 'cartoons') && fb.id) {
       try {
         const loaded = await this.getSeriesEpisodes(fb.id, fb.currentTranslatorId || 56);
         if (loaded && loaded.length > 0) {
