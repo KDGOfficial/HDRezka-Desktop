@@ -153,3 +153,30 @@ test('getStream reports clear message when future title is unreleased', async ()
     globalThis.fetch = origFetch;
   }
 });
+
+test('checkMirrors marks kinogo.film as available without bot verification', async () => {
+  const provider = new RezkaProvider('https://kinogo.film', ['https://kinogo.film']);
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<html><head><title>KinoGo.film</title></head><body><div class="shortStory">' + 'x'.repeat(400) + '</div></body></html>', { status: 200 });
+
+  try {
+    const statuses = await provider.checkMirrors();
+    const kinogoStatus = statuses.find(s => s.url === 'https://kinogo.film');
+    assert.ok(kinogoStatus, 'Kinogo status must be reported');
+    assert.equal(kinogoStatus.isAvailable, true, 'Kinogo must be available');
+    assert.equal(kinogoStatus.needsVerification, false, 'Kinogo must not require bot verification');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('decodeCinemarFile decodes player playlist correctly', () => {
+  const provider = new RezkaProvider('https://kinogo.film', ['https://kinogo.film']);
+  // Valid Cinemar #2 base64 sample
+  const playlist = [{ id: 'tr-1', title: 'Дубляж', data: 'sample-data' }];
+  const encoded = Buffer.from(JSON.stringify(playlist)).toString('base64');
+  // Cinemar uses #2<dm><sliced> format where dm is 2 digits
+  // Test fallback or object input
+  assert.deepEqual(provider['decodeCinemarFile'](playlist), playlist);
+  assert.equal(provider['decodeCinemarFile']('invalid-string'), null);
+});

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Film, KeyRound, Sparkles, AlertCircle, Check, X, ExternalLink } from 'lucide-react';
+import { ShieldCheck, Film, KeyRound, Sparkles, AlertCircle, Check, X, ExternalLink, Database } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 

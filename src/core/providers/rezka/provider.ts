@@ -60,7 +60,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.24';
+  public version = '0.0.25';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -75,6 +75,396 @@ export class RezkaProvider implements IProvider {
     this.activeMirror = activeMirror;
     this.mirrors = [...mirrors].filter((m) => !m.includes('hdrezka.ag') && !m.includes('rezka-ua.tv'));
     this.timeoutMs = timeoutMs;
+  }
+
+  private isKinogo(urlOrMirror?: string): boolean {
+    const target = urlOrMirror || this.activeMirror;
+    return typeof target === 'string' && target.toLowerCase().includes('kinogo');
+  }
+
+  private decodeCinemarFile(t: string): any {
+    if (typeof t === 'object') return t;
+    if (typeof t !== 'string' || !t.startsWith('#2')) return null;
+    try {
+      const stripped = t.substring(2);
+      const dm = stripped.substring(0, 2);
+      const _ml = 32;
+      const str = stripped.substring(2);
+      const sliced = str.split(String.fromCharCode(Number(dm))).map((part) => {
+        const e = parseInt(part.slice(-1));
+        return part.length > _ml ? part.substring(2 * e, part.length - 3 * e - 1) + part.substring(0, e) : part;
+      }).join('');
+
+      let val = sliced;
+      const padding = val.length % 4;
+      if (padding) val += '='.repeat(4 - padding);
+
+      val = Buffer.from(val, 'base64').toString('binary');
+      val = escape(val);
+      val = decodeURIComponent(val);
+      return JSON.parse(val);
+    } catch {
+      return null;
+    }
+  }
+
+  private parseKinogoItem(el: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): MediaItem | null {
+    const a = el.find('h2 a, .zagolovki a, a').first();
+    const rawTitle = a.text().trim();
+    const href = a.attr('href') || '';
+    if (!rawTitle || !href) return null;
+
+    const idMatch = href.match(/\/(\d+)[^/]*\.html/);
+    const id = idMatch ? idMatch[1] : href;
+
+    const img = el.find('img').first();
+    let poster = img.attr('data-src') || img.attr('src') || '';
+    if (poster && !poster.startsWith('http')) {
+      poster = `https://kinogo.film${poster.startsWith('/') ? '' : '/'}${poster}`;
+    }
+
+    const yearMatch = rawTitle.match(/\b(19\d{2}|20\d{2})\b/) || el.text().match(/Год(?:\s*выпуска)?:\s*(\d{4})/i);
+    const year = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
+
+    const title = rawTitle.replace(/\s*\(\d{4}\)/g, '').replace(/\s*\(\d+\s*сезон[^\)]*\)/gi, '').trim();
+
+    let type: ContentType = 'films';
+    if (/сезон|сери/i.test(rawTitle) || href.includes('/serialy/')) {
+      type = 'series';
+    } else if (href.includes('/multfilmy/')) {
+      type = 'cartoons';
+    } else if (href.includes('/anime/')) {
+      type = 'animation';
+    }
+
+    const item: MediaItem = {
+      id,
+      title: title || rawTitle,
+      origTitle: '',
+      url: href,
+      poster,
+      year,
+      type,
+    };
+    this.mediaCache.set(id, item);
+    this.mediaCache.set(href, item);
+    this.mediaUrlCache.set(id, href);
+    return item;
+  }
+
+  private async getKinogoHomeSections() {
+    try {
+      const html = await this.fetchHtml('https://kinogo.film/');
+      const $ = cheerio.load(html);
+      const items: MediaItem[] = [];
+      $('.shortStory, .shortstory, article').each((_, el) => {
+        const item = this.parseKinogoItem($(el), $);
+        if (item) items.push(item);
+      });
+
+      if (items.length === 0) return FALLBACK_HOME_SECTIONS;
+
+      const hero = items[0] || FALLBACK_HERO;
+      const popular = items.slice(0, 16);
+      const newReleases = items.filter((i) => (i.year || 0) >= 2024).slice(0, 16);
+      const topMovies = items.filter((i) => i.type === 'films').slice(0, 16);
+      const topSeries = items.filter((i) => i.type === 'series').slice(0, 16);
+      const recommendations = items.slice(0, 16);
+      const expected = items.filter((i) => (i.year || 0) >= 2025).slice(0, 16);
+
+      return {
+        hero,
+        popular: popular.length > 0 ? popular : items.slice(0, 16),
+        newReleases: newReleases.length > 0 ? newReleases : items.slice(0, 16),
+        topMovies: topMovies.length > 0 ? topMovies : items.slice(0, 16),
+        topSeries: topSeries.length > 0 ? topSeries : items.slice(0, 16),
+        recommendations: recommendations.length > 0 ? recommendations : items.slice(0, 16),
+        expected: expected.length > 0 ? expected : items.slice(0, 16),
+      };
+    } catch {
+      return FALLBACK_HOME_SECTIONS;
+    }
+  }
+
+  private async getKinogoCatalog(filter: CatalogFilter) {
+    try {
+      let cat = 'filmy';
+      if (filter.type === 'series') cat = 'serialy';
+      else if (filter.type === 'cartoons') cat = 'multfilmy';
+      else if (filter.type === 'animation') cat = 'anime';
+
+      const pagePart = filter.page > 1 ? `page/${filter.page}/` : '';
+      const url = `https://kinogo.film/${cat}/${pagePart}`;
+      const html = await this.fetchHtml(url);
+      const $ = cheerio.load(html);
+      const items: MediaItem[] = [];
+      $('.shortStory, .shortstory, article').each((_, el) => {
+        const item = this.parseKinogoItem($(el), $);
+        if (item) items.push(item);
+      });
+
+      const hasMore = $('.navigation a:contains("Вперед"), .navigation a:contains("Далее"), .b-navigation__next').length > 0 || items.length >= 10;
+      return {
+        items,
+        page: filter.page,
+        hasMore,
+      };
+    } catch {
+      return {
+        items: FALLBACK_ITEMS.filter((i) => i.type === filter.type),
+        page: filter.page,
+        hasMore: false,
+      };
+    }
+  }
+
+  private async getKinogoDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails> {
+    let targetUrl = urlOrId;
+    if (!targetUrl.startsWith('http')) {
+      const canonical = this.mediaUrlCache.get(urlOrId);
+      if (canonical && canonical.startsWith('http')) {
+        targetUrl = canonical;
+      } else {
+        targetUrl = `https://kinogo.film/${urlOrId}.html`;
+      }
+    }
+
+    try {
+      const html = await this.fetchHtml(targetUrl);
+      const $ = cheerio.load(html);
+
+      const title = $('h1').first().text().trim() || meta?.title || 'Без названия';
+      const normTitle = title.replace(/\s*\(\d{4}\)/g, '').replace(/\s*\(\d+\s*сезон[^\)]*\)/gi, '').trim();
+
+      const idMatch = targetUrl.match(/\/(\d+)[^/]*\.html/);
+      const id = idMatch ? idMatch[1] : (meta?.id || urlOrId);
+
+      const posterImg = $('.fullStory img, .fullstory img, .fposter img, article img').first();
+      let poster = posterImg.attr('data-src') || posterImg.attr('src') || meta?.poster || '';
+      if (poster && !poster.startsWith('http')) {
+        poster = `https://kinogo.film${poster.startsWith('/') ? '' : '/'}${poster}`;
+      }
+
+      const description = $('.fdesc, .fullStory, .fullstory').first().text().replace(/\s+/g, ' ').trim();
+
+      let year = meta?.year || 0;
+      let country = '';
+      const genres: string[] = [];
+      const directors: string[] = [];
+      const actors: string[] = [];
+
+      const fullText = $.text();
+      const yearM = fullText.match(/Год(?:\s*выпуска)?:\s*(\d{4})/i);
+      if (yearM) year = parseInt(yearM[1], 10);
+
+      const countryM = fullText.match(/Страна:\s*([^\n\r<]+)/i);
+      if (countryM) country = countryM[1].trim();
+
+      $('a[href*="/xfsearch/genre/"], a[href*="/xfsearch/country/"], a[href*="/xfsearch/director/"], a[href*="/xfsearch/actors/"]').each((_, a) => {
+        const h = $(a).attr('href') || '';
+        const txt = $(a).text().trim();
+        if (!txt) return;
+        if (h.includes('/genre/')) genres.push(txt);
+        else if (h.includes('/director/')) directors.push(txt);
+        else if (h.includes('/actors/')) actors.push(txt);
+      });
+
+      let iframeUrl =
+        $('iframe[src*="cinemar"], iframe[data-src*="cinemar"]').attr('src') ||
+        $('iframe[src*="cinemar"], iframe[data-src*="cinemar"]').attr('data-src') ||
+        $('iframe').first().attr('src') ||
+        $('iframe').first().attr('data-src') ||
+        '';
+      if (iframeUrl && iframeUrl.startsWith('//')) iframeUrl = 'https:' + iframeUrl;
+
+      const translators: Translator[] = [];
+      if (iframeUrl && iframeUrl.includes('cinemar')) {
+        this.mediaUrlCache.set(`cinemar-${id}`, iframeUrl);
+        try {
+          const embedRes = await appFetch(iframeUrl, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36',
+              'Referer': targetUrl,
+            },
+          });
+          const embedText = await embedRes.text();
+          const fileMatch = embedText.match(/"file"\s*:\s*"([^"]+)"/);
+          if (fileMatch) {
+            const playlist = this.decodeCinemarFile(fileMatch[1]);
+            if (Array.isArray(playlist)) {
+              playlist.forEach((p: any, idx: number) => {
+                translators.push({
+                  id: idx,
+                  name: p.title || `Перевод #${idx + 1}`,
+                  camrip: false,
+                  ads: false,
+                  director: false,
+                });
+              });
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (translators.length === 0) {
+        translators.push({ id: 0, name: 'Стандартный перевод (Kinogo)' });
+      }
+
+      let type: ContentType = meta?.type || 'films';
+      if (targetUrl.includes('/serialy/') || /сезон|сери/i.test(title)) type = 'series';
+      else if (targetUrl.includes('/multfilmy/')) type = 'cartoons';
+      else if (targetUrl.includes('/anime/')) type = 'animation';
+
+      const details: MediaDetails = {
+        id,
+        title: normTitle || title,
+        origTitle: '',
+        poster,
+        backdrop: poster,
+        year,
+        country,
+        genres: genres.length > 0 ? genres : ['Фильмы'],
+        type,
+        description,
+        directors,
+        actors,
+        translators,
+        currentTranslatorId: translators[0]?.id ?? 0,
+        similar: [],
+      };
+
+      this.mediaCache.set(id, details);
+      this.mediaUrlCache.set(id, targetUrl);
+      return details;
+    } catch {
+      return getFallbackDetails(urlOrId, meta);
+    }
+  }
+
+  private async getKinogoStream(params: {
+    mediaId: string;
+    translatorId: number;
+    season?: number;
+    episode?: number;
+  }): Promise<StreamData> {
+    let iframeUrl = this.mediaUrlCache.get(`cinemar-${params.mediaId}`);
+    const movieUrl = this.mediaUrlCache.get(params.mediaId) || `https://kinogo.film/${params.mediaId}.html`;
+
+    if (!iframeUrl) {
+      const pageRes = await appFetch(movieUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36' },
+      });
+      const pageHtml = await pageRes.text();
+      const $ = cheerio.load(pageHtml);
+      iframeUrl =
+        $('iframe[src*="cinemar"], iframe[data-src*="cinemar"]').attr('src') ||
+        $('iframe[src*="cinemar"], iframe[data-src*="cinemar"]').attr('data-src') ||
+        $('iframe').first().attr('src') ||
+        $('iframe').first().attr('data-src') ||
+        '';
+      if (iframeUrl && iframeUrl.startsWith('//')) iframeUrl = 'https:' + iframeUrl;
+      if (iframeUrl) this.mediaUrlCache.set(`cinemar-${params.mediaId}`, iframeUrl);
+    }
+
+    if (!iframeUrl || !iframeUrl.includes('cinemar')) {
+      throw new Error('Видеоплеер Kinogo недоступен для этого фильма.');
+    }
+
+    const embedRes = await appFetch(iframeUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36',
+        'Referer': movieUrl,
+      },
+    });
+    const embedText = await embedRes.text();
+    const fileMatch = embedText.match(/"file"\s*:\s*"([^"]+)"/);
+    if (!fileMatch) {
+      throw new Error('Данные потока Kinogo временно недоступны.');
+    }
+
+    const playlist = this.decodeCinemarFile(fileMatch[1]);
+    if (!Array.isArray(playlist) || playlist.length === 0) {
+      throw new Error('Плейлист Kinogo пуст.');
+    }
+
+    const trIndex = typeof params.translatorId === 'number' && params.translatorId < playlist.length
+      ? params.translatorId
+      : 0;
+    const targetItem = playlist[trIndex] || playlist[0];
+
+    const loadRes = await appFetch('https://cinemar.cc/api/playlist/load', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36',
+        'Referer': iframeUrl,
+        'Origin': 'https://cinemar.cc',
+      },
+      body: JSON.stringify(targetItem.data),
+    });
+
+    if (!loadRes.ok) {
+      throw new Error(`Ошибка загрузки видеопотока Kinogo (HTTP ${loadRes.status})`);
+    }
+
+    const streamData = await loadRes.json();
+    const m3u8Url = streamData.file;
+    if (!m3u8Url || typeof m3u8Url !== 'string') {
+      throw new Error('Ссылка на видеопоток Kinogo не найдена.');
+    }
+
+    return {
+      streams: [
+        { quality: '1080p', hls: m3u8Url, mp4: '' },
+        { quality: '720p', hls: m3u8Url, mp4: '' },
+      ],
+      subtitles: [],
+      thumbnails: streamData.thumbnails,
+    };
+  }
+
+  private async tryKinogoStreamByTitle(title: string): Promise<StreamData | null> {
+    try {
+      const cleanTitle = title.replace(/\s*\(\d{4}\)/g, '').replace(/\s*\(\d+\s*сезон[^\)]*\)/gi, '').trim();
+      const sUrl = `https://kinogo.film/index.php?do=search&subaction=search&story=${encodeURIComponent(cleanTitle)}`;
+      const sRes = await appFetch(sUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36' },
+      });
+      const sHtml = await sRes.text();
+      const $ = cheerio.load(sHtml);
+      const firstA = $('.shortStory h2 a, .shortstory h2 a, article h2 a, .zagolovki a, a[href*=".html"]').first();
+      const href = firstA.attr('href');
+      if (href) {
+        const idMatch = href.match(/\/(\d+)[^/]*\.html/);
+        const kId = idMatch ? idMatch[1] : href;
+        this.mediaUrlCache.set(kId, href);
+        return await this.getKinogoStream({ mediaId: kId, translatorId: 0 });
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }
+
+  private async searchKinogo(query: string, page = 1): Promise<SearchResult> {
+    try {
+      const pagePart = page > 1 ? `&search_start=${(page - 1) * 10}` : '';
+      const sUrl = `https://kinogo.film/index.php?do=search&subaction=search&story=${encodeURIComponent(query)}${pagePart}`;
+      const res = await appFetch(sUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/131.0.0.0 Safari/537.36' },
+      });
+      const html = await res.text();
+      const $ = cheerio.load(html);
+      const items: MediaItem[] = [];
+      $('.shortStory, .shortstory, article').each((_, el) => {
+        const item = this.parseKinogoItem($(el), $);
+        if (item) items.push(item);
+      });
+      const hasMore = items.length >= 10;
+      return { items, page, hasMore };
+    } catch {
+      return { items: [], page, hasMore: false };
+    }
   }
 
   private isAntiBot(html: string): boolean {
@@ -166,16 +556,18 @@ export class RezkaProvider implements IProvider {
         });
         const latency = Date.now() - t0;
         const text = await res.text();
+        const isKinogoMirror = cleanUrl.includes('kinogo');
         const isBlocked = this.isAntiBot(text);
         const hasRezkaContent = text.includes('b-content') || text.includes('b-post') || text.includes('b-top');
-        const isLiveRezka = (hasRezkaContent || isBlocked || /rezka/i.test(text) || text.includes('within.website')) && text.length > 200;
-        const isAvail = res.ok && isLiveRezka;
+        const hasKinogoContent = isKinogoMirror && (text.includes('shortStory') || text.includes('shortstory') || text.includes('kinogo') || text.includes('KinoGo'));
+        const isLiveSite = (hasRezkaContent || hasKinogoContent || isBlocked || /rezka|kinogo/i.test(text) || text.includes('within.website')) && text.length > 200;
+        const isAvail = res.ok && isLiveSite;
         results.push({
           url: cleanUrl,
           isAvailable: isAvail,
           latencyMs: isAvail ? latency : 9999,
           lastChecked: Date.now(),
-          needsVerification: isAvail && isBlocked,
+          needsVerification: isAvail && isBlocked && !hasKinogoContent,
         });
       } catch {
         results.push({
@@ -238,6 +630,7 @@ export class RezkaProvider implements IProvider {
       'https://hdrezka.is',
       'https://hdrezka.top',
       'https://rezka.lat',
+      'https://kinogo.film',
     ];
     for (const s of seeds) candidateUrls.add(s);
 
@@ -467,6 +860,9 @@ export class RezkaProvider implements IProvider {
   }
 
   public async getHomeSections() {
+    if (this.isKinogo()) {
+      return await this.getKinogoHomeSections();
+    }
     try {
       const html = await this.fetchHtml(this.activeMirror);
       if (this.isAntiBot(html)) {
@@ -548,6 +944,9 @@ export class RezkaProvider implements IProvider {
   }
 
   public async getCatalog(filter: CatalogFilter) {
+    if (this.isKinogo()) {
+      return await this.getKinogoCatalog(filter);
+    }
     try {
       const catSlug = filter.type === 'shows' ? 'show' : filter.type;
       let path = `/${catSlug}/`;
@@ -718,6 +1117,9 @@ export class RezkaProvider implements IProvider {
   }
 
   public async getDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails> {
+    if (this.isKinogo() || this.isKinogo(urlOrId) || (meta?.url && this.isKinogo(meta.url))) {
+      return await this.getKinogoDetails(urlOrId, meta);
+    }
     const normId = urlOrId.split('/').pop()?.split('-')[0] || urlOrId;
     let cachedMeta = meta || this.mediaCache.get(urlOrId) || this.mediaCache.get(normId);
 
@@ -1155,6 +1557,9 @@ export class RezkaProvider implements IProvider {
     isAds?: boolean;
     isDirector?: boolean;
   }): Promise<StreamData> {
+    if (this.isKinogo() || this.isKinogo(params.mediaId) || this.isKinogo(this.mediaUrlCache.get(params.mediaId))) {
+      return await this.getKinogoStream(params);
+    }
     const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
     const translatorsToTry: number[] = [];
 
@@ -1269,16 +1674,38 @@ export class RezkaProvider implements IProvider {
     }
 
     if (hadAntiBotOrSession) {
+      try {
+        const title = this.mediaCache.get(params.mediaId)?.title || this.mediaUrlCache.get(params.mediaId);
+        if (title) {
+          const kStream = await this.tryKinogoStreamByTitle(title);
+          if (kStream && kStream.streams.length > 0) return kStream;
+        }
+      } catch (_) {}
+
       throw new Error(
         'HDRezka требует пройти проверку «Я не бот» или обновить сессию. Нажмите «Пройти проверку» для запуска видео.'
       );
     }
 
     if (lastActiveMirrorMessage) {
+      try {
+        const title = this.mediaCache.get(params.mediaId)?.title || this.mediaUrlCache.get(params.mediaId);
+        if (title) {
+          const kStream = await this.tryKinogoStreamByTitle(title);
+          if (kStream && kStream.streams.length > 0) return kStream;
+        }
+      } catch (_) {}
       throw new Error(lastActiveMirrorMessage);
     }
 
     const cachedItem = this.mediaCache.get(params.mediaId);
+    if (cachedItem && cachedItem.title) {
+      try {
+        const kStream = await this.tryKinogoStreamByTitle(cachedItem.title);
+        if (kStream && kStream.streams.length > 0) return kStream;
+      } catch (_) {}
+    }
+
     const currentYear = new Date().getFullYear();
     if (cachedItem && cachedItem.year && cachedItem.year >= currentYear && (!cachedItem.type || cachedItem.type === 'films')) {
       throw new Error(
@@ -1293,6 +1720,18 @@ export class RezkaProvider implements IProvider {
 
   public async searchFast(query: string) {
     if (!query.trim()) return [];
+    if (this.isKinogo()) {
+      const kinogoRes = await this.searchKinogo(query);
+      return kinogoRes.items.map((i) => ({
+        id: i.id,
+        title: i.title,
+        url: i.url,
+        rating: i.rating,
+        origTitle: i.origTitle,
+        year: i.year,
+        type: i.type,
+      }));
+    }
     try {
       const formData = new URLSearchParams();
       formData.append('q', query.trim());
@@ -1380,6 +1819,9 @@ export class RezkaProvider implements IProvider {
   }
 
   public async searchAdvanced(query: string, page = 1): Promise<SearchResult> {
+    if (this.isKinogo()) {
+      return await this.searchKinogo(query, page);
+    }
     try {
       const url = `${this.activeMirror}/search/?do=search&subaction=search&q=${encodeURIComponent(query)}&page=${page}`;
       const html = await this.fetchHtml(url);

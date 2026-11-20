@@ -6,7 +6,7 @@
   <p><strong>Современный, быстрый и удобный неофициальный десктопный клиент HDRezka для Windows</strong></p>
 
   <p>
-    <a href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"><img src="https://img.shields.io/badge/version-0.0.24-crimson.svg?style=flat-square" alt="Version" /></a>
+    <a href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"><img src="https://img.shields.io/badge/version-0.0.25-crimson.svg?style=flat-square" alt="Version" /></a>
     <a href="https://t.me/HDRezkaPC"><img src="https://img.shields.io/badge/Telegram-@HDRezkaPC-2CA5E0.svg?style=flat-square&logo=telegram" alt="Telegram" /></a>
     <img src="https://img.shields.io/badge/platform-Windows-blue.svg?style=flat-square&logo=windows" alt="Platform" />
     <img src="https://img.shields.io/badge/Electron-34.x-47848F.svg?style=flat-square&logo=electron" alt="Electron" />
@@ -179,7 +179,7 @@ npm run pack
 npm run dist
 ```
 
-Собранные файлы (`HDREZKA-Setup-0.0.24.exe` и `HDREZKA-Portable-0.0.24.exe`) появятся в папке `release/`.
+Собранные файлы (`HDREZKA-Setup-0.0.25.exe` и `HDREZKA-Portable-0.0.25.exe`) появятся в папке `release/`.
 
 ---
 
