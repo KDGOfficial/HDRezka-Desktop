@@ -4,6 +4,9 @@ import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
 
+// Ensure consistent app name and userData path across versions and packaging
+app.name = 'hdrezka-desktop';
+
 // Disable hardware acceleration to eliminate Windows 11 DWM / GPU composition black window bug
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
@@ -39,8 +42,22 @@ if (!gotTheLock) {
     if (workingMirror !== currentMirror) {
       db.saveSettings({ app: { ...settings.app, activeMirror: workingMirror } });
     }
-    // Automatically select the best reachable mirror in background
-    provider.selectBestMirror().catch(() => {});
+
+    // Automatically discover fresh mirrors online and select best reachable mirror in background
+    provider.findOnlineMirrors().then((res) => {
+      if (res.added.length > 0) {
+        const curSettings = db.getSettings();
+        db.saveSettings({
+          app: {
+            ...curSettings.app,
+            mirrors: provider.getMirrors(),
+          },
+        });
+      }
+      return provider.selectBestMirror();
+    }).catch(() => {
+      provider.selectBestMirror().catch(() => {});
+    });
 
     // 2. Register all IPC handlers
     registerIpcHandlers();

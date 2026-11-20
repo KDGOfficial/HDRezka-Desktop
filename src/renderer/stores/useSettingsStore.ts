@@ -6,6 +6,7 @@ interface SettingsState {
   settings: UserSettings;
   mirrorsStatus: MirrorStatus[];
   isCheckingMirrors: boolean;
+  isFindingMirrors: boolean;
 
   // Auto-Update State
   updateInfo: UpdateInfo | null;
@@ -16,7 +17,9 @@ interface SettingsState {
   loadSettings: () => Promise<void>;
   updateSettings: (newSettings: Partial<UserSettings>) => Promise<void>;
   checkMirrors: () => Promise<void>;
+  findOnlineMirrors: () => Promise<number>;
   setActiveMirror: (mirror: string) => Promise<void>;
+  removeCustomMirror: (mirror: string) => Promise<void>;
 
   checkForUpdates: (notifyIfAvailable?: boolean) => Promise<UpdateInfo | null>;
   downloadUpdate: () => Promise<void>;
@@ -28,6 +31,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: DEFAULT_USER_SETTINGS,
   mirrorsStatus: [],
   isCheckingMirrors: false,
+  isFindingMirrors: false,
 
   updateInfo: null,
   isCheckingUpdate: false,
@@ -72,6 +76,44 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         set({ isCheckingMirrors: false });
       }
     }
+  },
+
+  findOnlineMirrors: async () => {
+    if (!window.api) return 0;
+    set({ isFindingMirrors: true });
+    try {
+      const res = await window.api.findOnlineMirrors();
+      const s = await window.api.getSettings();
+      set({ settings: s, isFindingMirrors: false });
+      // Refresh mirrors status ping
+      get().checkMirrors();
+      return res.added.length;
+    } catch (err) {
+      console.error('Failed to find online mirrors:', err);
+      set({ isFindingMirrors: false });
+      return 0;
+    }
+  },
+
+  removeCustomMirror: async (mirror: string) => {
+    if (!window.api) return;
+    const { settings } = get();
+    const mirrors = settings.app?.mirrors || [];
+    const updatedMirrors = mirrors.filter((m) => m !== mirror);
+    let activeMirror = settings.app?.activeMirror;
+    if (activeMirror === mirror) {
+      activeMirror = updatedMirrors[0] || 'https://hdrezka-home.tv';
+    }
+    await get().updateSettings({
+      app: {
+        ...settings.app,
+        mirrors: updatedMirrors,
+        activeMirror,
+      },
+    });
+    set((state) => ({
+      mirrorsStatus: state.mirrorsStatus.filter((m) => m.url !== mirror),
+    }));
   },
 
   setActiveMirror: async (mirror) => {

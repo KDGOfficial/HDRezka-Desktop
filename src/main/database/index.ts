@@ -34,15 +34,28 @@ export class AppDatabase {
   private db: any = null;
   private dbPath: string;
   private jsonPath: string;
+  private backupJsonPath: string;
+  private safeExternalBackupPath: string;
   private storage: StorageData;
 
   private constructor() {
-    const userDataPath = app ? app.getPath('userData') : path.resolve(process.cwd(), '.data');
+    const appData = app ? app.getPath('appData') : process.env.APPDATA || path.resolve(process.cwd(), '.data');
+    // Always use canonical 'hdrezka-desktop' directory to avoid path mismatch between dev/prod/portable/updates
+    const userDataPath = path.join(appData, 'hdrezka-desktop');
     if (!fs.existsSync(userDataPath)) {
       fs.mkdirSync(userDataPath, { recursive: true });
     }
+
+    const backupDir = path.join(appData, 'HDRezka_Backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir, { recursive: true });
+    }
+
     this.dbPath = path.join(userDataPath, 'hdrezka.db');
     this.jsonPath = path.join(userDataPath, 'hdrezka-data.json');
+    this.backupJsonPath = path.join(userDataPath, 'hdrezka-data.backup.json');
+    this.safeExternalBackupPath = path.join(backupDir, 'hdrezka-data.backup.json');
+
     this.storage = this.createDefaultStorage();
     this.initDatabase();
   }
@@ -66,31 +79,172 @@ export class AppDatabase {
     };
   }
 
-  private loadStorage(): void {
+  private countLibraryItems(data: Partial<StorageData> | null | undefined): number {
+    if (!data) return 0;
+    const favs = Array.isArray(data.favorites) ? data.favorites.length : 0;
+    const cols = Array.isArray(data.collections) ? data.collections.length : 0;
+    const items = Array.isArray(data.collectionItems) ? data.collectionItems.length : 0;
+    const history = Array.isArray(data.watchHistory) ? data.watchHistory.length : 0;
+    return favs + cols + items + history;
+  }
+
+  private readStorageFromFile(filePath: string): StorageData | null {
     try {
-      if (fs.existsSync(this.jsonPath)) {
-        const raw = fs.readFileSync(this.jsonPath, 'utf8');
-        const parsed = JSON.parse(raw);
-        this.storage = {
-          ...this.createDefaultStorage(),
-          ...parsed,
-          settings: { ...DEFAULT_USER_SETTINGS, ...(parsed.settings || {}) },
-        };
-        return;
+      if (fs.existsSync(filePath)) {
+        const raw = fs.readFileSync(filePath, 'utf8').trim();
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            return {
+              ...this.createDefaultStorage(),
+              ...parsed,
+              settings: { ...DEFAULT_USER_SETTINGS, ...(parsed.settings || {}) },
+            };
+          }
+        }
       }
     } catch (e) {
-      console.warn('[AppDatabase] Failed to read JSON storage, resetting:', e);
+      console.warn(`[AppDatabase] Failed to read storage from ${filePath}:`, e);
     }
-    this.storage = this.createDefaultStorage();
+    return null;
+  }
+
+  private mergeStorageData(base: StorageData, incoming: StorageData): StorageData {
+    // Merge favorites by mediaId (preserve base, add missing from incoming)
+    const favMap = new Map<string, FavoriteItem>();
+    for (const f of incoming.favorites || []) {
+      if (f?.mediaId) favMap.set(f.mediaId, f);
+    }
+    for (const f of base.favorites || []) {
+      if (f?.mediaId) favMap.set(f.mediaId, f);
+    }
+
+    // Merge collections by id
+    const colMap = new Map<string, Collection>();
+    for (const c of incoming.collections || []) {
+      if (c?.id) colMap.set(c.id, c);
+    }
+    for (const c of base.collections || []) {
+      if (c?.id) colMap.set(c.id, c);
+    }
+
+    // Merge collection items by collectionId_mediaId
+    const itemMap = new Map<string, CollectionItem>();
+    for (const it of incoming.collectionItems || []) {
+      if (it?.collectionId && it?.mediaId) itemMap.set(`${it.collectionId}_${it.mediaId}`, it);
+    }
+    for (const it of base.collectionItems || []) {
+      if (it?.collectionId && it?.mediaId) itemMap.set(`${it.collectionId}_${it.mediaId}`, it);
+    }
+
+    // Merge watch history by id/mediaId
+    const histMap = new Map<string, WatchHistoryEntry>();
+    for (const w of incoming.watchHistory || []) {
+      const key = w.id || w.mediaId;
+      if (key) histMap.set(key, w);
+    }
+    for (const w of base.watchHistory || []) {
+      const key = w.id || w.mediaId;
+      if (key) histMap.set(key, w);
+    }
+
+    // Merge playback progress
+    const progress = { ...(incoming.playbackProgress || {}), ...(base.playbackProgress || {}) };
+
+    // Merge search history
+    const searches = [...(base.searchHistory || [])];
+    const existingQueries = new Set(searches.map(s => s.query.toLowerCase()));
+    for (const s of incoming.searchHistory || []) {
+      if (s?.query && !existingQueries.has(s.query.toLowerCase())) {
+        searches.push(s);
+        existingQueries.add(s.query.toLowerCase());
+      }
+    }
+
+    return {
+      watchHistory: Array.from(histMap.values()),
+      playbackProgress: progress,
+      favorites: Array.from(favMap.values()),
+      collections: Array.from(colMap.values()),
+      collectionItems: Array.from(itemMap.values()),
+      searchHistory: searches,
+      settings: { ...incoming.settings, ...base.settings },
+    };
+  }
+
+  private loadStorage(): void {
+    let loaded: StorageData | null = null;
+
+    // 1. Try reading the primary canonical file
+    if (fs.existsSync(this.jsonPath)) {
+      loaded = this.readStorageFromFile(this.jsonPath);
+      if (!loaded) {
+        // If file exists but failed to parse (corruption during sudden update kill), preserve it!
+        try {
+          const corruptedBackup = `${this.jsonPath}.corrupted-${Date.now()}`;
+          fs.copyFileSync(this.jsonPath, corruptedBackup);
+          console.warn(`[AppDatabase] Preserved corrupted file at ${corruptedBackup}`);
+        } catch {}
+      }
+    }
+
+    // 2. If primary file missing or empty library, look in backup and alternate historical locations
+    const candidatePaths = [
+      this.backupJsonPath,
+      this.safeExternalBackupPath,
+      // Check legacy / alternate Electron userData directories (e.g. from older releases or portable runs)
+      ...(app ? [
+        path.join(app.getPath('appData'), 'HDREZKA Desktop', 'hdrezka-data.json'),
+        path.join(app.getPath('appData'), 'HDREZKA Desktop', 'hdrezka-data.backup.json'),
+        path.join(app.getPath('appData'), 'hdrezka-client', 'hdrezka-data.json'),
+        path.join(app.getPath('userData'), 'hdrezka-data.json'),
+        path.join(app.getPath('userData'), 'hdrezka-data.backup.json'),
+      ] : []),
+    ];
+
+    for (const candidate of candidatePaths) {
+      if (candidate === this.jsonPath) continue;
+      const candidateData = this.readStorageFromFile(candidate);
+      if (candidateData) {
+        const candidateItems = this.countLibraryItems(candidateData);
+        if (candidateItems > 0) {
+          if (!loaded || this.countLibraryItems(loaded) === 0) {
+            console.log(`[AppDatabase] Restored user library (${candidateItems} items) from ${candidate}`);
+            loaded = candidateData;
+          } else {
+            // Both exist: merge them so nothing is lost!
+            console.log(`[AppDatabase] Merged user library from ${candidate}`);
+            loaded = this.mergeStorageData(loaded, candidateData);
+          }
+        }
+      }
+    }
+
+    this.storage = loaded || this.createDefaultStorage();
+    this.saveStorage();
+  }
+
+  public createSafetyBackup(): void {
     this.saveStorage();
   }
 
   private saveStorage(): void {
     if (!this.storage) return;
     try {
+      const dataStr = JSON.stringify(this.storage, null, 2);
       const tmpPath = `${this.jsonPath}.tmp`;
-      fs.writeFileSync(tmpPath, JSON.stringify(this.storage, null, 2), 'utf8');
+      fs.writeFileSync(tmpPath, dataStr, 'utf8');
       fs.renameSync(tmpPath, this.jsonPath);
+
+      // Maintain local backup in userData
+      try {
+        fs.writeFileSync(this.backupJsonPath, dataStr, 'utf8');
+      } catch {}
+
+      // Maintain safe external backup in %APPDATA%/HDRezka_Backups
+      try {
+        fs.writeFileSync(this.safeExternalBackupPath, dataStr, 'utf8');
+      } catch {}
     } catch (err) {
       console.error('[AppDatabase] Failed to save JSON storage:', err);
     }

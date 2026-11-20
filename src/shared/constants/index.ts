@@ -1,10 +1,13 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.19';
+export const APP_VERSION = '0.0.20';
+export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 
 export const DEFAULT_MIRRORS = [
   'https://hdrezka-home.tv',
+  'https://rezka.fi',
+  'https://rezka-tv.org',
   'https://hdrezka.me',
   'https://rezka.ag',
   'https://rezkify.com',
@@ -65,6 +68,7 @@ export const IPC_CHANNELS = {
   CHECK_MIRRORS: 'provider:checkMirrors',
   SET_ACTIVE_MIRROR: 'provider:setActiveMirror',
   VERIFY_MIRROR: 'provider:verifyMirror',
+  FIND_ONLINE_MIRRORS: 'provider:findOnlineMirrors',
 
   // Database - History
   GET_WATCH_HISTORY: 'db:getWatchHistory',

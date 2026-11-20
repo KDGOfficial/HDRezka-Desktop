@@ -118,6 +118,24 @@ export function registerIpcHandlers(): void {
     return await provider.checkMirrors();
   });
 
+  ipcMain.handle(IPC_CHANNELS.FIND_ONLINE_MIRRORS, async () => {
+    const provider = providerManager.getProvider();
+    const result = await provider.findOnlineMirrors();
+    if (result.added.length > 0) {
+      const curSettings = db.getSettings();
+      // Combine newly found mirrors with existing settings, never removing any existing mirrors
+      const existing = curSettings.app?.mirrors || [];
+      const merged = Array.from(new Set([...existing, ...result.added]));
+      db.saveSettings({
+        app: {
+          ...curSettings.app,
+          mirrors: merged,
+        },
+      });
+    }
+    return result;
+  });
+
   ipcMain.handle(IPC_CHANNELS.SET_ACTIVE_MIRROR, (_, mirror: string) => {
     const provider = providerManager.getProvider();
     provider.setActiveMirror(mirror);
@@ -537,6 +555,12 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.INSTALL_UPDATE, async () => {
+    // Save a comprehensive library & settings safety backup before proceeding with installer
+    try {
+      db.createSafetyBackup();
+    } catch (e) {
+      console.warn('[AutoUpdate] Safety backup warning:', e);
+    }
     if (!downloadedUpdatePath || !fs.existsSync(downloadedUpdatePath)) {
       const tempDir = app.getPath('temp');
       const candidatePaths = [
@@ -636,7 +660,12 @@ exit
   });
 
   ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL_URL, (_, url: string) => {
-    if (typeof url === 'string' && /^https:\/\/(github\.com|objects\.githubusercontent\.com)\//.test(url)) return shell.openExternal(url);
+    if (
+      typeof url === 'string' &&
+      /^https:\/\/(github\.com|objects\.githubusercontent\.com|t\.me|telegram\.me)\//i.test(url)
+    ) {
+      return shell.openExternal(url);
+    }
     return false;
   });
 

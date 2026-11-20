@@ -12,11 +12,13 @@ import {
   Search,
   Settings,
   Globe,
+  Send,
+  ExternalLink,
 } from 'lucide-react';
 import { useMediaStore, AppPage } from '../stores/useMediaStore';
 import { useTranslation, Locale } from '../i18n';
 import appLogo from '../assets/logo.png';
-import { APP_VERSION } from '../../shared/constants';
+import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 
 interface NavItem {
   id: AppPage;
@@ -122,7 +124,24 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Language Switcher & Footer */}
-      <div className="pt-3 border-t border-white/5 space-y-2">
+      <div className="pt-3 border-t border-white/5 space-y-2.5">
+        {/* Telegram Channel Link */}
+        <button
+          onClick={() => {
+            if (window.api?.openExternalUrl) {
+              window.api.openExternalUrl(TELEGRAM_CHANNEL_URL);
+            }
+          }}
+          className="w-full flex items-center justify-between px-3 py-2 rounded-xl bg-[#229ED9]/10 hover:bg-[#229ED9]/20 border border-[#229ED9]/20 text-[#229ED9] hover:text-[#52c1f7] text-xs font-semibold transition-all group cursor-pointer shadow-sm active:scale-95"
+          title="Telegram @HDRezkaPC"
+        >
+          <div className="flex items-center space-x-2 truncate">
+            <Send className="w-3.5 h-3.5 flex-shrink-0 group-hover:scale-110 transition-transform" />
+            <span className="truncate">Telegram @HDRezkaPC</span>
+          </div>
+          <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 flex-shrink-0 ml-1" />
+        </button>
+
         <div className="flex items-center justify-between px-1">
           <span className="text-[11px] font-medium text-zinc-400 flex items-center space-x-1.5">
             <Globe className="w-3.5 h-3.5 text-zinc-500" />

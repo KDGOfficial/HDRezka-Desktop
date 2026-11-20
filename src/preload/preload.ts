@@ -46,6 +46,8 @@ export const api = {
   checkMirrors: () => ipcRenderer.invoke(IPC_CHANNELS.CHECK_MIRRORS),
   setActiveMirror: (mirror: string) => ipcRenderer.invoke(IPC_CHANNELS.SET_ACTIVE_MIRROR, mirror),
   verifyMirror: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.VERIFY_MIRROR),
+  findOnlineMirrors: (): Promise<{ added: string[]; all: string[] }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.FIND_ONLINE_MIRRORS),
 
   // Watch History
   getWatchHistory: (limit?: number) => ipcRenderer.invoke(IPC_CHANNELS.GET_WATCH_HISTORY, limit),

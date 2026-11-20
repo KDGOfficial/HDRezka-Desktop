@@ -15,9 +15,11 @@ import {
   Sparkles,
   Info,
   CheckCircle2,
+  Send,
+  Search,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { APP_VERSION } from '../../shared/constants';
+import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 import { useTranslation, Locale } from '../i18n';
 import appLogo from '../assets/logo.png';
 
@@ -29,6 +31,9 @@ export const SettingsPage: React.FC = () => {
     mirrorsStatus,
     checkMirrors,
     isCheckingMirrors,
+    findOnlineMirrors,
+    isFindingMirrors,
+    removeCustomMirror,
     setActiveMirror,
     updateInfo,
     isCheckingUpdate,
@@ -43,6 +48,7 @@ export const SettingsPage: React.FC = () => {
   const [customMirror, setCustomMirror] = useState('');
   const [cacheCleared, setCacheCleared] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [findMirrorsStatus, setFindMirrorsStatus] = useState<string | null>(null);
 
   useEffect(() => {
     loadSettings();
@@ -84,6 +90,16 @@ export const SettingsPage: React.FC = () => {
       await window.api.verifyMirror();
       checkMirrors();
     }
+  };
+
+  const handleFindOnlineMirrors = async () => {
+    const addedCount = await findOnlineMirrors();
+    if (addedCount > 0) {
+      setFindMirrorsStatus(t.settings.onlineMirrorsFound.replace('{count}', String(addedCount)));
+    } else {
+      setFindMirrorsStatus(t.settings.allMirrorsCurrent);
+    }
+    setTimeout(() => setFindMirrorsStatus(null), 4500);
   };
 
   const handleClearCache = async () => {
@@ -139,14 +155,31 @@ export const SettingsPage: React.FC = () => {
   return (
     <div className="w-full pb-20 text-left select-none max-w-4xl mx-auto animate-fadeIn">
       {/* Header */}
-      <div className="mb-8 pb-5 border-b border-white/5">
-        <h1 className="text-2xl font-black text-white flex items-center">
-          <Settings className="w-6 h-6 text-brand-red mr-2.5" />
-          {t.settings.title}
-        </h1>
-        <p className="text-xs text-zinc-400 mt-1">
-          {t.settings.subtitle} v{APP_VERSION}
-        </p>
+      <div className="mb-8 pb-5 border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-black text-white flex items-center">
+            <Settings className="w-6 h-6 text-brand-red mr-2.5" />
+            {t.settings.title}
+          </h1>
+          <p className="text-xs text-zinc-400 mt-1">
+            {t.settings.subtitle} v{APP_VERSION}
+          </p>
+        </div>
+
+        {/* Telegram Channel Link */}
+        <button
+          onClick={() => {
+            if (window.api?.openExternalUrl) {
+              window.api.openExternalUrl(TELEGRAM_CHANNEL_URL);
+            }
+          }}
+          className="flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-[#229ED9]/15 hover:bg-[#229ED9]/25 text-[#229ED9] border border-[#229ED9]/30 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer self-start sm:self-auto"
+          title="Telegram @HDRezkaPC"
+        >
+          <Send className="w-4 h-4 flex-shrink-0" />
+          <span>Telegram @HDRezkaPC</span>
+          <ExternalLink className="w-3.5 h-3.5 opacity-60 ml-0.5" />
+        </button>
       </div>
 
       <div className="space-y-8">
@@ -311,10 +344,19 @@ export const SettingsPage: React.FC = () => {
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">{t.settings.mirrorsDesc}</p>
             </div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+              <button
+                onClick={handleFindOnlineMirrors}
+                disabled={isFindingMirrors}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/30 hover:to-blue-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold disabled:opacity-50 transition-all cursor-pointer shadow-sm active:scale-95"
+                title={t.settings.findOnlineMirrors}
+              >
+                <Search className={`w-3.5 h-3.5 ${isFindingMirrors ? 'animate-spin text-cyan-400' : 'text-cyan-400'}`} />
+                <span>{isFindingMirrors ? t.settings.findingOnlineMirrors : t.settings.findOnlineMirrors}</span>
+              </button>
               <button
                 onClick={handleVerifyMirror}
-                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-zinc-300 transition-colors"
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-zinc-300 transition-colors cursor-pointer"
                 title={t.settings.verifyBtn}
               >
                 <ShieldCheck className="w-3.5 h-3.5 inline mr-1 text-emerald-400" />
@@ -323,13 +365,21 @@ export const SettingsPage: React.FC = () => {
               <button
                 onClick={() => checkMirrors()}
                 disabled={isCheckingMirrors}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-50 transition-colors border border-white/10"
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-50 transition-colors border border-white/10 cursor-pointer"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isCheckingMirrors ? 'animate-spin text-brand-red' : ''}`} />
                 <span>{isCheckingMirrors ? t.settings.testing : t.settings.testPing}</span>
               </button>
             </div>
           </div>
+
+          {/* Feedback banner for online search */}
+          {findMirrorsStatus && (
+            <div className="p-3 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 text-xs flex items-center space-x-2 animate-fadeIn">
+              <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+              <span>{findMirrorsStatus}</span>
+            </div>
+          )}
 
           {/* Mirrors List */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -340,13 +390,13 @@ export const SettingsPage: React.FC = () => {
                 <div
                   key={mirror}
                   onClick={() => setActiveMirror(mirror)}
-                  className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                  className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer group ${
                     isActive
                       ? 'bg-brand-red/10 border-brand-red text-white shadow-glow-sm'
                       : 'bg-white/5 border-white/5 hover:border-white/20 text-zinc-300'
                   }`}
                 >
-                  <div className="flex items-center space-x-2.5 truncate">
+                  <div className="flex items-center space-x-2.5 truncate min-w-0 mr-2">
                     <span
                       className={`w-2 h-2 rounded-full flex-shrink-0 ${
                         status?.isAvailable
@@ -367,6 +417,18 @@ export const SettingsPage: React.FC = () => {
                       <span className="px-1.5 py-0.5 rounded-md bg-brand-red text-white text-[9px] font-black uppercase">
                         {t.settings.active}
                       </span>
+                    )}
+                    {settings.app.mirrors && settings.app.mirrors.length > 1 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeCustomMirror(mirror);
+                        }}
+                        className="p-1 rounded-lg hover:bg-red-500/20 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                        title={t.settings.deleteMirror}
+                      >
+                        <Trash2 className="w-3 h-3" />
+                      </button>
                     )}
                   </div>
                 </div>

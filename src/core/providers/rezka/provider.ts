@@ -35,7 +35,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.19';
+  public version = '0.0.20';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -128,7 +128,8 @@ export class RezkaProvider implements IProvider {
         const latency = Date.now() - t0;
         const text = await res.text();
         const isBlocked = this.isAntiBot(text);
-        const isAvail = res.ok && !isBlocked && text.includes('b-content');
+        const hasRezkaContent = text.includes('b-content') || /rezka/i.test(text) || isBlocked;
+        const isAvail = (res.ok || res.status === 403) && hasRezkaContent;
         results.push({
           url: cleanUrl,
           isAvailable: isAvail,
@@ -150,8 +151,14 @@ export class RezkaProvider implements IProvider {
 
   public async selectBestMirror(): Promise<string> {
     const statuses = await this.checkMirrors();
-    const available = statuses.filter(s => s.isAvailable);
 
+    // Preserve active mirror if it's currently available - never switch away from a working user mirror
+    const activeStatus = statuses.find(s => s.url === this.activeMirror);
+    if (activeStatus && activeStatus.isAvailable) {
+      return this.activeMirror;
+    }
+
+    const available = statuses.filter(s => s.isAvailable);
     if (available.length > 0) {
       available.sort((a, b) => a.latencyMs - b.latencyMs);
       this.activeMirror = available[0].url;
@@ -159,6 +166,96 @@ export class RezkaProvider implements IProvider {
     }
 
     return this.activeMirror;
+  }
+
+  public async findOnlineMirrors(): Promise<{ added: string[]; all: string[] }> {
+    const candidateUrls = new Set<string>();
+
+    // Seed list of known mirror candidates
+    const seeds = [
+      'https://hdrezka-home.tv',
+      'https://rezka.fi',
+      'https://rezka-tv.org',
+      'https://hdrezka.me',
+      'https://rezka.ag',
+      'https://rezkify.com',
+      'https://hdrezka.ag',
+      'https://hdrezka.kim',
+      'https://rezka.pub',
+      'https://hdrezka.sh',
+      'https://rezka-ua.org',
+      'https://rezka-ua.tv',
+      'https://hdrezka.club',
+      'https://hdrezka.is',
+      'https://hdrezka.top',
+      'https://rezka.lat',
+    ];
+    for (const s of seeds) candidateUrls.add(s);
+
+    // Online sources
+    const sources = [
+      'https://raw.githubusercontent.com/MrIkso/hdrezka-fetcher/master/mirror.txt',
+      'https://raw.githubusercontent.com/thecapibara/RDX-TV/main/src/services/api.ts',
+      'https://raw.githubusercontent.com/thecapibara/RDX/main/src/services/api.ts',
+      'https://t.me/s/HDRezkaPC',
+    ];
+
+    await Promise.allSettled(
+      sources.map(async (src) => {
+        try {
+          const res = await appFetch(src, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) HDRezka-Desktop' },
+            signal: AbortSignal.timeout(4000),
+          });
+          if (res.ok) {
+            const text = await res.text();
+            const matches = text.match(/https?:\/\/[a-zA-Z0-9.-]*(rezka|hdrezka)[a-zA-Z0-9.-]*/gi) || [];
+            for (const m of matches) {
+              const clean = m.trim().replace(/\/$/, '');
+              if (/^https?:\/\/[a-zA-Z0-9.-]+$/i.test(clean) && !clean.includes('t.me') && !clean.includes('github')) {
+                candidateUrls.add(clean);
+              }
+            }
+          }
+        } catch {}
+      })
+    );
+
+    // Test candidates in parallel
+    const verifiedNewMirrors: string[] = [];
+    const currentSet = new Set(this.mirrors.map(m => m.toLowerCase().replace(/\/$/, '')));
+
+    const candidatesList = Array.from(candidateUrls).filter(c => !currentSet.has(c.toLowerCase()));
+
+    await Promise.allSettled(
+      candidatesList.map(async (url) => {
+        try {
+          const res = await appFetch(url, {
+            headers: this.getHeaders(),
+            signal: AbortSignal.timeout(4500),
+          });
+          const text = await res.text();
+          const isAlive = (res.ok || res.status === 403) && (
+            this.isAntiBot(text) ||
+            text.includes('b-content') ||
+            /rezka/i.test(text)
+          );
+          if (isAlive) {
+            verifiedNewMirrors.push(url);
+          }
+        } catch {}
+      })
+    );
+
+    // PRESERVE ALL EXISTING USER MIRRORS - ONLY APPEND NEW UNIQUE WORKING MIRRORS
+    if (verifiedNewMirrors.length > 0) {
+      this.mirrors = [...this.mirrors, ...verifiedNewMirrors];
+    }
+
+    return {
+      added: verifiedNewMirrors,
+      all: [...this.mirrors],
+    };
   }
 
   private parseItem(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): MediaItem | null {

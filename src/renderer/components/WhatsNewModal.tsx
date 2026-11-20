@@ -1,7 +1,7 @@
 import React from 'react';
-import { Layers, Sparkles, Move, Scaling, RefreshCw, X } from 'lucide-react';
+import { Database, Globe, Send, Sliders, ShieldCheck, Check, X, ExternalLink } from 'lucide-react';
 import { useTranslation } from '../i18n';
-import { APP_VERSION } from '../../shared/constants';
+import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 
 interface WhatsNewModalProps {
   isOpen: boolean;
@@ -15,31 +15,37 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
 
   const features = [
     {
-      icon: <Layers className="w-4 h-4 text-brand-red" />,
+      icon: <Database className="w-4 h-4 text-emerald-400" />,
       title: t.whatsNew.f1_title,
       desc: t.whatsNew.f1_desc,
     },
     {
-      icon: <Sparkles className="w-4 h-4 text-amber-400" />,
+      icon: <Globe className="w-4 h-4 text-cyan-400" />,
       title: t.whatsNew.f2_title,
       desc: t.whatsNew.f2_desc,
     },
     {
-      icon: <Move className="w-4 h-4 text-cyan-400" />,
+      icon: <Send className="w-4 h-4 text-[#229ED9]" />,
       title: t.whatsNew.f3_title,
       desc: t.whatsNew.f3_desc,
     },
     {
-      icon: <Scaling className="w-4 h-4 text-emerald-400" />,
+      icon: <Sliders className="w-4 h-4 text-amber-400" />,
       title: t.whatsNew.f4_title,
       desc: t.whatsNew.f4_desc,
     },
     {
-      icon: <RefreshCw className="w-4 h-4 text-orange-400" />,
+      icon: <ShieldCheck className="w-4 h-4 text-brand-red" />,
       title: t.whatsNew.f5_title,
       desc: t.whatsNew.f5_desc,
     },
   ];
+
+  const handleOpenTelegram = () => {
+    if (window.api?.openExternalUrl) {
+      window.api.openExternalUrl(TELEGRAM_CHANNEL_URL);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md select-none animate-fadeIn">
@@ -52,7 +58,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
         <div className="p-6 pb-4 border-b border-white/10 flex items-start justify-between relative z-10">
           <div className="flex items-center space-x-3.5">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-red to-orange-500 flex items-center justify-center text-white shadow-glow flex-shrink-0">
-              <Sparkles className="w-6 h-6 animate-pulse" />
+              <Database className="w-6 h-6 animate-pulse" />
             </div>
             <div>
               <h3 className="text-lg font-bold text-white flex items-center space-x-2">
@@ -94,7 +100,16 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
         </div>
 
         {/* Footer */}
-        <div className="p-5 pt-3 border-t border-white/10 flex items-center justify-end relative z-10 bg-dark-bg/50">
+        <div className="p-5 pt-3 border-t border-white/10 flex items-center justify-between relative z-10 bg-dark-bg/50">
+          <button
+            onClick={handleOpenTelegram}
+            className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-[#229ED9]/15 hover:bg-[#229ED9]/25 text-[#229ED9] border border-[#229ED9]/30 text-xs font-bold transition-all active:scale-95 cursor-pointer"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>@HDRezkaPC</span>
+            <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
+          </button>
+
           <button
             onClick={onClose}
             className="flex items-center space-x-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white font-bold text-xs shadow-glow transition-all active:scale-95 cursor-pointer"
