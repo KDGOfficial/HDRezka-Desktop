@@ -58,9 +58,9 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
   return (
     <div className="w-full pb-16 text-left select-none animate-fadeIn">
       {/* Title & Filters bar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 pb-5 border-b border-white/5">
-        {/* Categories Tabs */}
-        <div className="flex items-center space-x-2 overflow-x-auto pb-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-white/5">
+        {/* Categories Tabs - No scrollbar/slider, fits cleanly with compact pills */}
+        <div className="flex items-center flex-wrap gap-1.5">
           {categories.map((cat) => {
             const Icon = cat.icon;
             const isActive = contentType === cat.id;
@@ -71,21 +71,21 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
                   setContentType(cat.id);
                   setPage(1);
                 }}
-                className={`flex items-center space-x-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all ${
+                className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
                   isActive
                     ? 'bg-gradient-to-r from-brand-red via-brand-red to-orange-600 text-white shadow-glow'
                     : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
                 }`}
               >
-                <Icon className={`w-3.5 h-3.5 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
-                <span>{cat.label}</span>
+                <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
+                <span className="whitespace-nowrap">{cat.label}</span>
               </button>
             );
           })}
         </div>
 
         {/* Dropdowns */}
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center space-x-2 flex-wrap gap-y-2 flex-shrink-0">
           {/* Genre selector */}
           <select
             value={selectedGenre}
@@ -93,7 +93,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
               setSelectedGenre(e.target.value);
               setPage(1);
             }}
-            className="bg-[#12131a] border border-white/10 rounded-2xl px-3.5 py-2.5 text-xs font-semibold text-zinc-200 outline-none hover:border-white/20 focus:border-brand-red cursor-pointer transition-colors shadow-sm"
+            className="bg-[#12131a] border border-white/10 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-200 outline-none hover:border-white/20 focus:border-brand-red cursor-pointer transition-colors shadow-sm whitespace-nowrap"
           >
             {GENRES.map((g) => (
               <option key={g.id} value={g.id} className="bg-[#12131a] text-white">
@@ -109,7 +109,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
               setSelectedSort(e.target.value as any);
               setPage(1);
             }}
-            className="bg-[#12131a] border border-white/10 rounded-2xl px-3.5 py-2.5 text-xs font-semibold text-zinc-200 outline-none hover:border-white/20 focus:border-brand-red cursor-pointer transition-colors shadow-sm"
+            className="bg-[#12131a] border border-white/10 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-200 outline-none hover:border-white/20 focus:border-brand-red cursor-pointer transition-colors shadow-sm whitespace-nowrap"
           >
             <option value="last" className="bg-[#12131a] text-white">
               {t.catalog.sortLast}
