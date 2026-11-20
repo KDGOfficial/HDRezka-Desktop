@@ -34,18 +34,25 @@ export function createMainWindow(): BrowserWindow {
       return callback({ requestHeaders: details.requestHeaders });
     }
 
+    // Never modify headers or inject Origin on top-level main or sub frame navigation requests
+    if (details.resourceType === 'mainFrame' || details.resourceType === 'subFrame') {
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+
     const url = details.url.toLowerCase();
     const activeMirror = provider.getActiveMirror();
 
-    if (
+    const isStreamOrApi =
+      details.resourceType === 'media' ||
+      details.resourceType === 'xhr' ||
+      details.resourceType === 'fetch' ||
       url.includes('voidboost') ||
       url.includes('stream.') ||
-      url.includes('hdrezka') ||
-      url.includes('rezka') ||
       url.includes('.m3u8') ||
       url.includes('.mp4') ||
-      url.includes('.vtt')
-    ) {
+      url.includes('.vtt');
+
+    if (isStreamOrApi && (url.includes('voidboost') || url.includes('stream.') || url.includes('hdrezka') || url.includes('rezka') || url.includes('.m3u8') || url.includes('.mp4') || url.includes('.vtt'))) {
       details.requestHeaders['Referer'] = activeMirror + '/';
       details.requestHeaders['Origin'] = activeMirror;
       details.requestHeaders['User-Agent'] =

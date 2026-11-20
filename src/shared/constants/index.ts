@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.21';
+export const APP_VERSION = '0.0.22';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 
 export const DEFAULT_MIRRORS = [
@@ -11,7 +11,7 @@ export const DEFAULT_MIRRORS = [
   'https://hdrezka.me',
   'https://rezka.ag',
   'https://rezkify.com',
-  'https://hdrezka.ag',
+  'https://hdrezka.sh',
 ];
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {

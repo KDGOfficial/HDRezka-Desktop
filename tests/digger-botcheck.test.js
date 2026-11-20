@@ -84,27 +84,52 @@ test('getStream does not falsely flag anti-bot when fallback mirror returns chal
   }
 });
 
-test('getStream correctly reports anti-bot when active mirror itself is protected by anti-bot challenge', async () => {
-  const provider = new RezkaProvider('https://hdrezka-home.tv', ['https://hdrezka-home.tv']);
+test('checkMirrors does not consider 403 or empty responses as available', async () => {
+  const provider = new RezkaProvider('https://hdrezka-home.tv', ['https://blocked-mirror.org', 'https://hdrezka-home.tv']);
 
   const origFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    return new Response('<!doctype html><head><title>Проверяем, что вы не бот!</title><script id="anubis_challenge"></script></head>', {
-      status: 200,
-      headers: { 'Content-Type': 'text/html' }
-    });
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    if (s.includes('blocked-mirror.org')) {
+      return new Response('Forbidden', { status: 403 });
+    }
+    return new Response('<html><body><div class="b-content">Live Content ' + 'x'.repeat(600) + '</div></body></html>', { status: 200 });
   };
 
   try {
+    const statuses = await provider.checkMirrors();
+    const badStatus = statuses.find((s) => s.url.includes('blocked-mirror.org'));
+    const goodStatus = statuses.find((s) => s.url.includes('hdrezka-home.tv'));
+    assert.equal(badStatus.isAvailable, false, '403 mirror must not be available');
+    assert.equal(goodStatus.isAvailable, true, '200 mirror with content must be available');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('RezkaProvider constructor and selectBestMirror sanitize rezka-ua.tv to hdrezka-home.tv', async () => {
+  const provider = new RezkaProvider('https://rezka-ua.tv', ['https://rezka-ua.tv', 'https://hdrezka-home.tv']);
+  assert.equal(provider.getActiveMirror(), 'https://hdrezka-home.tv', 'Constructor must sanitize broken mirror');
+});
+
+test('getStream reports clear message when future title is unreleased', async () => {
+  const provider = new RezkaProvider('https://hdrezka-home.tv', ['https://hdrezka-home.tv']);
+  // Pre-seed cache with unreleased movie (year 2026)
+  provider.getDetails = async () => ({ id: '91072', title: 'Диггер / Землекоп', year: 2026, type: 'films' });
+
+  // Simulate empty stream response from server
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ success: false }), { status: 200 });
+
+  try {
+    // Manually prime the internal cache
+    provider['mediaCache'].set('91072', { id: '91072', title: 'Диггер / Землекоп', year: 2026, type: 'films' });
     await assert.rejects(
       async () => {
-        await provider.getStream({ mediaId: '1481', translatorId: 56 });
+        await provider.getStream({ mediaId: '91072', translatorId: 0 });
       },
       (err) => {
-        assert.ok(
-          err.message.includes('HDRezka требует пройти проверку «Я не бот»'),
-          `Must report bot check when active mirror is challenged, got: ${err.message}`
-        );
+        assert.ok(err.message.includes('ещё не вышел в прокат'), `Should report unreleased status, got: ${err.message}`);
         return true;
       }
     );

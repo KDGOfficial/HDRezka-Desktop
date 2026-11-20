@@ -45,7 +45,8 @@ if (!gotTheLock) {
     const settings = db.getSettings();
     const provider = ProviderManager.getInstance().getProvider();
     const currentMirror = settings.app?.activeMirror;
-    const workingMirror = (!currentMirror || currentMirror.includes('hdrezka.ag')) ? 'https://hdrezka-home.tv' : currentMirror;
+    const isBadMirror = !currentMirror || currentMirror.includes('hdrezka.ag') || currentMirror.includes('rezka-ua.tv');
+    const workingMirror = isBadMirror ? 'https://hdrezka-home.tv' : currentMirror;
     provider.setActiveMirror(workingMirror);
     if (workingMirror !== currentMirror) {
       db.saveSettings({ app: { ...settings.app, activeMirror: workingMirror } });

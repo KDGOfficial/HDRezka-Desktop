@@ -58,7 +58,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.21';
+  public version = '0.0.22';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -67,8 +67,11 @@ export class RezkaProvider implements IProvider {
   private mediaUrlCache: Map<string, string> = new Map();
 
   constructor(activeMirror = 'https://hdrezka-home.tv', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
+    if (!activeMirror || activeMirror.includes('hdrezka.ag') || activeMirror.includes('rezka-ua.tv')) {
+      activeMirror = 'https://hdrezka-home.tv';
+    }
     this.activeMirror = activeMirror;
-    this.mirrors = [...mirrors];
+    this.mirrors = [...mirrors].filter((m) => !m.includes('hdrezka.ag') && !m.includes('rezka-ua.tv'));
     this.timeoutMs = timeoutMs;
   }
 
@@ -151,8 +154,8 @@ export class RezkaProvider implements IProvider {
         const latency = Date.now() - t0;
         const text = await res.text();
         const isBlocked = this.isAntiBot(text);
-        const hasRezkaContent = text.includes('b-content') || /rezka/i.test(text) || isBlocked;
-        const isAvail = (res.ok || res.status === 403) && hasRezkaContent;
+        const hasRezkaContent = text.includes('b-content') || text.includes('b-post') || text.includes('b-top');
+        const isAvail = res.ok && hasRezkaContent && !isBlocked && text.length > 500;
         results.push({
           url: cleanUrl,
           isAvailable: isAvail,
@@ -173,6 +176,10 @@ export class RezkaProvider implements IProvider {
   }
 
   public async selectBestMirror(): Promise<string> {
+    if (this.activeMirror.includes('rezka-ua.tv') || this.activeMirror.includes('hdrezka.ag')) {
+      this.activeMirror = 'https://hdrezka-home.tv';
+    }
+
     const statuses = await this.checkMirrors();
 
     // Preserve active mirror if it's currently available - never switch away from a working user mirror
@@ -194,7 +201,7 @@ export class RezkaProvider implements IProvider {
   public async findOnlineMirrors(): Promise<{ added: string[]; all: string[] }> {
     const candidateUrls = new Set<string>();
 
-    // Seed list of known mirror candidates
+    // Seed list of known mirror candidates (excluding dead/hangup domains)
     const seeds = [
       'https://hdrezka-home.tv',
       'https://rezka.fi',
@@ -202,12 +209,10 @@ export class RezkaProvider implements IProvider {
       'https://hdrezka.me',
       'https://rezka.ag',
       'https://rezkify.com',
-      'https://hdrezka.ag',
       'https://hdrezka.kim',
       'https://rezka.pub',
       'https://hdrezka.sh',
       'https://rezka-ua.org',
-      'https://rezka-ua.tv',
       'https://hdrezka.club',
       'https://hdrezka.is',
       'https://hdrezka.top',
@@ -1204,6 +1209,14 @@ export class RezkaProvider implements IProvider {
 
     if (lastActiveMirrorMessage) {
       throw new Error(lastActiveMirrorMessage);
+    }
+
+    const cachedItem = this.mediaCache.get(params.mediaId);
+    const currentYear = new Date().getFullYear();
+    if (cachedItem && cachedItem.year && cachedItem.year >= currentYear && (!cachedItem.type || cachedItem.type === 'films')) {
+      throw new Error(
+        `Фильм «${cachedItem.title || 'Диггер'}» (${cachedItem.year}) ещё не вышел в прокат или временно отсутствует в каталоге HDRezka.`
+      );
     }
 
     throw new Error(

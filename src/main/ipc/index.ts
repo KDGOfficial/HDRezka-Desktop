@@ -154,8 +154,9 @@ export function registerIpcHandlers(): void {
         }
       } catch (_) {}
 
-      // hdrezka.ag has broken Anubis scripts (404 on main.mjs); redirect to working mirror
-      if (!mirror || mirror.includes('hdrezka.ag')) {
+      // Normalize known dead/broken mirrors (hdrezka.ag, rezka-ua.tv) to stable working mirror
+      const isBadMirror = !mirror || mirror.includes('hdrezka.ag') || mirror.includes('rezka-ua.tv');
+      if (isBadMirror) {
         mirror = 'https://hdrezka-home.tv';
         loadUrl = 'https://hdrezka-home.tv';
         providerManager.getProvider().setActiveMirror(mirror);
@@ -181,13 +182,25 @@ export function registerIpcHandlers(): void {
       const checkPassed = async () => {
         if (isClosed || win.isDestroyed()) return;
         try {
+          // 1. Check if real HDRezka content loaded in DOM
           const isSiteLoaded = await win.webContents.executeJavaScript(
             `!!(document.querySelector('.b-content') || document.querySelector('.b-post') || document.querySelector('.b-top') || document.querySelector('#search-field') || document.querySelector('.b-users__login') || document.querySelector('.b-sidecover'))`
           ).catch(() => false);
 
-          if (isSiteLoaded) {
+          // 2. Check if Anubis / Cloudflare verification auth cookies are present in session
+          const sessionCookies = await session.defaultSession.cookies.get({ url: mirror }).catch(() => []);
+          const hasAuthCookie = sessionCookies.some(
+            (c) => c.name.toLowerCase().includes('anubis-auth') || c.name.toLowerCase().includes('cf_clearance')
+          );
+
+          // 3. Check current navigation URL (e.g. redirect through pass-challenge)
+          const curUrl = win.webContents.getURL() || '';
+          const hasPassChallenge = curUrl.includes('pass-challenge');
+
+          if (isSiteLoaded || hasAuthCookie || hasPassChallenge) {
             isClosed = true;
             clearInterval(timer);
+            cleanupCookieListener();
             providerManager.getProvider().setActiveMirror(mirror);
             db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
             setTimeout(() => {
@@ -197,12 +210,24 @@ export function registerIpcHandlers(): void {
         } catch (_) {}
       };
 
-      const timer = setInterval(checkPassed, 1000);
+      // Instantly react when Anubis sets the auth cookie in session
+      const onCookieChanged = (_: any, cookie: any, __: any, removed: boolean) => {
+        if (!removed && cookie?.name && cookie.name.toLowerCase().includes('anubis-auth')) {
+          checkPassed();
+        }
+      };
+      session.defaultSession.cookies.on('changed', onCookieChanged);
+      const cleanupCookieListener = () => {
+        session.defaultSession.cookies.removeListener('changed', onCookieChanged);
+      };
+
+      const timer = setInterval(checkPassed, 800);
       win.webContents.on('did-finish-load', checkPassed);
 
       win.on('closed', () => {
         isClosed = true;
         clearInterval(timer);
+        cleanupCookieListener();
         resolve(true);
       });
 
