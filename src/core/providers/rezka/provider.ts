@@ -23,7 +23,7 @@ import {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.8';
+  public version = '0.0.7';
 
   private activeMirror: string;
   private mirrors: string[];
