@@ -602,13 +602,13 @@ export const VideoPlayer: React.FC = () => {
             </div>
           )}
           <div className="flex flex-wrap items-center justify-center gap-3">
-            {window.api?.verifyMirror && (
+            {window.api?.verifyMirror && Boolean(error && (error.includes('не бот') || error.includes('сесси') || error.includes('проверку'))) && (
               <button
                 disabled={isVerifying}
                 onClick={async () => {
                   setIsVerifying(true);
                   try {
-                    await window.api.verifyMirror();
+                    await window.api.verifyMirror(mediaDetails?.url || (mediaDetails?.id ? `https://hdrezka-home.tv/${mediaDetails.id}.html` : undefined));
                     await retryPlayback();
                   } catch (_) {
                   } finally {

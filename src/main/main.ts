@@ -29,6 +29,14 @@ if (!gotTheLock) {
   });
 
   app.whenReady().then(async () => {
+    // Ensure defaultSession userAgent matches exactly
+    const { session } = require('electron');
+    if (session?.defaultSession) {
+      session.defaultSession.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+      );
+    }
+
     // Chromium network stack shares session cookies with app windows (needed for HDRezka session / anti-bot check)
     globalThis.fetch = net.fetch as typeof fetch;
 

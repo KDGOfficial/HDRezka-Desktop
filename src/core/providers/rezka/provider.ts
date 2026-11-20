@@ -26,7 +26,30 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const electron = require('electron');
     if (electron && electron.net && typeof electron.net.fetch === 'function') {
-      return await electron.net.fetch(input as any, { credentials: 'include', ...init });
+      const urlStr = typeof input === 'string' ? input : (input as any).url || input.toString();
+      const headers = new Headers(init?.headers || {});
+
+      // Explicitly extract session cookies to ensure bot verification tokens are never lost
+      if (electron.session?.defaultSession?.cookies) {
+        try {
+          const cookies = await electron.session.defaultSession.cookies.get({ url: urlStr });
+          if (cookies && cookies.length > 0) {
+            const cookieHeader = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
+            if (cookieHeader && !headers.has('Cookie')) {
+              headers.set('Cookie', cookieHeader);
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (!headers.has('User-Agent')) {
+        headers.set(
+          'User-Agent',
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        );
+      }
+
+      return await electron.net.fetch(input as any, { ...init, headers, credentials: 'include' });
     }
   } catch (_) {}
   return await globalThis.fetch(input, init);
@@ -35,7 +58,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.20';
+  public version = '0.0.21';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -882,18 +905,18 @@ export class RezkaProvider implements IProvider {
     // Final fallback if probing also found nothing
     if (translators.length === 0) {
       translators.push({
-        id: pageTranslatorId || 56,
+        id: (pageTranslatorId !== undefined && pageTranslatorId !== null) ? pageTranslatorId : 0,
         name: 'Оригинал / По умолчанию',
         premium: false,
       });
     }
 
-    if (!currentTranslatorId) {
-      if (pageTranslatorId && translators.some((t) => t.id === pageTranslatorId)) {
+    if (currentTranslatorId === undefined || currentTranslatorId === null || (currentTranslatorId === 0 && translators.length > 0 && translators[0].id !== 0)) {
+      if (pageTranslatorId !== undefined && pageTranslatorId !== null && translators.some((t) => t.id === pageTranslatorId)) {
         currentTranslatorId = pageTranslatorId;
       } else {
         const preferred = translators.find((t) => t.id === 1) || translators.find((t) => t.id === 56) || translators[0];
-        currentTranslatorId = preferred ? preferred.id : 56;
+        currentTranslatorId = preferred ? preferred.id : 0;
       }
     }
 
@@ -1074,7 +1097,11 @@ export class RezkaProvider implements IProvider {
     isDirector?: boolean;
   }): Promise<StreamData> {
     const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
-    const translatorsToTry = [params.translatorId];
+    const translatorsToTry: number[] = [];
+
+    if (params.translatorId !== undefined && params.translatorId !== null) {
+      translatorsToTry.push(params.translatorId);
+    }
 
     // If primary translator fails, try known popular fallbacks
     const cachedTranslators = this.mediaCache.get(params.mediaId)?.translators;
@@ -1083,7 +1110,8 @@ export class RezkaProvider implements IProvider {
         if (!translatorsToTry.includes(t.id)) translatorsToTry.push(t.id);
       }
     }
-    for (const popId of [56, 1, 238, 430]) {
+    // Also include 0 for original/Russian tracks and standard popular IDs
+    for (const popId of [0, 56, 1, 238, 430]) {
       if (!translatorsToTry.includes(popId)) translatorsToTry.push(popId);
     }
 
@@ -1097,10 +1125,11 @@ export class RezkaProvider implements IProvider {
     }
 
     let hadAntiBotOrSession = false;
+    let lastActiveMirrorMessage = '';
 
     for (const mirror of mirrorsToTry) {
       for (const trId of translatorsToTry) {
-        if (!trId && trId !== 0) continue;
+        if (trId === undefined || trId === null) continue;
         for (const act of actionsToTry) {
           try {
             const formData = new URLSearchParams();
@@ -1135,7 +1164,8 @@ export class RezkaProvider implements IProvider {
             if (!res.ok) continue;
             const text = await res.text();
             if (!text || text.trim().startsWith('<') || text.includes('<!doctype') || text.includes('<!DOCTYPE')) {
-              if (this.isAntiBot(text)) {
+              // Only mark anti-bot challenge if the ACTIVE mirror requested it
+              if (mirror === this.activeMirror && this.isAntiBot(text)) {
                 hadAntiBotOrSession = true;
               }
               continue;
@@ -1147,8 +1177,12 @@ export class RezkaProvider implements IProvider {
               continue;
             }
             if (json && !json.success) {
-              if (this.isAntiBot(json.message || '')) {
-                hadAntiBotOrSession = true;
+              if (mirror === this.activeMirror) {
+                if (this.isAntiBot(json.message || '')) {
+                  hadAntiBotOrSession = true;
+                } else if (json.message) {
+                  lastActiveMirrorMessage = json.message;
+                }
               }
               continue;
             }
@@ -1166,6 +1200,10 @@ export class RezkaProvider implements IProvider {
       throw new Error(
         'HDRezka требует пройти проверку «Я не бот» или обновить сессию. Нажмите «Пройти проверку» для запуска видео.'
       );
+    }
+
+    if (lastActiveMirrorMessage) {
+      throw new Error(lastActiveMirrorMessage);
     }
 
     throw new Error(

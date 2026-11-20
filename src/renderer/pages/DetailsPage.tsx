@@ -92,9 +92,12 @@ export const DetailsPage: React.FC = () => {
   const handleWatch = (seasonId?: number, episodeId?: number) => {
     if (!details) return;
     const isSeriesLike = details.type === 'series' || details.type === 'animation' || (seasons && seasons.length > 0);
+    const effectiveTranslatorId = (typeof selectedTranslatorId === 'number')
+      ? selectedTranslatorId
+      : (details.translators?.[0]?.id ?? details.currentTranslatorId ?? 0);
     openPlayer({
       details,
-      translatorId: selectedTranslatorId || details.translators?.[0]?.id || 56,
+      translatorId: effectiveTranslatorId,
       seasonId: isSeriesLike ? seasonId || selectedSeasonId : undefined,
       episodeId: isSeriesLike ? episodeId || 1 : undefined,
     });
@@ -110,7 +113,7 @@ export const DetailsPage: React.FC = () => {
 
   const handleVerifyMirror = async () => {
     if (window.api) {
-      await window.api.verifyMirror();
+      await window.api.verifyMirror(details?.url || details?.id);
       if (selectedMediaId) {
         loadMediaDetails(selectedMediaId);
       }

@@ -75,7 +75,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       set({ initialTime: startPosition });
 
-      const activeTranslatorId = translatorId || details.currentTranslatorId || details.translators?.[0]?.id || 56;
+      const activeTranslatorId = (typeof translatorId === 'number')
+        ? translatorId
+        : ((typeof details.currentTranslatorId === 'number')
+            ? details.currentTranslatorId
+            : (details.translators?.[0]?.id ?? 0));
       const tr = details.translators?.find((t) => t.id === activeTranslatorId);
       const stream = await window.api.getStream({
         mediaId: details.id,
@@ -115,7 +119,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (message.includes('сесси') || message.includes('бот') || message.includes('проверку')) {
         message = 'HDRezka требует пройти проверку «Я не бот» или обновить сессию. Нажмите «Пройти проверку» ниже.';
       } else if (message.includes('<!doctype') || message.includes('Unexpected token') || message.includes('is not valid JSON')) {
-        message = 'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте пройти проверку или сменить зеркало в Настройках.';
+        message = 'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте сменить зеркало в Настройках.';
       }
       set({
         isLoading: false,

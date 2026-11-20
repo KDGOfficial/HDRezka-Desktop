@@ -144,12 +144,20 @@ export function registerIpcHandlers(): void {
   });
 
   // Opens the mirror in a visible window so the user passes the site's bot check; cookies land in the shared session
-  ipcMain.handle(IPC_CHANNELS.VERIFY_MIRROR, (event, targetMirror?: string) => {
+  ipcMain.handle(IPC_CHANNELS.VERIFY_MIRROR, (event, targetMirrorOrUrl?: string) => {
     return new Promise<boolean>((resolve) => {
-      let mirror = targetMirror || providerManager.getProvider().getActiveMirror();
+      let loadUrl = targetMirrorOrUrl || providerManager.getProvider().getActiveMirror();
+      let mirror = loadUrl;
+      try {
+        if (loadUrl.startsWith('http')) {
+          mirror = new URL(loadUrl).origin;
+        }
+      } catch (_) {}
+
       // hdrezka.ag has broken Anubis scripts (404 on main.mjs); redirect to working mirror
       if (!mirror || mirror.includes('hdrezka.ag')) {
         mirror = 'https://hdrezka-home.tv';
+        loadUrl = 'https://hdrezka-home.tv';
         providerManager.getProvider().setActiveMirror(mirror);
         db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
       }
@@ -198,7 +206,7 @@ export function registerIpcHandlers(): void {
         resolve(true);
       });
 
-      win.loadURL(mirror).catch(() => {});
+      win.loadURL(loadUrl).catch(() => {});
     });
   });
 
