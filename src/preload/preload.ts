@@ -12,12 +12,16 @@ export const api = {
   // Window
   minimize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MINIMIZE),
   maximize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_MAXIMIZE),
+  unmaximize: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_UNMAXIMIZE),
   close: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_CLOSE),
   isMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_MAXIMIZED),
   setAlwaysOnTop: (flag?: boolean): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, flag),
   isAlwaysOnTop: (): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.WINDOW_IS_ALWAYS_ON_TOP),
+  setBounds: (bounds: { x?: number; y?: number; width?: number; height?: number }) =>
+    ipcRenderer.invoke(IPC_CHANNELS.WINDOW_SET_BOUNDS, bounds),
+  getBounds: () => ipcRenderer.invoke(IPC_CHANNELS.WINDOW_GET_BOUNDS),
   setZoomFactor: (factor: number): void => webFrame.setZoomFactor(factor),
   getZoomFactor: (): number => webFrame.getZoomFactor(),
 

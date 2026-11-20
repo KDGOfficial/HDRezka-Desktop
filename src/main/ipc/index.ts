@@ -38,6 +38,33 @@ export function registerIpcHandlers(): void {
     return getMainWindow()?.isMaximized() ?? false;
   });
 
+  ipcMain.handle(IPC_CHANNELS.WINDOW_UNMAXIMIZE, () => {
+    const win = getMainWindow();
+    if (win && win.isMaximized()) {
+      win.unmaximize();
+    }
+    return true;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WINDOW_SET_BOUNDS, (_, bounds: { x?: number; y?: number; width?: number; height?: number }) => {
+    const win = getMainWindow();
+    if (!win) return null;
+    if (win.isMaximized()) win.unmaximize();
+    const cur = win.getBounds();
+    win.setBounds({
+      x: bounds.x !== undefined ? Math.round(bounds.x) : cur.x,
+      y: bounds.y !== undefined ? Math.round(bounds.y) : cur.y,
+      width: bounds.width !== undefined ? Math.max(320, Math.round(bounds.width)) : cur.width,
+      height: bounds.height !== undefined ? Math.max(180, Math.round(bounds.height)) : cur.height,
+    });
+    return win.getBounds();
+  });
+
+  ipcMain.handle(IPC_CHANNELS.WINDOW_GET_BOUNDS, () => {
+    const win = getMainWindow();
+    return win ? win.getBounds() : null;
+  });
+
   ipcMain.handle(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, (_, flag?: boolean) => {
     const win = getMainWindow();
     if (!win) return false;

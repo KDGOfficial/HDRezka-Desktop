@@ -21,6 +21,8 @@ import {
   ShieldCheck,
   Pin,
   EyeOff,
+  Move,
+  Scaling,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
@@ -70,12 +72,15 @@ export const VideoPlayer: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
   const [isUiLocked, setIsUiLocked] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
+  const [showScaleMenu, setShowScaleMenu] = useState(false);
   const [videoFit, setVideoFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const hideTimerRef = useRef<any>(null);
   const toastTimerRef = useRef<any>(null);
   const lastVolumeRef = useRef(volume > 0 ? volume : 0.8);
+  const isResizingRef = useRef(false);
+  const resizeStartRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
 
   const subtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
   const effectiveVolume = isMuted ? 0 : volume;
@@ -112,10 +117,73 @@ export const VideoPlayer: React.FC = () => {
 
   const handleTogglePin = async () => {
     if (window.api?.setAlwaysOnTop) {
-      const next = await window.api.setAlwaysOnTop();
+      const next = !isPinned;
+      if (next) {
+        // Exit fullscreen and unmaximize so the pinned player can be moved and scaled freely
+        if (document.fullscreenElement) {
+          try {
+            await document.exitFullscreen();
+          } catch (_) {}
+          setIsFullscreen(false);
+        }
+        if (window.api.unmaximize) {
+          await window.api.unmaximize();
+        }
+        // Set a convenient floating default size (854x480) if window was full screen / maximized
+        if (window.api.getBounds && window.api.setBounds) {
+          const b = await window.api.getBounds();
+          if (b && (b.width > 1200 || b.height > 750)) {
+            await window.api.setBounds({ width: 854, height: 480 });
+          }
+        }
+      }
+      await window.api.setAlwaysOnTop(next);
       setIsPinned(next);
       showToast(next ? t.player.pinned : t.player.unpinned);
     }
+  };
+
+  const handleResizePreset = async (w: number, h: number) => {
+    if (window.api?.setBounds) {
+      if (document.fullscreenElement) {
+        try {
+          await document.exitFullscreen();
+        } catch (_) {}
+        setIsFullscreen(false);
+      }
+      if (window.api.unmaximize) await window.api.unmaximize();
+      await window.api.setBounds({ width: w, height: h });
+      setShowScaleMenu(false);
+      showToast(`${w}×${h}`);
+    }
+  };
+
+  const handleStartResize = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!window.api?.getBounds || !window.api?.setBounds) return;
+    const cur = await window.api.getBounds();
+    if (!cur) return;
+    isResizingRef.current = true;
+    resizeStartRef.current = { x: e.screenX, y: e.screenY, w: cur.width, h: cur.height };
+
+    const onMove = (moveEvt: MouseEvent) => {
+      if (!isResizingRef.current) return;
+      const dx = moveEvt.screenX - resizeStartRef.current.x;
+      const dy = moveEvt.screenY - resizeStartRef.current.y;
+      const targetW = Math.max(320, Math.round(resizeStartRef.current.w + dx));
+      const targetH = Math.max(180, Math.round(resizeStartRef.current.h + dy));
+      window.api?.setBounds({ width: targetW, height: targetH });
+    };
+
+    const onUp = () => {
+      isResizingRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
   };
 
   const cycleVideoFit = () => {
@@ -587,9 +655,9 @@ export const VideoPlayer: React.FC = () => {
           showControls && !error ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        {/* Top bar */}
-        <div className="flex items-center justify-between pointer-events-auto bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 -m-6 mb-0">
-          <div className="flex items-center space-x-3">
+        {/* Top bar with drag-region for native window dragging */}
+        <div className="flex items-center justify-between pointer-events-auto bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 -m-6 mb-0 drag-region">
+          <div className="flex items-center space-x-3 no-drag">
             <button
               onClick={handleClose}
               className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-colors"
@@ -619,7 +687,67 @@ export const VideoPlayer: React.FC = () => {
           </div>
 
           {/* Top Bar Quick Action Controls */}
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-2 no-drag">
+            {/* If pinned, show Move handle and Window Size Presets */}
+            {isPinned && (
+              <>
+                <div
+                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 text-zinc-300 text-xs font-semibold select-none cursor-grab active:cursor-grabbing border border-white/10 drag-region"
+                  title={t.player.pinnedDragTip}
+                >
+                  <Move className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="hidden sm:inline text-[11px] font-medium">{t.player.moveWindow}</span>
+                </div>
+
+                <div className="relative">
+                  <button
+                    onClick={() => setShowScaleMenu((prev) => !prev)}
+                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white backdrop-blur-md transition-colors text-[11px] font-bold border border-white/10"
+                    title={t.player.pinnedPresets}
+                  >
+                    <Scaling className="w-3.5 h-3.5 text-orange-400" />
+                    <span className="hidden sm:inline">{t.player.pinnedPresets}</span>
+                  </button>
+
+                  {showScaleMenu && (
+                    <div className="absolute right-0 top-full mt-2 w-44 rounded-2xl bg-[#12131d]/95 backdrop-blur-xl border border-white/15 p-1.5 shadow-2xl z-50 animate-fadeIn space-y-1">
+                      <div className="px-2.5 py-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                        {t.player.pinnedPresets}
+                      </div>
+                      <button
+                        onClick={() => handleResizePreset(480, 270)}
+                        className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-200 hover:bg-brand-red/20 hover:text-white flex items-center justify-between transition-colors"
+                      >
+                        <span>{t.player.sizeCompact}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">16:9 S</span>
+                      </button>
+                      <button
+                        onClick={() => handleResizePreset(720, 405)}
+                        className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-200 hover:bg-brand-red/20 hover:text-white flex items-center justify-between transition-colors"
+                      >
+                        <span>{t.player.sizeMedium}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">16:9 M</span>
+                      </button>
+                      <button
+                        onClick={() => handleResizePreset(960, 540)}
+                        className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-200 hover:bg-brand-red/20 hover:text-white flex items-center justify-between transition-colors"
+                      >
+                        <span>{t.player.sizeLarge}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">16:9 L</span>
+                      </button>
+                      <button
+                        onClick={() => handleResizePreset(1280, 720)}
+                        className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-200 hover:bg-brand-red/20 hover:text-white flex items-center justify-between transition-colors"
+                      >
+                        <span>{t.player.sizeStandard}</span>
+                        <span className="text-[10px] text-zinc-500 font-mono">HD</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
             {/* UI Hide / Lock Shortcut button */}
             <button
               onClick={toggleUiLock}
@@ -997,6 +1125,34 @@ export const VideoPlayer: React.FC = () => {
             </div>
           </div>
         )}
+      </div>
+
+      {/* Persistent top drag handle when pinned (allows dragging window even when controls fade) */}
+      {isPinned && (
+        <div
+          className="absolute top-0 left-0 right-0 h-6 drag-region pointer-events-auto z-40 cursor-grab active:cursor-grabbing"
+          title={t.player.pinnedDragTip}
+        />
+      )}
+
+      {/* Corner Resize Handle for Scaling Electron Window */}
+      <div
+        onMouseDown={handleStartResize}
+        className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize z-50 flex items-end justify-end p-2 opacity-40 hover:opacity-100 transition-opacity no-drag group"
+        title={t.player.pinnedPresets}
+      >
+        <svg
+          className="w-4 h-4 text-white/70 group-hover:text-amber-400 drop-shadow transition-colors"
+          viewBox="0 0 16 16"
+          fill="currentColor"
+        >
+          <circle cx="14" cy="14" r="1.5" />
+          <circle cx="14" cy="9" r="1.5" />
+          <circle cx="9" cy="14" r="1.5" />
+          <circle cx="14" cy="4" r="1.5" />
+          <circle cx="9" cy="9" r="1.5" />
+          <circle cx="4" cy="14" r="1.5" />
+        </svg>
       </div>
     </div>
   );

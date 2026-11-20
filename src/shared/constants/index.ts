@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.16';
+export const APP_VERSION = '0.0.17';
 
 export const DEFAULT_MIRRORS = [
   'https://hdrezka-home.tv',
@@ -46,10 +46,13 @@ export const IPC_CHANNELS = {
   // Window
   WINDOW_MINIMIZE: 'window:minimize',
   WINDOW_MAXIMIZE: 'window:maximize',
+  WINDOW_UNMAXIMIZE: 'window:unmaximize',
   WINDOW_CLOSE: 'window:close',
   WINDOW_IS_MAXIMIZED: 'window:isMaximized',
   WINDOW_SET_ALWAYS_ON_TOP: 'window:setAlwaysOnTop',
   WINDOW_IS_ALWAYS_ON_TOP: 'window:isAlwaysOnTop',
+  WINDOW_SET_BOUNDS: 'window:setBounds',
+  WINDOW_GET_BOUNDS: 'window:getBounds',
 
   // Provider & Catalog
   GET_HOME_SECTIONS: 'provider:getHomeSections',

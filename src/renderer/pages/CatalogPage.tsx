@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MediaCard } from '../components/MediaCard';
 import { MediaItem, ContentType } from '../../shared/types';
 import { GENRES } from '../../shared/constants';
-import { ChevronLeft, ChevronRight, Film, Tv, Smile, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Film, Tv, Smile, Sparkles, Clapperboard } from 'lucide-react';
 import { useTranslation } from '../i18n';
 
 interface CatalogPageProps {
@@ -52,6 +52,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
     { id: 'series', label: t.catalog.categories.series, icon: Tv },
     { id: 'cartoons', label: t.catalog.categories.cartoons, icon: Smile },
     { id: 'animation', label: t.catalog.categories.animation, icon: Sparkles },
+    { id: 'shows', label: t.catalog.categories.shows, icon: Clapperboard },
   ];
 
   return (

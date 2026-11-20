@@ -35,7 +35,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.16';
+  public version = '0.0.17';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -176,9 +176,10 @@ export class RezkaProvider implements IProvider {
 
     const catEl = el.find('.cat');
     let type: ContentType = 'films';
-    if (catEl.hasClass('series')) type = 'series';
-    else if (catEl.hasClass('cartoons')) type = 'cartoons';
-    else if (catEl.hasClass('animation')) type = 'animation';
+    if (catEl.hasClass('series') || url.includes('/series/')) type = 'series';
+    else if (catEl.hasClass('cartoons') || url.includes('/cartoons/')) type = 'cartoons';
+    else if (catEl.hasClass('animation') || url.includes('/animation/')) type = 'animation';
+    else if (catEl.hasClass('show') || url.includes('/show/')) type = 'shows';
 
     const infoText = el.find('.misc').text().trim() || el.find('.b-content__inline_item-link div').text().trim();
     const badgeText = el.find('.info').text().trim();
@@ -217,10 +218,32 @@ export class RezkaProvider implements IProvider {
     };
   }
 
+  private async fetchItemsFromPath(path: string): Promise<MediaItem[]> {
+    try {
+      const url = path.startsWith('http') ? path : `${this.activeMirror}${path}`;
+      const html = await this.fetchHtml(url);
+      if (this.isAntiBot(html)) return [];
+      const $ = cheerio.load(html);
+      const items: MediaItem[] = [];
+      $('.b-content__inline_item').each((_, el) => {
+        const item = this.parseItem($(el), $);
+        if (item && !items.some((x) => x.id === item.id)) {
+          this.mediaCache.set(item.url, item);
+          this.mediaCache.set(item.id, item);
+          items.push(item);
+        }
+      });
+      return items;
+    } catch {
+      return [];
+    }
+  }
+
   private async fetchLiveRezkaHomeSections() {
     try {
-      const queries = ['лучшие', 'фильмы 2024', 'сериал', 'человек-паук', 'дюна'];
-      const queryResults = await Promise.allSettled(queries.map(q => this.searchAdvanced(q, 1)));
+      // Live HDRezka category searches directly from search endpoint
+      const queries = ['лучшие', 'фильмы', 'сериалы', 'новинки', 'мультфильмы'];
+      const queryResults = await Promise.allSettled(queries.map((q) => this.searchAdvanced(q, 1)));
 
       let recommendations: MediaItem[] = [];
       let popular: MediaItem[] = [];
@@ -232,7 +255,7 @@ export class RezkaProvider implements IProvider {
       queryResults.forEach((res, idx) => {
         if (res.status === 'fulfilled' && res.value && Array.isArray(res.value.items)) {
           const items = res.value.items;
-          items.forEach(it => {
+          items.forEach((it) => {
             if (it.url && !allLiveMap.has(it.url)) {
               allLiveMap.set(it.url, it);
             }
@@ -240,13 +263,15 @@ export class RezkaProvider implements IProvider {
           const q = queries[idx];
           if (q === 'лучшие') {
             recommendations = items.slice(0, 16);
-          } else if (q === 'фильмы 2024') {
+          } else if (q === 'новинки') {
             newReleases = items.slice(0, 16);
             popular = items.slice(0, 16);
-          } else if (q === 'сериал') {
+          } else if (q === 'сериалы') {
             topSeries = items.slice(0, 16);
-          } else if (q === 'человек-паук' || q === 'дюна') {
+          } else if (q === 'фильмы') {
             topMovies = items.slice(0, 16);
+          } else if (q === 'мультфильмы' && recommendations.length < 8) {
+            recommendations.push(...items.slice(0, 8));
           }
         }
       });
@@ -257,28 +282,29 @@ export class RezkaProvider implements IProvider {
       }
 
       // Pick hero with valid poster and high prominence
-      const heroCandidate = recommendations.find(i => i.poster && !i.poster.includes('unsplash')) ||
-                            popular.find(i => i.poster && !i.poster.includes('unsplash')) ||
-                            allLive.find(i => i.poster && !i.poster.includes('unsplash')) ||
-                            allLive[0];
+      const heroCandidate =
+        recommendations.find((i) => i.poster && !i.poster.includes('unsplash')) ||
+        popular.find((i) => i.poster && !i.poster.includes('unsplash')) ||
+        allLive.find((i) => i.poster && !i.poster.includes('unsplash')) ||
+        allLive[0];
 
       if (recommendations.length === 0) {
-        recommendations = allLive.filter(i => (i.rating || 0) >= 7.0 || i.poster?.includes('static.hdrezka')).slice(0, 16);
+        recommendations = allLive.filter((i) => (i.rating || 0) >= 7.0 || i.poster?.includes('static.hdrezka')).slice(0, 16);
       }
       if (popular.length === 0) {
         popular = allLive.slice(0, 16);
       }
       if (newReleases.length === 0) {
-        newReleases = allLive.filter(i => (i.year || 0) >= 2024).slice(0, 16);
+        newReleases = allLive.filter((i) => (i.year || 0) >= 2024).slice(0, 16);
       }
       if (topMovies.length === 0) {
-        topMovies = allLive.filter(i => i.type === 'films').slice(0, 16);
+        topMovies = allLive.filter((i) => i.type === 'films').slice(0, 16);
       }
       if (topSeries.length === 0) {
-        topSeries = allLive.filter(i => i.type === 'series').slice(0, 16);
+        topSeries = allLive.filter((i) => i.type === 'series').slice(0, 16);
       }
 
-      const expected = allLive.filter(i => (i.year || 0) >= 2025).slice(0, 16);
+      const expected = allLive.filter((i) => (i.year || 0) >= 2025).slice(0, 16);
 
       return {
         hero: heroCandidate || FALLBACK_HERO,
@@ -306,7 +332,7 @@ export class RezkaProvider implements IProvider {
       const allItems: MediaItem[] = [];
       $('.b-content__inline_item').each((_, el) => {
         const item = this.parseItem($(el), $);
-        if (item && !allItems.some(x => x.id === item.id)) {
+        if (item && !allItems.some((x) => x.id === item.id)) {
           this.mediaCache.set(item.url, item);
           this.mediaCache.set(item.id, item);
           allItems.push(item);
@@ -318,25 +344,56 @@ export class RezkaProvider implements IProvider {
         return await this.fetchLiveRezkaHomeSections();
       }
 
-      // Hero: choose first high-profile item
-      const hero = allItems.length > 0 ? allItems[0] : null;
+      // Fetch categories & recommendations directly from HDRezka in parallel
+      const [recsDirect, popularDirect, newDirect, moviesDirect, seriesDirect] = await Promise.all([
+        this.fetchItemsFromPath('/best/'),
+        this.fetchItemsFromPath('/?filter=popular'),
+        this.fetchItemsFromPath('/new/'),
+        this.fetchItemsFromPath('/films/best/'),
+        this.fetchItemsFromPath('/series/best/'),
+      ]);
 
-      // Segment items into categories
-      const popular = allItems.slice(0, 16);
-      const newReleases = allItems.slice(16, 32);
-      const topMovies = allItems.filter(i => i.type === 'films').slice(0, 16);
-      const topSeries = allItems.filter(i => i.type === 'series').slice(0, 16);
-      const recommendations = allItems.filter(i => (i.rating || 0) >= 7.0 || i.type === 'cartoons').slice(0, 16);
-      const expected = allItems.slice(32, 48);
+      const recommendations = recsDirect.length > 0
+        ? recsDirect
+        : allItems.filter((i) => (i.rating || 0) >= 7.0 || i.type === 'cartoons');
+
+      const popular = popularDirect.length > 0
+        ? popularDirect
+        : allItems.slice(0, 16);
+
+      const newReleases = newDirect.length > 0
+        ? newDirect
+        : allItems.slice(16, 32);
+
+      const topMovies = moviesDirect.length > 0
+        ? moviesDirect
+        : allItems.filter((i) => i.type === 'films');
+
+      const topSeries = seriesDirect.length > 0
+        ? seriesDirect
+        : allItems.filter((i) => i.type === 'series');
+
+      const expected = allItems.filter((i) => (i.year || 0) >= 2025).length > 0
+        ? allItems.filter((i) => (i.year || 0) >= 2025).slice(0, 16)
+        : allItems.slice(32, 48);
+
+      // Hero: pick top item from recommendations or popular
+      let hero = recommendations[0] || popular[0] || allItems[0];
+      if (hero?.url) {
+        const cached = this.mediaCache.get(hero.url);
+        if (cached?.info) {
+          hero = { ...hero, info: cached.info };
+        }
+      }
 
       return {
         hero,
-        popular: popular.length > 0 ? popular : allItems.slice(0, 12),
-        newReleases: newReleases.length > 0 ? newReleases : allItems.slice(0, 12),
-        topMovies: topMovies.length > 0 ? topMovies : allItems.filter(i => i.type === 'films'),
-        topSeries: topSeries.length > 0 ? topSeries : allItems.filter(i => i.type === 'series'),
-        recommendations: recommendations.length > 0 ? recommendations : allItems.slice(0, 12),
-        expected: expected.length > 0 ? expected : allItems.slice(12, 24),
+        popular: popular.slice(0, 16),
+        newReleases: newReleases.slice(0, 16),
+        topMovies: topMovies.slice(0, 16),
+        topSeries: topSeries.slice(0, 16),
+        recommendations: recommendations.slice(0, 16),
+        expected: expected.slice(0, 16),
       };
     } catch (err) {
       console.warn('[RezkaProvider] Error fetching home sections, trying live search.php:', err);
@@ -346,7 +403,8 @@ export class RezkaProvider implements IProvider {
 
   public async getCatalog(filter: CatalogFilter) {
     try {
-      let path = `/${filter.type}/`;
+      const catSlug = filter.type === 'shows' ? 'show' : filter.type;
+      let path = `/${catSlug}/`;
       if (filter.genre) {
         path += `${filter.genre}/`;
       }
