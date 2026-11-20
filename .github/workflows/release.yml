@@ -30,13 +30,15 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Run unit tests
         run: npm test
 
       - name: Build Application & Windows Distribution
-        run: npm run build && npx electron-builder --win --publish never
+        run: npm run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Publish GitHub Release with Executables
         uses: softprops/action-gh-release@v2
