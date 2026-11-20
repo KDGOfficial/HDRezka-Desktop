@@ -66,6 +66,7 @@ export const VideoPlayer: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
 
   const hideTimerRef = useRef<any>(null);
+  const lastVolumeRef = useRef(volume > 0 ? volume : 0.8);
 
   const subtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
   const effectiveVolume = isMuted ? 0 : volume;
@@ -285,8 +286,6 @@ export const VideoPlayer: React.FC = () => {
       videoRef.current.currentTime = target;
     }
   };
-
-  const lastVolumeRef = useRef(volume > 0 ? volume : 0.8);
 
   const handleVolumeChange = (newVol: number) => {
     const clamped = Math.max(0, Math.min(1, Math.round(newVol * 100) / 100));
