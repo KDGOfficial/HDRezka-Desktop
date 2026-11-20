@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, RefreshCw } from 'lucide-react';
 import { HeroBanner } from '../components/HeroBanner';
 import { MediaSlider } from '../components/MediaSlider';
 import { MediaItem } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { useTranslation } from '../i18n';
 
 export const HomePage: React.FC = () => {
   const { setPage, watchHistory, loadWatchHistory } = useMediaStore();
   const { settings } = useSettingsStore();
+  const { t } = useTranslation();
 
   const [loading, setLoading] = useState(true);
   const [hero, setHero] = useState<MediaItem | null>(null);
@@ -44,22 +46,32 @@ export const HomePage: React.FC = () => {
   };
 
   // Map watch history to MediaItem with progress
-  const continueWatchingItems: MediaItem[] = watchHistory.slice(0, 10).map((h) => ({
+  const continueWatchingItems: MediaItem[] = watchHistory.slice(0, 12).map((h) => ({
     id: h.mediaId,
     title: h.title,
     origTitle: h.origTitle,
     poster: h.poster,
     type: h.type,
     watchProgress: h.percent,
-    info: h.season && h.episode ? `Сезон ${h.season}, Серия ${h.episode}` : `${h.percent}% просмотрено`,
+    info:
+      h.season && h.episode
+        ? `${t.details.season} ${h.season}, ${t.details.episode} ${h.episode}`
+        : `${h.percent}% ${t.history.watched}`,
     url: h.mediaId,
   }));
 
   if (loading) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center min-h-[500px]">
-        <div className="w-12 h-12 border-4 border-brand-red border-t-transparent rounded-full animate-spin mb-4" />
-        <span className="text-zinc-400 text-sm">Загрузка каталога HDRezka...</span>
+        <div className="relative w-14 h-14 mb-4">
+          <div className="w-14 h-14 border-4 border-brand-red/20 border-t-brand-red rounded-full animate-spin" />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span className="w-3 h-3 rounded-full bg-brand-red shadow-glow" />
+          </div>
+        </div>
+        <span className="text-zinc-400 text-xs font-semibold tracking-wide animate-pulse">
+          {t.home.loadingCatalog}
+        </span>
       </div>
     );
   }
@@ -68,26 +80,27 @@ export const HomePage: React.FC = () => {
 
   if (!hasAnyContent) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[450px] text-center p-6">
-        <div className="w-16 h-16 rounded-2xl bg-dark-surface border border-white/10 flex items-center justify-center text-brand-red mb-4 shadow-card">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[460px] text-center p-6 animate-fadeIn">
+        <div className="w-16 h-16 rounded-3xl bg-[#14151e] border border-white/10 flex items-center justify-center text-brand-red mb-4 shadow-elevated">
           <AlertCircle className="w-8 h-8" />
         </div>
-        <h2 className="text-xl font-bold text-white mb-2">Каталог временно недоступен</h2>
-        <p className="text-xs text-zinc-400 max-w-md mb-6 leading-relaxed">
-          Текущее зеркало заблокировано или не отвечает. Проверьте интернет-соединение или выберите другое зеркало в настройках.
+        <h2 className="text-lg md:text-xl font-black text-white mb-2">{t.home.catalogUnavailable}</h2>
+        <p className="text-xs text-zinc-400 max-w-md mb-6 leading-relaxed font-normal">
+          {t.home.catalogUnavailableDesc}
         </p>
         <div className="flex items-center space-x-3">
           <button
             onClick={() => loadHomeData()}
-            className="px-5 py-2.5 rounded-xl bg-brand-red hover:bg-brand-redHover text-white text-xs font-bold transition-all shadow-glow"
+            className="flex items-center space-x-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-bold transition-all shadow-glow active:scale-95"
           >
-            Повторить попытку
+            <RefreshCw className="w-3.5 h-3.5" />
+            <span>{t.home.retry}</span>
           </button>
           <button
             onClick={() => setPage('settings')}
-            className="px-5 py-2.5 rounded-xl bg-dark-surface hover:bg-white/10 border border-white/10 text-white text-xs font-semibold transition-all"
+            className="px-5 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold transition-all active:scale-95"
           >
-            Настройки зеркал
+            {t.home.mirrorSettings}
           </button>
         </div>
       </div>
@@ -97,14 +110,14 @@ export const HomePage: React.FC = () => {
   const { homeSections } = settings;
 
   return (
-    <div className="w-full pb-16">
+    <div className="w-full pb-16 animate-fadeIn">
       {/* Hero Banner */}
       {homeSections.hero && hero && <HeroBanner item={hero} />}
 
       {/* Continue Watching Section */}
       {homeSections.continueWatching && continueWatchingItems.length > 0 && (
         <MediaSlider
-          title="Продолжить просмотр"
+          title={t.home.continueWatching}
           items={continueWatchingItems}
           onViewAll={() => setPage('history')}
           showProgress={true}
@@ -114,7 +127,7 @@ export const HomePage: React.FC = () => {
       {/* Popular */}
       {homeSections.popular && popular.length > 0 && (
         <MediaSlider
-          title="Популярное сейчас"
+          title={t.home.popular}
           items={popular}
           onViewAll={() => setPage('catalog')}
         />
@@ -123,7 +136,7 @@ export const HomePage: React.FC = () => {
       {/* New Releases */}
       {homeSections.newReleases && newReleases.length > 0 && (
         <MediaSlider
-          title="Свежие новинки"
+          title={t.home.newReleases}
           items={newReleases}
           onViewAll={() => setPage('catalog')}
         />
@@ -132,7 +145,7 @@ export const HomePage: React.FC = () => {
       {/* Top Movies */}
       {homeSections.topMovies && topMovies.length > 0 && (
         <MediaSlider
-          title="Лучшие фильмы"
+          title={t.home.topMovies}
           items={topMovies}
           onViewAll={() => setPage('films')}
         />
@@ -141,7 +154,7 @@ export const HomePage: React.FC = () => {
       {/* Top Series */}
       {homeSections.topSeries && topSeries.length > 0 && (
         <MediaSlider
-          title="Популярные сериалы"
+          title={t.home.topSeries}
           items={topSeries}
           onViewAll={() => setPage('series')}
         />
@@ -150,7 +163,7 @@ export const HomePage: React.FC = () => {
       {/* Recommendations */}
       {homeSections.recommendations && recommendations.length > 0 && (
         <MediaSlider
-          title="Рекомендуем к просмотру"
+          title={t.home.recommendations}
           items={recommendations}
         />
       )}
@@ -158,7 +171,7 @@ export const HomePage: React.FC = () => {
       {/* Expected */}
       {homeSections.expected && expected.length > 0 && (
         <MediaSlider
-          title="Скоро на HDRezka"
+          title={t.home.expected}
           items={expected}
         />
       )}

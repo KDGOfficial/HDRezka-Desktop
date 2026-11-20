@@ -12,10 +12,14 @@ import {
   AlertCircle,
   ExternalLink,
   ShieldCheck,
+  Sparkles,
+  Info,
+  CheckCircle2,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { APP_VERSION } from '../../shared/constants';
-import { UpdateInfo } from '../../shared/types';
+import { useTranslation, Locale } from '../i18n';
+import appLogo from '../assets/logo.png';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -26,11 +30,17 @@ export const SettingsPage: React.FC = () => {
     checkMirrors,
     isCheckingMirrors,
     setActiveMirror,
+    updateInfo,
+    isCheckingUpdate,
+    checkForUpdates,
+    downloadUpdate,
+    installUpdate,
+    updateProgress,
   } = useSettingsStore();
 
+  const { t, language, setLanguage } = useTranslation();
+
   const [customMirror, setCustomMirror] = useState('');
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [cacheCleared, setCacheCleared] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
@@ -69,16 +79,10 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleCheckUpdates = async () => {
-    if (!window.api) return;
-    setIsCheckingUpdate(true);
-    try {
-      const info = await window.api.checkForUpdates();
-      setUpdateInfo(info);
-    } catch {
-      setUpdateInfo(null);
-    } finally {
-      setIsCheckingUpdate(false);
+  const handleVerifyMirror = async () => {
+    if (window.api) {
+      await window.api.verifyMirror();
+      checkMirrors();
     }
   };
 
@@ -112,10 +116,10 @@ export const SettingsPage: React.FC = () => {
       if (content) {
         const success = await window.api.importData(content);
         if (success) {
-          setImportStatus('Данные успешно импортированы!');
+          setImportStatus(t.settings.importSuccess);
           loadSettings();
         } else {
-          setImportStatus('Ошибка: неверный формат файла резервной копии.');
+          setImportStatus(t.settings.importError);
         }
         setTimeout(() => setImportStatus(null), 4000);
       }
@@ -123,46 +127,197 @@ export const SettingsPage: React.FC = () => {
     reader.readAsText(file);
   };
 
+  const isDownloading = updateProgress?.status === 'downloading';
+  const isReady = updateProgress?.status === 'ready';
+
   return (
-    <div className="w-full pb-16 text-left select-none max-w-4xl mx-auto">
+    <div className="w-full pb-20 text-left select-none max-w-4xl mx-auto animate-fadeIn">
       {/* Header */}
-      <div className="mb-8 pb-4 border-b border-dark-border">
-        <h1 className="text-2xl font-bold text-white flex items-center">
-          <Settings className="w-6 h-6 text-brand-red mr-2" />
-          Настройки приложения
+      <div className="mb-8 pb-5 border-b border-white/5">
+        <h1 className="text-2xl font-black text-white flex items-center">
+          <Settings className="w-6 h-6 text-brand-red mr-2.5" />
+          {t.settings.title}
         </h1>
         <p className="text-xs text-zinc-400 mt-1">
-          HDREZKA Desktop — Версия {APP_VERSION}
+          {t.settings.subtitle} v{APP_VERSION}
         </p>
       </div>
 
       <div className="space-y-8">
-        <div className="p-5 rounded-2xl bg-dark-surface border border-white/5 flex items-center justify-between">
-          <div><h2 className="text-sm font-bold text-white">Язык интерфейса</h2><p className="text-xs text-zinc-500 mt-1">Русский · Українська · English</p></div>
-          <select aria-label="Язык интерфейса" value={settings.language} onChange={(e) => updateSettings({ language: e.target.value as 'ru' | 'uk' | 'en' })} className="bg-dark-bg border border-white/10 rounded-xl px-4 py-2 text-sm text-white">
-            <option value="ru">Русский</option><option value="uk">Українська</option><option value="en">English</option>
-          </select>
-        </div>
-        {/* Section: Mirrors & Network */}
-        <div className="p-6 rounded-2xl bg-dark-surface border border-white/5 shadow-card space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-white/5">
+        {/* Section: Language */}
+        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center space-x-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-zinc-300">
+              <Globe className="w-5 h-5 text-brand-red" />
+            </div>
             <div>
-              <h2 className="text-base font-bold text-white flex items-center">
-                <Globe className="w-4 h-4 text-brand-red mr-2" />
-                Зеркала HDRezka
-              </h2>
-              <p className="text-xs text-zinc-400">
-                Выберите активный домен или добавьте собственный работающий адрес
+              <h2 className="text-sm font-bold text-white">{t.settings.language}</h2>
+              <p className="text-xs text-zinc-400 mt-0.5">{t.settings.languageDesc}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center bg-[#090a0f] p-1 rounded-2xl border border-white/10">
+            {(
+              [
+                { id: 'ru', label: 'Русский' },
+                { id: 'uk', label: 'Українська' },
+                { id: 'en', label: 'English' },
+              ] as const
+            ).map((lang) => (
+              <button
+                key={lang.id}
+                onClick={() => setLanguage(lang.id)}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  language === lang.id
+                    ? 'bg-gradient-to-r from-brand-red to-orange-600 text-white shadow-glow-sm'
+                    : 'text-zinc-400 hover:text-white'
+                }`}
+              >
+                {lang.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Section: Auto-Update via GitHub */}
+        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-5">
+          <div className="flex items-center justify-between pb-4 border-b border-white/5 flex-wrap gap-2">
+            <div className="flex items-center space-x-3.5">
+              <div className="w-10 h-10 rounded-2xl bg-brand-red/10 border border-brand-red/20 flex items-center justify-center text-brand-red shadow-glow-sm">
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-white">{t.settings.updates}</h2>
+                <p className="text-xs text-zinc-400 mt-0.5">{t.settings.updatesDesc}</p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => checkForUpdates(false)}
+              disabled={isCheckingUpdate}
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white disabled:opacity-50 transition-all active:scale-95"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin text-brand-red' : ''}`} />
+              <span>{isCheckingUpdate ? t.settings.checkingUpdates : t.settings.checkUpdatesBtn}</span>
+            </button>
+          </div>
+
+          {/* Update Status Card */}
+          <div className="p-4 rounded-2xl bg-dark-bg/80 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-xs font-bold text-white">
+                  {updateInfo?.hasUpdate ? (
+                    <span className="text-brand-red flex items-center">
+                      <Sparkles className="w-3.5 h-3.5 mr-1" />
+                      {t.settings.newVersionFound}: v{updateInfo.latestVersion}
+                    </span>
+                  ) : (
+                    <span className="text-emerald-400 flex items-center">
+                      <Check className="w-3.5 h-3.5 mr-1" />
+                      {t.settings.latestVersion} (v{APP_VERSION})
+                    </span>
+                  )}
+                </span>
+              </div>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                GitHub: <span className="font-mono text-zinc-400">KDGOfficial/HDRezka-Desktop</span>
               </p>
             </div>
-            <button
-              onClick={() => checkMirrors()}
-              disabled={isCheckingMirrors}
-              className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-dark-surfaceLight hover:bg-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-50 transition-colors"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingMirrors ? 'animate-spin' : ''}`} />
-              <span>Проверить пинг</span>
-            </button>
+
+            <div className="flex items-center space-x-2">
+              {updateInfo?.hasUpdate && !isReady && (
+                <button
+                  onClick={downloadUpdate}
+                  disabled={isDownloading}
+                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-bold shadow-glow transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {isDownloading ? t.settings.downloading : t.settings.downloadUpdate}
+                </button>
+              )}
+
+              {isReady && (
+                <button
+                  onClick={installUpdate}
+                  className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-bold shadow-glow transition-all active:scale-95"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>{t.settings.installRestart}</span>
+                </button>
+              )}
+
+              <a
+                href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-semibold transition-colors"
+              >
+                <span>{t.settings.downloadFromGithub}</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+
+          {/* Download progress bar */}
+          {isDownloading && updateProgress && (
+            <div className="p-4 rounded-2xl bg-dark-bg/90 border border-brand-red/30 space-y-1.5">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-white">{t.settings.downloading}</span>
+                <span className="font-mono text-brand-red font-bold">{updateProgress.percent}%</span>
+              </div>
+              <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-brand-red to-orange-500 transition-all duration-200"
+                  style={{ width: `${updateProgress.percent}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Toggle auto check on startup */}
+          <div className="flex items-center justify-between pt-1">
+            <span className="text-xs text-zinc-300 font-medium">{t.settings.autoCheckOnStart}</span>
+            <input
+              type="checkbox"
+              checked={settings.app.checkUpdatesOnStart}
+              onChange={(e) =>
+                updateSettings({
+                  app: { ...settings.app, checkUpdatesOnStart: e.target.checked },
+                })
+              }
+              className="w-4 h-4 accent-brand-red cursor-pointer"
+            />
+          </div>
+        </div>
+
+        {/* Section: Mirrors & Network */}
+        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-5">
+          <div className="flex items-center justify-between pb-4 border-b border-white/5 flex-wrap gap-2">
+            <div>
+              <h2 className="text-sm font-bold text-white flex items-center">
+                <Globe className="w-4 h-4 text-brand-red mr-2" />
+                {t.settings.mirrors}
+              </h2>
+              <p className="text-xs text-zinc-400 mt-0.5">{t.settings.mirrorsDesc}</p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleVerifyMirror}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-zinc-300 transition-colors"
+                title={t.settings.verifyBtn}
+              >
+                <ShieldCheck className="w-3.5 h-3.5 inline mr-1 text-emerald-400" />
+                <span>{t.details.passVerification}</span>
+              </button>
+              <button
+                onClick={() => checkMirrors()}
+                disabled={isCheckingMirrors}
+                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-50 transition-colors border border-white/10"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingMirrors ? 'animate-spin text-brand-red' : ''}`} />
+                <span>{isCheckingMirrors ? t.settings.testing : t.settings.testPing}</span>
+              </button>
+            </div>
           </div>
 
           {/* Mirrors List */}
@@ -174,32 +329,32 @@ export const SettingsPage: React.FC = () => {
                 <div
                   key={mirror}
                   onClick={() => setActiveMirror(mirror)}
-                  className={`flex items-center justify-between p-3.5 rounded-xl border transition-all cursor-pointer ${
+                  className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer ${
                     isActive
-                      ? 'bg-brand-red/10 border-brand-red text-white shadow-glow'
-                      : 'bg-dark-surfaceLight/50 border-white/5 hover:border-white/20 text-zinc-300'
+                      ? 'bg-brand-red/10 border-brand-red text-white shadow-glow-sm'
+                      : 'bg-white/5 border-white/5 hover:border-white/20 text-zinc-300'
                   }`}
                 >
                   <div className="flex items-center space-x-2.5 truncate">
                     <span
                       className={`w-2 h-2 rounded-full flex-shrink-0 ${
                         status?.isAvailable
-                          ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]'
+                          ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
                           : 'bg-red-500'
                       }`}
                     />
-                    <span className="text-xs font-semibold truncate">{mirror}</span>
+                    <span className="text-xs font-bold truncate font-mono">{mirror}</span>
                   </div>
 
                   <div className="flex items-center space-x-2 flex-shrink-0">
                     {status && (
                       <span className="text-[10px] text-zinc-500 font-mono">
-                        {status.latencyMs < 9000 ? `${status.latencyMs}ms` : 'ошибка'}
+                        {status.latencyMs < 9000 ? `${status.latencyMs}ms` : t.settings.error}
                       </span>
                     )}
                     {isActive && (
-                      <span className="px-1.5 py-0.5 rounded bg-brand-red text-white text-[9px] font-bold">
-                        Активно
+                      <span className="px-1.5 py-0.5 rounded-md bg-brand-red text-white text-[9px] font-black uppercase">
+                        {t.settings.active}
                       </span>
                     )}
                   </div>
@@ -209,35 +364,35 @@ export const SettingsPage: React.FC = () => {
           </div>
 
           {/* Add custom mirror */}
-          <div className="flex items-center space-x-2 pt-2">
+          <div className="flex items-center space-x-2 pt-1">
             <input
               type="text"
               value={customMirror}
               onChange={(e) => setCustomMirror(e.target.value)}
-              placeholder="https://your-custom-mirror.com"
-              className="flex-1 bg-dark-bg border border-white/10 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-brand-red"
+              placeholder={t.settings.addMirrorPlaceholder}
+              className="flex-1 bg-dark-bg border border-white/10 rounded-2xl px-3.5 py-2 text-xs text-white outline-none focus:border-brand-red font-mono"
             />
             <button
               onClick={handleAddCustomMirror}
-              className="px-4 py-2 rounded-xl bg-brand-red hover:bg-brand-redHover text-white text-xs font-bold transition-all shadow-glow"
+              className="px-4 py-2 rounded-2xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-bold transition-all shadow-glow flex-shrink-0"
             >
-              Добавить зеркало
+              {t.settings.addMirrorBtn}
             </button>
           </div>
         </div>
 
         {/* Section: Video Player */}
-        <div className="p-6 rounded-2xl bg-dark-surface border border-white/5 shadow-card space-y-4">
-          <h2 className="text-base font-bold text-white flex items-center pb-3 border-b border-white/5">
+        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-4">
+          <h2 className="text-sm font-bold text-white flex items-center pb-3 border-b border-white/5">
             <Tv className="w-4 h-4 text-brand-red mr-2" />
-            Видеоплеер
+            {t.settings.player}
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex items-center justify-between p-3 rounded-xl bg-dark-surfaceLight/50 border border-white/5">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5">
               <div>
-                <div className="text-xs font-semibold text-white">Автовоспроизведение</div>
-                <div className="text-[11px] text-zinc-500">Запускать видео сразу при открытии</div>
+                <div className="text-xs font-bold text-white">{t.settings.autoplay}</div>
+                <div className="text-[11px] text-zinc-500 mt-0.5">{t.settings.autoplayDesc}</div>
               </div>
               <input
                 type="checkbox"
@@ -249,10 +404,10 @@ export const SettingsPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-dark-surfaceLight/50 border border-white/5">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5">
               <div>
-                <div className="text-xs font-semibold text-white">Автопереход к следующей серии</div>
-                <div className="text-[11px] text-zinc-500">Воспроизводить следующую серию по окончании</div>
+                <div className="text-xs font-bold text-white">{t.settings.autoNext}</div>
+                <div className="text-[11px] text-zinc-500 mt-0.5">{t.settings.autoNextDesc}</div>
               </div>
               <input
                 type="checkbox"
@@ -266,17 +421,17 @@ export const SettingsPage: React.FC = () => {
               />
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-dark-surfaceLight/50 border border-white/5">
+            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5 sm:col-span-2">
               <div>
-                <div className="text-xs font-semibold text-white">Качество по умолчанию</div>
-                <div className="text-[11px] text-zinc-500">Предпочитаемое разрешение</div>
+                <div className="text-xs font-bold text-white">{t.settings.defaultQuality}</div>
+                <div className="text-[11px] text-zinc-500 mt-0.5">{t.settings.defaultQualityDesc}</div>
               </div>
               <select
                 value={settings.player.defaultQuality}
                 onChange={(e) =>
                   updateSettings({ player: { ...settings.player, defaultQuality: e.target.value } })
                 }
-                className="bg-dark-bg border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white outline-none cursor-pointer"
+                className="bg-dark-bg border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white outline-none cursor-pointer font-bold"
               >
                 <option value="1080p">1080p</option>
                 <option value="720p">720p</option>
@@ -288,123 +443,109 @@ export const SettingsPage: React.FC = () => {
         </div>
 
         {/* Section: Interface & Home Blocks */}
-        <div className="p-6 rounded-2xl bg-dark-surface border border-white/5 shadow-card space-y-4">
-          <h2 className="text-base font-bold text-white pb-3 border-b border-white/5">
-            Отображаемые блоки главной страницы
+        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-4">
+          <h2 className="text-sm font-bold text-white pb-3 border-b border-white/5">
+            {t.settings.homeSections}
           </h2>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { id: 'hero', label: 'Главный баннер' },
-              { id: 'continueWatching', label: 'Продолжить просмотр' },
-              { id: 'popular', label: 'Популярное' },
-              { id: 'newReleases', label: 'Новинки' },
-              { id: 'topMovies', label: 'Лучшие фильмы' },
-              { id: 'topSeries', label: 'Лучшие сериалы' },
-              { id: 'recommendations', label: 'Рекомендации' },
-              { id: 'expected', label: 'Скоро' },
+              { id: 'hero', label: t.settings.secHero },
+              { id: 'continueWatching', label: t.settings.secContinue },
+              { id: 'popular', label: t.settings.secPopular },
+              { id: 'newReleases', label: t.settings.secNew },
+              { id: 'topMovies', label: t.settings.secTopMovies },
+              { id: 'topSeries', label: t.settings.secTopSeries },
+              { id: 'recommendations', label: t.settings.secRecommendations },
+              { id: 'expected', label: t.settings.secExpected },
             ].map((sec) => (
               <button
                 key={sec.id}
                 onClick={() => handleToggleHomeSection(sec.id as any)}
-                className={`p-3 rounded-xl border text-xs font-semibold text-left transition-all flex items-center justify-between ${
+                className={`p-3 rounded-2xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
                   (settings.homeSections as any)[sec.id]
                     ? 'bg-brand-red/10 border-brand-red text-white'
-                    : 'bg-dark-surfaceLight/40 border-white/5 text-zinc-500 hover:text-zinc-300'
+                    : 'bg-white/5 border-white/5 text-zinc-500 hover:text-zinc-300'
                 }`}
               >
-                <span>{sec.label}</span>
-                {(settings.homeSections as any)[sec.id] && <Check className="w-3.5 h-3.5 text-brand-red" />}
+                <span className="truncate pr-1">{sec.label}</span>
+                {(settings.homeSections as any)[sec.id] && (
+                  <Check className="w-3.5 h-3.5 text-brand-red flex-shrink-0" />
+                )}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Section: Data Backup, Cache & Updates */}
-        <div className="p-6 rounded-2xl bg-dark-surface border border-white/5 shadow-card space-y-4">
-          <h2 className="text-base font-bold text-white flex items-center pb-3 border-b border-white/5">
+        {/* Section: Data Backup & Cache */}
+        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-4">
+          <h2 className="text-sm font-bold text-white flex items-center pb-3 border-b border-white/5">
             <Database className="w-4 h-4 text-brand-red mr-2" />
-            Управление данными и обновления
+            {t.settings.dataManagement}
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Clear cache */}
             <button
               onClick={handleClearCache}
-              className="flex items-center justify-center space-x-2 p-3 rounded-xl bg-dark-surfaceLight hover:bg-white/10 border border-white/5 text-xs font-semibold text-zinc-300 transition-colors"
+              className="flex items-center justify-center space-x-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-bold text-zinc-300 transition-colors"
             >
               <Trash2 className="w-4 h-4 text-zinc-400" />
-              <span>{cacheCleared ? 'Кэш очищен!' : 'Очистить кэш'}</span>
+              <span>{cacheCleared ? t.settings.cacheCleared : t.settings.clearCache}</span>
             </button>
 
-            {/* Export data */}
             <button
               onClick={handleExportBackup}
-              className="flex items-center justify-center space-x-2 p-3 rounded-xl bg-dark-surfaceLight hover:bg-white/10 border border-white/5 text-xs font-semibold text-zinc-300 transition-colors"
+              className="flex items-center justify-center space-x-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-bold text-zinc-300 transition-colors"
             >
               <Download className="w-4 h-4 text-zinc-400" />
-              <span>Экспорт бэкапа (JSON)</span>
+              <span>{t.settings.exportBackup}</span>
             </button>
 
-            {/* Import data */}
-            <label className="flex items-center justify-center space-x-2 p-3 rounded-xl bg-dark-surfaceLight hover:bg-white/10 border border-white/5 text-xs font-semibold text-zinc-300 transition-colors cursor-pointer">
+            <label className="flex items-center justify-center space-x-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-bold text-zinc-300 transition-colors cursor-pointer">
               <Upload className="w-4 h-4 text-zinc-400" />
-              <span>Импорт бэкапа</span>
+              <span>{t.settings.importBackup}</span>
               <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
             </label>
           </div>
 
           {importStatus && (
-            <div className="text-xs text-emerald-400 bg-emerald-950/40 p-2.5 rounded-xl border border-emerald-500/20">
+            <div className="text-xs text-emerald-400 bg-emerald-950/40 p-3 rounded-2xl border border-emerald-500/20">
               {importStatus}
             </div>
           )}
+        </div>
 
-          {/* Check updates */}
-          <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+        {/* Section: About the App */}
+        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="flex items-center space-x-4">
+            <img
+              src={appLogo}
+              alt="HDRezka Desktop"
+              className="w-14 h-14 rounded-2xl object-cover border border-brand-red/40 shadow-glow flex-shrink-0"
+            />
             <div>
-              <div className="text-xs font-semibold text-white">Проверка обновлений</div>
-              <div className="text-[11px] text-zinc-500">
-                Текущая версия: v{APP_VERSION}
+              <div className="flex items-center space-x-2">
+                <span className="text-base font-black tracking-wider text-white">HDREZKA Desktop</span>
+                <span className="px-2 py-0.5 rounded-lg bg-gradient-to-r from-brand-red to-orange-500 text-white text-[10px] font-black uppercase">
+                  v{APP_VERSION}
+                </span>
+              </div>
+              <p className="text-xs text-zinc-400 mt-1 max-w-md leading-relaxed">{t.settings.aboutDesc}</p>
+              <div className="text-[11px] text-zinc-500 mt-2 font-medium">
+                {t.settings.license} • {t.settings.developers}
               </div>
             </div>
-
-            <button
-              onClick={handleCheckUpdates}
-              disabled={isCheckingUpdate}
-              className="px-4 py-2 rounded-xl bg-dark-surfaceLight hover:bg-white/10 border border-white/10 text-xs font-semibold text-white transition-colors"
-            >
-              {isCheckingUpdate ? 'Проверка...' : 'Проверить обновление'}
-            </button>
           </div>
 
-          {updateInfo && (
-            <div className="p-3.5 rounded-xl bg-dark-surfaceLight border border-white/10 text-xs space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-white">
-                  {updateInfo.hasUpdate
-                    ? `Доступна новая версия: v${updateInfo.latestVersion}`
-                    : 'У вас установлена последняя версия'}
-                </span>
-                {updateInfo.downloadUrl && (
-                  <a
-                    href={updateInfo.downloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center space-x-1 text-brand-red hover:underline font-bold"
-                  >
-                    <span>Скачать</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                )}
-              </div>
-              {updateInfo.releaseNotes && (
-                <div className="text-zinc-400 text-[11px] pt-1">
-                  {updateInfo.releaseNotes}
-                </div>
-              )}
-            </div>
-          )}
+          <a
+            href="https://github.com/KDGOfficial/HDRezka-Desktop"
+            target="_blank"
+            rel="noreferrer"
+            className="flex items-center justify-center space-x-2 px-5 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white transition-all shadow-sm flex-shrink-0 active:scale-95"
+          >
+            <span>GitHub Repository</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
         </div>
       </div>
     </div>

@@ -1,9 +1,13 @@
 import { ipcMain, app, BrowserWindow, shell } from 'electron';
-import { IPC_CHANNELS } from '../../shared/constants';
+import fs from 'fs';
+import path from 'path';
+import https from 'https';
+import http from 'http';
+import { IPC_CHANNELS, APP_VERSION } from '../../shared/constants';
 import { getMainWindow } from '../window';
 import { ProviderManager } from '../../core/providers/manager';
 import { AppDatabase } from '../database';
-import { CatalogFilter, WatchHistoryEntry, FavoriteItem, CollectionItem, UserSettings } from '../../shared/types';
+import { CatalogFilter, WatchHistoryEntry, FavoriteItem, CollectionItem, UserSettings, UpdateInfo, UpdateProgress } from '../../shared/types';
 
 export function registerIpcHandlers(): void {
   const providerManager = ProviderManager.getInstance();
@@ -264,32 +268,202 @@ export function registerIpcHandlers(): void {
   });
 
   // --- Updates & Cache ---
-  ipcMain.handle(IPC_CHANNELS.CHECK_FOR_UPDATES, async () => {
+  let downloadedUpdatePath: string | null = null;
+  let isDownloading = false;
+
+  function downloadFile(url: string, destPath: string, onProgress: (transferred: number, total: number) => void): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const makeRequest = (currentUrl: string, redirectCount = 0) => {
+        if (redirectCount > 8) {
+          return reject(new Error('Too many redirects'));
+        }
+        const client = currentUrl.startsWith('https') ? https : http;
+        const req = client.get(
+          currentUrl,
+          {
+            headers: {
+              'User-Agent': 'HDRezka-Desktop',
+              'Accept': 'application/octet-stream, */*',
+            },
+          },
+          (res) => {
+            if ([301, 302, 303, 307, 308].includes(res.statusCode || 0) && res.headers.location) {
+              return makeRequest(res.headers.location, redirectCount + 1);
+            }
+            if ((res.statusCode || 0) >= 400) {
+              return reject(new Error(`Download failed with status ${res.statusCode}`));
+            }
+            const total = parseInt(res.headers['content-length'] || '0', 10);
+            let transferred = 0;
+            const file = fs.createWriteStream(destPath);
+            res.on('data', (chunk: Buffer) => {
+              transferred += chunk.length;
+              onProgress(transferred, total);
+            });
+            res.pipe(file);
+            file.on('finish', () => {
+              file.close(() => resolve());
+            });
+            file.on('error', (err) => {
+              fs.unlink(destPath, () => {});
+              reject(err);
+            });
+          }
+        );
+        req.on('error', (err) => {
+          fs.unlink(destPath, () => {});
+          reject(err);
+        });
+      };
+      makeRequest(url);
+    });
+  }
+
+  ipcMain.handle(IPC_CHANNELS.CHECK_FOR_UPDATES, async (): Promise<UpdateInfo> => {
+    const currentVersion = app.getVersion() || APP_VERSION;
     try {
       const res = await fetch('https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest', {
         headers: { 'User-Agent': 'HDRezka-Desktop' },
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(5000),
       });
       if (res.ok) {
         const release = await res.json();
-        const latestTag = release.tag_name ? release.tag_name.replace(/^v/, '') : '1.0.0';
-        const currentVersion = app.getVersion();
+        const latestTag = release.tag_name ? release.tag_name.replace(/^v/, '') : currentVersion;
+        const assets: any[] = Array.isArray(release.assets) ? release.assets : [];
+        const setupAsset =
+          assets.find((a) => a.name?.endsWith('.exe') && a.name?.includes('Setup')) ||
+          assets.find((a) => a.name?.endsWith('.exe')) ||
+          null;
+
+        const hasUpdate = latestTag.localeCompare(currentVersion, undefined, { numeric: true }) > 0;
+
         return {
           currentVersion,
           latestVersion: latestTag,
-          hasUpdate: latestTag.localeCompare(currentVersion, undefined, { numeric: true }) > 0,
-          releaseNotes: release.body,
+          hasUpdate,
+          releaseNotes: release.body || '',
           releaseDate: release.published_at,
           downloadUrl: release.html_url,
+          assetName: setupAsset?.name,
+          assetUrl: setupAsset?.browser_download_url,
+          assetSize: setupAsset?.size,
         };
       }
-    } catch {}
+    } catch (e) {
+      console.warn('[AutoUpdate] Check failed:', e);
+    }
 
     return {
-      currentVersion: app.getVersion(),
-      latestVersion: app.getVersion(),
+      currentVersion,
+      latestVersion: currentVersion,
       hasUpdate: false,
     };
+  });
+
+  ipcMain.handle(
+    IPC_CHANNELS.DOWNLOAD_UPDATE,
+    async (_, assetUrl?: string): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+      if (isDownloading) {
+        return { success: false, error: 'Download already in progress' };
+      }
+
+      let targetUrl = assetUrl;
+      let targetFileName = 'HDREZKA-Setup-update.exe';
+
+      if (!targetUrl) {
+        try {
+          const res = await fetch('https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest', {
+            headers: { 'User-Agent': 'HDRezka-Desktop' },
+            signal: AbortSignal.timeout(5000),
+          });
+          if (res.ok) {
+            const release = await res.json();
+            const assets: any[] = Array.isArray(release.assets) ? release.assets : [];
+            const setupAsset =
+              assets.find((a) => a.name?.endsWith('.exe') && a.name?.includes('Setup')) ||
+              assets.find((a) => a.name?.endsWith('.exe'));
+            if (setupAsset?.browser_download_url) {
+              targetUrl = setupAsset.browser_download_url;
+              targetFileName = setupAsset.name || targetFileName;
+            }
+          }
+        } catch (err: any) {
+          return { success: false, error: err?.message || 'Could not fetch release asset URL' };
+        }
+      }
+
+      if (!targetUrl) {
+        return { success: false, error: 'No download asset URL available' };
+      }
+
+      const tempDir = app.getPath('temp');
+      const destPath = path.join(tempDir, targetFileName);
+      isDownloading = true;
+      const win = getMainWindow();
+
+      try {
+        win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
+          percent: 0,
+          transferredBytes: 0,
+          totalBytes: 0,
+          status: 'downloading',
+        } as UpdateProgress);
+
+        let lastReport = 0;
+        await downloadFile(targetUrl, destPath, (transferred, total) => {
+          const now = Date.now();
+          if (now - lastReport > 200 || transferred === total) {
+            lastReport = now;
+            const percent = total > 0 ? Math.round((transferred / total) * 100) : 0;
+            win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
+              percent,
+              transferredBytes: transferred,
+              totalBytes: total,
+              status: 'downloading',
+              filePath: destPath,
+            } as UpdateProgress);
+          }
+        });
+
+        downloadedUpdatePath = destPath;
+        win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
+          percent: 100,
+          transferredBytes: 0,
+          totalBytes: 0,
+          status: 'ready',
+          filePath: destPath,
+        } as UpdateProgress);
+
+        return { success: true, filePath: destPath };
+      } catch (err: any) {
+        win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
+          percent: 0,
+          transferredBytes: 0,
+          totalBytes: 0,
+          status: 'error',
+          error: err?.message || 'Download failed',
+        } as UpdateProgress);
+        return { success: false, error: err?.message };
+      } finally {
+        isDownloading = false;
+      }
+    }
+  );
+
+  ipcMain.handle(IPC_CHANNELS.INSTALL_UPDATE, async () => {
+    if (!downloadedUpdatePath || !fs.existsSync(downloadedUpdatePath)) {
+      return false;
+    }
+    try {
+      shell.openPath(downloadedUpdatePath);
+      setTimeout(() => {
+        app.quit();
+      }, 1500);
+      return true;
+    } catch (e) {
+      console.error('[AutoUpdate] Launch installer failed:', e);
+      return false;
+    }
   });
 
   ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL_URL, (_, url: string) => {

@@ -22,9 +22,11 @@ import {
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
+import { useTranslation } from '../i18n';
 import { formatDuration } from '../../shared/utils';
 
 export const VideoPlayer: React.FC = () => {
+  const { t } = useTranslation();
   const {
     isOpen,
     mediaDetails,
@@ -415,7 +417,7 @@ export const VideoPlayer: React.FC = () => {
       {isLoading && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 pointer-events-none">
           <div className="w-12 h-12 border-4 border-brand-red border-t-transparent rounded-full animate-spin mb-4" />
-          <span className="text-white text-sm font-semibold tracking-wide">Загрузка потока...</span>
+          <span className="text-white text-sm font-semibold tracking-wide">{t.player.loading}</span>
         </div>
       )}
 
@@ -510,7 +512,7 @@ export const VideoPlayer: React.FC = () => {
               <div className="flex items-center space-x-2 text-xs text-zinc-400">
                 {seasonId !== undefined && episodeId !== undefined && (
                   <span>
-                    Сезон {seasonId}, Серия {episodeId}
+                    {t.details.season} {seasonId}, {t.details.episode} {episodeId}
                   </span>
                 )}
                 {translatorId > 0 && (

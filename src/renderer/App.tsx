@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { VideoPlayer } from './components/VideoPlayer';
 import { CollectionModal } from './components/CollectionModal';
+import { UpdateModal } from './components/UpdateModal';
 import { useMediaStore } from './stores/useMediaStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 
@@ -85,6 +86,9 @@ export const App: React.FC = () => {
 
       {/* Add to Collection Modal */}
       <CollectionModal />
+
+      {/* Auto Update GitHub Modal */}
+      <UpdateModal />
     </div>
   );
 };

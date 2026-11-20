@@ -11,7 +11,8 @@ export function createMainWindow(): BrowserWindow {
     minWidth: 980,
     minHeight: 640,
     frame: false,
-    backgroundColor: '#101114',
+    backgroundColor: '#090a0f',
+    icon: path.join(__dirname, '../../resources/icon.ico'),
     show: false,
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),

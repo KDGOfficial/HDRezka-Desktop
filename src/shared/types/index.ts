@@ -192,4 +192,16 @@ export interface UpdateInfo {
   releaseNotes?: string;
   releaseDate?: string;
   downloadUrl?: string;
+  assetName?: string;
+  assetUrl?: string;
+  assetSize?: number;
+}
+
+export interface UpdateProgress {
+  percent: number;
+  transferredBytes: number;
+  totalBytes: number;
+  status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error';
+  error?: string;
+  filePath?: string;
 }

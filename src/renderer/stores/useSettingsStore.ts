@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { UserSettings, MirrorStatus } from '../../shared/types';
+import { UserSettings, MirrorStatus, UpdateInfo, UpdateProgress } from '../../shared/types';
 import { DEFAULT_USER_SETTINGS } from '../../shared/constants';
 
 interface SettingsState {
@@ -7,10 +7,21 @@ interface SettingsState {
   mirrorsStatus: MirrorStatus[];
   isCheckingMirrors: boolean;
 
+  // Auto-Update State
+  updateInfo: UpdateInfo | null;
+  isCheckingUpdate: boolean;
+  updateProgress: UpdateProgress | null;
+  isUpdateModalOpen: boolean;
+
   loadSettings: () => Promise<void>;
   updateSettings: (newSettings: Partial<UserSettings>) => Promise<void>;
   checkMirrors: () => Promise<void>;
   setActiveMirror: (mirror: string) => Promise<void>;
+
+  checkForUpdates: (notifyIfAvailable?: boolean) => Promise<UpdateInfo | null>;
+  downloadUpdate: () => Promise<void>;
+  installUpdate: () => Promise<void>;
+  setUpdateModalOpen: (open: boolean) => void;
 }
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
@@ -18,11 +29,21 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   mirrorsStatus: [],
   isCheckingMirrors: false,
 
+  updateInfo: null,
+  isCheckingUpdate: false,
+  updateProgress: null,
+  isUpdateModalOpen: false,
+
   loadSettings: async () => {
     if (window.api) {
       try {
         const s = await window.api.getSettings();
         set({ settings: s });
+
+        // Auto check updates on start if enabled
+        if (s.app?.checkUpdatesOnStart) {
+          get().checkForUpdates(true);
+        }
       } catch (err) {
         console.error('Failed to load settings:', err);
       }
@@ -70,5 +91,82 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         console.error('Failed to set active mirror:', err);
       }
     }
+  },
+
+  checkForUpdates: async (notifyIfAvailable = false) => {
+    if (!window.api) return null;
+    set({ isCheckingUpdate: true });
+    try {
+      const info = await window.api.checkForUpdates();
+      set({
+        updateInfo: info,
+        isCheckingUpdate: false,
+        isUpdateModalOpen: notifyIfAvailable && info.hasUpdate,
+      });
+      return info;
+    } catch (err) {
+      console.error('Failed to check for updates:', err);
+      set({ isCheckingUpdate: false });
+      return null;
+    }
+  },
+
+  downloadUpdate: async () => {
+    if (!window.api) return;
+    const { updateInfo } = get();
+    if (!updateInfo) return;
+
+    set({
+      updateProgress: {
+        percent: 0,
+        transferredBytes: 0,
+        totalBytes: updateInfo.assetSize || 0,
+        status: 'downloading',
+      },
+    });
+
+    const unsubscribe = window.api.onUpdateProgress((progress) => {
+      set({ updateProgress: progress });
+    });
+
+    try {
+      const res = await window.api.downloadUpdate(updateInfo.assetUrl);
+      if (!res.success) {
+        set({
+          updateProgress: {
+            percent: 0,
+            transferredBytes: 0,
+            totalBytes: 0,
+            status: 'error',
+            error: res.error || 'Download failed',
+          },
+        });
+      }
+    } catch (err: any) {
+      set({
+        updateProgress: {
+          percent: 0,
+          transferredBytes: 0,
+          totalBytes: 0,
+          status: 'error',
+          error: err?.message || 'Download failed',
+        },
+      });
+    } finally {
+      unsubscribe();
+    }
+  },
+
+  installUpdate: async () => {
+    if (!window.api) return;
+    try {
+      await window.api.installUpdate();
+    } catch (err) {
+      console.error('Failed to install update:', err);
+    }
+  },
+
+  setUpdateModalOpen: (open: boolean) => {
+    set({ isUpdateModalOpen: open });
   },
 }));

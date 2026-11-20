@@ -3,15 +3,40 @@
 @tailwind utilities;
 
 @layer base {
-  body { background: #09090d; }
-  button, input, select { transition: all .18s ease; }
+  body {
+    background: #08080c;
+    color: #ffffff;
+    user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input, select {
+    transition: all .18s cubic-bezier(0.16, 1, 0.3, 1);
+  }
 }
 
-.app-canvas { background: radial-gradient(ellipse at 78% 0%, rgba(225,35,55,.09), transparent 35%), #0b0b10; }
-.sidebar-redesign { background: linear-gradient(180deg, rgba(22,22,29,.96), rgba(13,13,18,.98)); }
-.sidebar-redesign button { border-radius: 10px; }
-.transition-card:hover { transform: translateY(-4px); box-shadow: 0 18px 45px rgba(0,0,0,.42); }
+/* Cinematic App Canvas with ambient light bleed */
+.app-canvas {
+  background: 
+    radial-gradient(ellipse at 88% 0%, rgba(229, 9, 20, 0.12), transparent 40%),
+    radial-gradient(ellipse at 10% 90%, rgba(249, 115, 22, 0.05), transparent 45%),
+    #08080c;
+}
 
+/* Sidebar styling */
+.sidebar-redesign {
+  background: linear-gradient(180deg, rgba(14, 15, 22, 0.98), rgba(9, 10, 14, 0.99));
+}
+
+/* Smooth card transitions with 3D lift */
+.transition-card {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.transition-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.8), 0 0 24px -4px rgba(229, 9, 20, 0.35);
+}
+
+/* Scrollbars */
 @layer base {
   ::-webkit-scrollbar {
     width: 6px;
@@ -23,16 +48,16 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.15);
+    background: rgba(255, 255, 255, 0.14);
     border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.3);
+    background: rgba(229, 9, 20, 0.5);
   }
 }
 
-/* Custom drag region for Electron titlebar */
+/* Drag regions for Electron TitleBar */
 .drag-region {
   -webkit-app-region: drag;
 }
@@ -41,14 +66,28 @@
   -webkit-app-region: no-drag;
 }
 
-/* Smooth transition utility */
-.transition-card {
-  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+/* Glassmorphism panels */
+.glass-panel {
+  background: rgba(18, 19, 26, 0.75);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-/* Glassmorphism */
-.glass-panel {
-  background: rgba(25, 26, 32, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+.glass-card {
+  background: rgba(18, 20, 28, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-card:hover {
+  border-color: rgba(229, 9, 20, 0.35);
+}
+
+/* Neon text gradient */
+.text-gradient-brand {
+  background: linear-gradient(135deg, #ffffff 0%, #ffffff 60%, rgba(255, 255, 255, 0.7) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }

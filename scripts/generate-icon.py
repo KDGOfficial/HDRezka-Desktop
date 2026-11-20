@@ -1,39 +1,29 @@
 import os
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 os.makedirs('resources', exist_ok=True)
+os.makedirs('src/renderer/assets', exist_ok=True)
 
-size = 256
-img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
-draw = ImageDraw.Draw(img)
+logo_source = None
+possible_sources = [
+    'src/renderer/assets/logo.png',
+    'resources/icon.png',
+    r'C:/Users/Denial/.gemini/antigravity/brain/c0ff2e2e-cbe5-4d6f-998e-c76d2db6fb8c/.user_uploaded/media_1795170754719_5cc6b66c.jpg',
+]
 
-# Rounded rectangle background
-margin = 8
-draw.rounded_rectangle(
-    [(margin, margin), (size - margin, size - margin)],
-    radius=48,
-    fill=(229, 9, 20, 255) # HDRezka red
-)
+for src in possible_sources:
+    if os.path.exists(src):
+        logo_source = src
+        break
 
-# Inner dark container
-inner_margin = 28
-draw.rounded_rectangle(
-    [(inner_margin, inner_margin), (size - inner_margin, size - inner_margin)],
-    radius=36,
-    fill=(16, 17, 20, 255) # Dark surface
-)
+if logo_source:
+    img = Image.open(logo_source).convert('RGBA')
+    icon_512 = img.resize((512, 512), Image.Resampling.LANCZOS)
+    icon_512.save('resources/icon.png', format='PNG')
+    icon_512.save('src/renderer/assets/logo.png', format='PNG')
 
-# Draw stylized "HD" and play symbol
-# Play triangle
-play_coords = [(110, 85), (170, 128), (110, 171)]
-draw.polygon(play_coords, fill=(229, 9, 20, 255))
-
-# Top ribbon / accents
-draw.rounded_rectangle([(80, 195), (176, 205)], radius=4, fill=(229, 9, 20, 255))
-
-img.save('resources/icon.png', format='PNG')
-
-# Save multi-size ICO
-icon_sizes = [(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
-img.save('resources/icon.ico', format='ICO', sizes=icon_sizes)
-print("Icons generated successfully!")
+    icon_sizes = [(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)]
+    img.save('resources/icon.ico', format='ICO', sizes=icon_sizes)
+    print("New HDRezka Desktop logo icons generated successfully from:", logo_source)
+else:
+    print("No logo source found.")

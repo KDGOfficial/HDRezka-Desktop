@@ -3,9 +3,11 @@ import { Search, History, Trash2, X, Star } from 'lucide-react';
 import { MediaCard } from '../components/MediaCard';
 import { MediaItem, SearchHistoryEntry } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
+import { useTranslation } from '../i18n';
 
 export const SearchPage: React.FC = () => {
   const { searchQuery, setSearchQuery } = useMediaStore();
+  const { t } = useTranslation();
   const [query, setQuery] = useState(searchQuery);
   const [results, setResults] = useState<MediaItem[]>([]);
   const [history, setHistory] = useState<SearchHistoryEntry[]>([]);
@@ -81,18 +83,18 @@ export const SearchPage: React.FC = () => {
   };
 
   return (
-    <div className="w-full pb-16 text-left select-none">
-      {/* Search Bar Form */}
+    <div className="w-full pb-16 text-left select-none animate-fadeIn">
+      {/* Search Input Box */}
       <div className="max-w-2xl mx-auto mb-8">
         <form onSubmit={handleSearchSubmit} className="relative">
-          <div className="flex items-center bg-dark-surface border border-white/10 rounded-2xl p-2 shadow-card focus-within:border-brand-red focus-within:ring-2 focus-within:ring-brand-red/30 transition-all">
-            <Search className="w-5 h-5 text-zinc-400 ml-3 mr-3" />
+          <div className="flex items-center bg-[#12131a] border border-white/10 rounded-2xl p-2 shadow-card focus-within:border-brand-red focus-within:ring-2 focus-within:ring-brand-red/30 transition-all">
+            <Search className="w-5 h-5 text-zinc-400 ml-3 mr-3 flex-shrink-0" />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по названию, оригиналу, актерам..."
-              className="bg-transparent border-none outline-none text-white w-full text-base placeholder-zinc-500"
+              placeholder={t.search.placeholder}
+              className="bg-transparent border-none outline-none text-white w-full text-sm placeholder-zinc-500 font-medium"
               autoFocus
             />
             {query && (
@@ -102,102 +104,110 @@ export const SearchPage: React.FC = () => {
                   setQuery('');
                   setResults([]);
                 }}
-                className="p-2 text-zinc-500 hover:text-white"
+                className="p-1 rounded-lg text-zinc-400 hover:text-white mr-1"
               >
                 <X className="w-4 h-4" />
               </button>
             )}
             <button
               type="submit"
-              className="px-6 py-2.5 rounded-xl bg-brand-red hover:bg-brand-redHover text-white font-bold text-sm shadow-glow transition-all"
+              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white font-bold text-xs shadow-glow transition-all active:scale-95 flex-shrink-0"
             >
-              Найти
+              {t.nav.search}
             </button>
           </div>
         </form>
 
-        {/* Recent Search Queries */}
-        {history.length > 0 && !results.length && (
-          <div className="mt-6 bg-dark-surface border border-white/5 rounded-2xl p-4 shadow-card">
-            <div className="flex items-center justify-between mb-3 px-1">
-              <span className="text-xs font-bold text-zinc-400 uppercase tracking-wider flex items-center">
-                <History className="w-3.5 h-3.5 mr-1.5" /> История поиска
+        {/* History Chips */}
+        {history.length > 0 && (
+          <div className="mt-4 flex items-center justify-between text-xs text-zinc-400">
+            <div className="flex items-center space-x-2 overflow-x-auto pr-2 pb-1">
+              <span className="text-[11px] font-bold text-zinc-500 flex items-center flex-shrink-0">
+                <History className="w-3.5 h-3.5 mr-1" />
+                {t.search.recentQueries}:
               </span>
-              <button
-                onClick={handleClearHistory}
-                className="text-xs text-zinc-500 hover:text-brand-red transition-colors"
-              >
-                Очистить
-              </button>
-            </div>
-
-            <div className="flex flex-wrap gap-2">
-              {history.map((h, i) => (
-                <div
+              {history.slice(0, 6).map((h, i) => (
+                <button
                   key={i}
                   onClick={() => handleHistoryClick(h.query)}
-                  className="group flex items-center space-x-2 px-3 py-1.5 rounded-xl bg-dark-surfaceLight hover:bg-dark-surfaceHover text-xs text-zinc-300 font-medium cursor-pointer transition-colors"
+                  className="flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 text-xs border border-white/5 transition-colors group flex-shrink-0"
                 >
                   <span>{h.query}</span>
-                  <button
+                  <X
+                    className="w-3 h-3 text-zinc-500 hover:text-brand-red ml-1"
                     onClick={(e) => handleDeleteHistory(e, h.query)}
-                    className="text-zinc-500 hover:text-white"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
+                  />
+                </button>
               ))}
             </div>
+
+            <button
+              onClick={handleClearHistory}
+              className="text-[10px] text-zinc-500 hover:text-brand-red whitespace-nowrap ml-2 flex-shrink-0 font-medium"
+            >
+              {t.search.clearHistory}
+            </button>
           </div>
         )}
       </div>
 
       {/* Results Header */}
-      {query && (
-        <div className="flex items-center justify-between mb-6 pb-2 border-b border-dark-border">
-          <h2 className="text-xl font-bold text-white">
-            Результаты поиска {query ? `«${query}»` : ''}
+      {searchQuery && !loading && (
+        <div className="mb-6 flex items-center justify-between pb-3 border-b border-white/5">
+          <h2 className="text-base font-bold text-white">
+            {t.search.resultsFor} <span className="text-brand-red">"{searchQuery}"</span>
           </h2>
-          <span className="text-xs text-zinc-400">
-            {results.length} найдено
+          <span className="text-xs text-zinc-400 font-mono">
+            {t.search.foundCount}: {results.length}
           </span>
         </div>
       )}
 
-      {/* Results Grid */}
-      {loading && results.length === 0 ? (
-        <div className="flex flex-col items-center justify-center min-h-[300px]">
-          <div className="w-10 h-10 border-4 border-brand-red border-t-transparent rounded-full animate-spin mb-3" />
-          <span className="text-zinc-500 text-sm">Ищем на HDRezka...</span>
+      {/* Loading state */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-24">
+          <div className="w-12 h-12 border-4 border-brand-red/20 border-t-brand-red rounded-full animate-spin mb-3" />
+          <span className="text-zinc-500 text-xs font-semibold">{t.home.loadingCatalog}</span>
         </div>
-      ) : results.length > 0 ? (
-        <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-            {results.map((item, idx) => (
-              <div key={`${item.id}-${idx}`} className="flex justify-center">
-                <MediaCard item={item} />
-              </div>
-            ))}
-          </div>
+      )}
 
-          {hasMore && (
-            <div className="flex justify-center mt-10">
-              <button
-                onClick={() => performSearch(query, page + 1)}
-                disabled={loading}
-                className="px-8 py-3 rounded-xl bg-dark-surface border border-white/10 hover:border-brand-red text-sm font-semibold text-white transition-all shadow-card disabled:opacity-50"
-              >
-                {loading ? 'Загрузка...' : 'Загрузить ещё'}
-              </button>
-            </div>
+      {/* Empty / Initial State */}
+      {!loading && results.length === 0 && (
+        <div className="flex flex-col items-center justify-center py-24 text-zinc-500">
+          <Search className="w-16 h-16 text-zinc-700 mb-3" />
+          <p className="text-base font-bold text-zinc-400">
+            {searchQuery ? t.search.noResults : t.search.startTyping}
+          </p>
+          {searchQuery && (
+            <p className="text-xs text-zinc-500 mt-1 max-w-sm text-center leading-relaxed">
+              {t.search.noResultsDesc}
+            </p>
           )}
-        </>
-      ) : query && !loading ? (
-        <div className="text-center py-20 text-zinc-500">
-          <p className="text-base font-semibold">По запросу «{query}» ничего не найдено</p>
-          <p className="text-xs text-zinc-600 mt-1">Проверьте правильность написания или попробуйте другое название</p>
         </div>
-      ) : null}
+      )}
+
+      {/* Results Grid */}
+      {!loading && results.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+          {results.map((item, idx) => (
+            <div key={item.id ? `${item.id}-${idx}` : idx} className="flex justify-center">
+              <MediaCard item={item} />
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Load More Button */}
+      {!loading && hasMore && results.length > 0 && (
+        <div className="flex justify-center mt-10">
+          <button
+            onClick={() => performSearch(searchQuery, page + 1)}
+            className="px-6 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white transition-all active:scale-95 shadow-sm"
+          >
+            {t.search.loadMore}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

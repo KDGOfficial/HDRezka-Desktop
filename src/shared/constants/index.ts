@@ -100,6 +100,9 @@ export const IPC_CHANNELS = {
 
   // System & Updates
   CHECK_FOR_UPDATES: 'app:checkUpdates',
+  DOWNLOAD_UPDATE: 'app:downloadUpdate',
+  INSTALL_UPDATE: 'app:installUpdate',
+  ON_UPDATE_PROGRESS: 'app:updateProgress',
   CLEAR_CACHE: 'app:clearCache',
   OPEN_EXTERNAL_URL: 'app:openExternal',
 };

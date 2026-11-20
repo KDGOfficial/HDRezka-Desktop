@@ -98,7 +98,20 @@ export const api = {
     ipcRenderer.invoke(IPC_CHANNELS.SAVE_SETTINGS, settings),
 
   // App & Updates
-  checkForUpdates: () => ipcRenderer.invoke(IPC_CHANNELS.CHECK_FOR_UPDATES),
+  checkForUpdates: (): Promise<import('../shared/types').UpdateInfo> =>
+    ipcRenderer.invoke(IPC_CHANNELS.CHECK_FOR_UPDATES),
+  downloadUpdate: (assetUrl?: string): Promise<{ success: boolean; filePath?: string; error?: string }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.DOWNLOAD_UPDATE, assetUrl),
+  installUpdate: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.INSTALL_UPDATE),
+  onUpdateProgress: (callback: (progress: import('../shared/types').UpdateProgress) => void) => {
+    const handler = (_: any, progress: import('../shared/types').UpdateProgress) => callback(progress);
+    ipcRenderer.on(IPC_CHANNELS.ON_UPDATE_PROGRESS, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.ON_UPDATE_PROGRESS, handler);
+    };
+  },
+  openExternalUrl: (url: string): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL_URL, url),
   clearCache: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_CACHE),
 };
 
