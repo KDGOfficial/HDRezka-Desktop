@@ -87,8 +87,13 @@ export const SettingsPage: React.FC = () => {
 
   const handleVerifyMirror = async () => {
     if (window.api) {
-      await window.api.verifyMirror();
-      checkMirrors();
+      try {
+        await window.api.verifyMirror();
+      } catch (err) {
+        console.warn('[Settings] verifyMirror error:', err);
+      } finally {
+        await checkMirrors();
+      }
     }
   };
 
@@ -382,20 +387,29 @@ export const SettingsPage: React.FC = () => {
           )}
 
           {/* Mirrors List */}
-          {mirrorsStatus.length > 0 && mirrorsStatus.some((m) => m.isAvailable && m.needsVerification) && (
-            <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3 animate-fadeIn">
-              <div className="flex items-center space-x-2.5 min-w-0">
-                <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
-                <span className="leading-snug">{t.settings.needsVerificationHint}</span>
+          {(() => {
+            const activeStatus = mirrorsStatus.find((m) => m.url === settings.app.activeMirror);
+            const activeNeedsVerification = activeStatus?.isAvailable && activeStatus?.needsVerification;
+            const allAvailableNeedVerification = mirrorsStatus.length > 0 &&
+              mirrorsStatus.filter((m) => m.isAvailable).length > 0 &&
+              mirrorsStatus.filter((m) => m.isAvailable).every((m) => m.needsVerification);
+            const shouldShowBanner = activeNeedsVerification || allAvailableNeedVerification;
+
+            return shouldShowBanner ? (
+              <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3 animate-fadeIn">
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <span className="leading-snug">{t.settings.needsVerificationHint}</span>
+                </div>
+                <button
+                  onClick={handleVerifyMirror}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
+                >
+                  {t.details.passVerification}
+                </button>
               </div>
-              <button
-                onClick={handleVerifyMirror}
-                className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
-              >
-                {t.details.passVerification}
-              </button>
-            </div>
-          )}
+            ) : null;
+          })()}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {settings.app.mirrors?.map((mirror) => {

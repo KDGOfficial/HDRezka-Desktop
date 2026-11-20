@@ -113,9 +113,14 @@ export const DetailsPage: React.FC = () => {
 
   const handleVerifyMirror = async () => {
     if (window.api) {
-      await window.api.verifyMirror(details?.url || details?.id);
-      if (selectedMediaId) {
-        loadMediaDetails(selectedMediaId);
+      try {
+        await window.api.verifyMirror(details?.url || details?.id);
+      } catch (err) {
+        console.warn('[Details] verifyMirror error:', err);
+      } finally {
+        if (selectedMediaId) {
+          loadMediaDetails(selectedMediaId);
+        }
       }
     }
   };

@@ -123,9 +123,41 @@ test('checkMirrors marks 200 anti-bot challenge as available with needsVerificat
   }
 });
 
-test('RezkaProvider constructor and selectBestMirror sanitize rezka-ua.tv to hdrezka-home.tv', async () => {
-  const provider = new RezkaProvider('https://rezka-ua.tv', ['https://rezka-ua.tv', 'https://hdrezka-home.tv']);
-  assert.equal(provider.getActiveMirror(), 'https://hdrezka-home.tv', 'Constructor must sanitize broken mirror');
+test('RezkaProvider constructor and selectBestMirror sanitize rezka-ua.tv to hdrezka.kim', async () => {
+  const provider = new RezkaProvider('https://rezka-ua.tv', ['https://rezka-ua.tv', 'https://hdrezka.kim']);
+  assert.equal(provider.getActiveMirror(), 'https://hdrezka.kim', 'Constructor must sanitize broken mirror to active hdrezka.kim');
+});
+
+test('checkMirrors marks fake login screen as unavailable', async () => {
+  const provider = new RezkaProvider('https://hdrezka.kim', ['https://fake-login-mirror.is']);
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<html><head><title>Вход на HDrezka</title></head><body><div class="card-face"><form><input name="login"></form></div></body></html>', { status: 200 });
+
+  try {
+    const statuses = await provider.checkMirrors();
+    assert.equal(statuses[0].isAvailable, false, 'Fake login wall must be marked as unavailable');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('selectBestMirror selects mirror without bot verification if active mirror is challenged', async () => {
+  const provider = new RezkaProvider('https://hdrezka.kim', ['https://hdrezka.kim', 'https://kinogo.film']);
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    if (s.includes('hdrezka.kim')) {
+      return new Response('<html><head><title>Проверяем, что вы не бот!</title><script id="anubis_challenge"></script></head><body><div class="within.website">' + 'x'.repeat(400) + '</div></body></html>', { status: 200 });
+    }
+    return new Response('<html><head><title>KinoGo.film</title></head><body><div class="shortStory">' + 'x'.repeat(400) + '</div></body></html>', { status: 200 });
+  };
+
+  try {
+    const best = await provider.selectBestMirror();
+    assert.equal(best, 'https://kinogo.film', 'Should choose unblocked mirror when active mirror is challenged');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
 });
 
 test('getStream reports clear message when future title is unreleased', async () => {

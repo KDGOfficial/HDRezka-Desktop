@@ -36,8 +36,9 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
         try {
           const cookies = await electron.session.defaultSession.cookies.get({ url: urlStr });
           if (cookies && cookies.length > 0) {
-            const cookieHeader = cookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
-            if (cookieHeader && !headers.has('Cookie')) {
+            const validCookies = cookies.filter((c: any) => c.value && c.value.length > 0);
+            if (validCookies.length > 0) {
+              const cookieHeader = validCookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
               headers.set('Cookie', cookieHeader);
             }
           }
@@ -60,7 +61,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit): Prom
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.25';
+  public version = '0.0.26';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -68,12 +69,12 @@ export class RezkaProvider implements IProvider {
   private mediaCache: Map<string, Partial<MediaItem>> = new Map();
   private mediaUrlCache: Map<string, string> = new Map();
 
-  constructor(activeMirror = 'https://hdrezka-home.tv', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
-    if (!activeMirror || activeMirror.includes('hdrezka.ag') || activeMirror.includes('rezka-ua.tv')) {
-      activeMirror = 'https://hdrezka-home.tv';
+  constructor(activeMirror = 'https://hdrezka.kim', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
+    if (!activeMirror || activeMirror.includes('hdrezka.ag') || activeMirror.includes('rezka-ua.tv') || activeMirror.includes('rezka.fi')) {
+      activeMirror = 'https://hdrezka.kim';
     }
     this.activeMirror = activeMirror;
-    this.mirrors = [...mirrors].filter((m) => !m.includes('hdrezka.ag') && !m.includes('rezka-ua.tv'));
+    this.mirrors = [...mirrors].filter((m) => !m.includes('hdrezka.ag') && !m.includes('rezka-ua.tv') && !m.includes('rezka.fi') && !m.includes('hdrezka.is'));
     this.timeoutMs = timeoutMs;
   }
 
@@ -560,7 +561,9 @@ export class RezkaProvider implements IProvider {
         const isBlocked = this.isAntiBot(text);
         const hasRezkaContent = text.includes('b-content') || text.includes('b-post') || text.includes('b-top');
         const hasKinogoContent = isKinogoMirror && (text.includes('shortStory') || text.includes('shortstory') || text.includes('kinogo') || text.includes('KinoGo'));
-        const isLiveSite = (hasRezkaContent || hasKinogoContent || isBlocked || /rezka|kinogo/i.test(text) || text.includes('within.website')) && text.length > 200;
+        const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
+        const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
+        const isLiveSite = (isKinogoMirror ? hasKinogoContent : isLiveRezka) && text.length > 200;
         const isAvail = res.ok && isLiveSite;
         results.push({
           url: cleanUrl,
@@ -584,15 +587,15 @@ export class RezkaProvider implements IProvider {
   }
 
   public async selectBestMirror(): Promise<string> {
-    if (this.activeMirror.includes('rezka-ua.tv') || this.activeMirror.includes('hdrezka.ag')) {
-      this.activeMirror = 'https://hdrezka-home.tv';
+    if (this.activeMirror.includes('rezka-ua.tv') || this.activeMirror.includes('hdrezka.ag') || this.activeMirror.includes('rezka.fi')) {
+      this.activeMirror = 'https://hdrezka.kim';
     }
 
     const statuses = await this.checkMirrors();
 
-    // Preserve active mirror if it's currently available - never switch away from a working user mirror
+    // Preserve active mirror if it's currently available and does not require bot verification
     const activeStatus = statuses.find(s => s.url === this.activeMirror);
-    if (activeStatus && activeStatus.isAvailable) {
+    if (activeStatus && activeStatus.isAvailable && !activeStatus.needsVerification) {
       return this.activeMirror;
     }
 
@@ -604,6 +607,10 @@ export class RezkaProvider implements IProvider {
         }
         return a.latencyMs - b.latencyMs;
       });
+      // If active mirror is available and shares best verification status with lowest latency, retain it
+      if (activeStatus && activeStatus.isAvailable && activeStatus.needsVerification === available[0].needsVerification) {
+        return this.activeMirror;
+      }
       this.activeMirror = available[0].url;
       return this.activeMirror;
     }

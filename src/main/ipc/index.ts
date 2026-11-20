@@ -1,4 +1,4 @@
-import { ipcMain, app, BrowserWindow, shell } from 'electron';
+import { ipcMain, app, BrowserWindow, shell, session } from 'electron';
 import fs from 'fs';
 import path from 'path';
 import https from 'https';
@@ -146,6 +146,15 @@ export function registerIpcHandlers(): void {
   // Helper to remove any stale bot verification cookies that cause HTTP 500 blank screen
   async function clearStaleVerificationCookies(targetDomainOrUrl: string) {
     try {
+      let host = 'hdrezka.kim';
+      try {
+        if (targetDomainOrUrl.startsWith('http')) {
+          host = new URL(targetDomainOrUrl).hostname;
+        } else {
+          host = targetDomainOrUrl;
+        }
+      } catch (_) {}
+
       const allCookies = await session.defaultSession.cookies.get({}).catch(() => []);
       for (const c of allCookies) {
         const name = c.name.toLowerCase();
@@ -155,9 +164,14 @@ export function registerIpcHandlers(): void {
           name.includes('_vc_id') ||
           name.includes('challenge')
         ) {
-          const cookieDomain = c.domain?.startsWith('.') ? c.domain.slice(1) : c.domain;
-          const cookieUrl = `http${c.secure ? 's' : ''}://${cookieDomain || 'hdrezka-home.tv'}${c.path || '/'}`;
-          await session.defaultSession.cookies.remove(cookieUrl, c.name).catch(() => {});
+          const cookieDomain = c.domain?.startsWith('.') ? c.domain.slice(1) : (c.domain || host);
+          const urlsToTry = [
+            `https://${cookieDomain}${c.path || '/'}`,
+            `http://${cookieDomain}${c.path || '/'}`,
+          ];
+          for (const u of urlsToTry) {
+            await session.defaultSession.cookies.remove(u, c.name).catch(() => {});
+          }
         }
       }
     } catch (e) {
@@ -169,42 +183,51 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.VERIFY_MIRROR, async (event, targetMirrorOrUrl?: string) => {
     const activeMirror = providerManager.getProvider().getActiveMirror();
     let mirror = activeMirror;
-    let loadUrl = targetMirrorOrUrl?.trim() || activeMirror;
+    let loadUrl = activeMirror;
 
-    if (loadUrl.startsWith('http')) {
-      try {
-        const parsed = new URL(loadUrl);
-        mirror = parsed.origin;
-        if (/^\/\d+(\.html)?\/?$/.test(parsed.pathname)) {
-          const id = parsed.pathname.replace(/[^\d]/g, '');
-          const canonical = (providerManager.getProvider() as any).mediaUrlCache?.get(id);
-          if (canonical && canonical.startsWith('http')) {
-            loadUrl = canonical;
+    const rawTarget = targetMirrorOrUrl?.trim();
+    if (rawTarget) {
+      if (rawTarget.startsWith('http')) {
+        try {
+          const parsed = new URL(rawTarget);
+          if (parsed.pathname && parsed.pathname.length > 1) {
+            // Target is a specific page URL: use activeMirror as origin
+            mirror = activeMirror;
+            loadUrl = `${activeMirror}${parsed.pathname}${parsed.search}`;
           } else {
-            loadUrl = mirror;
+            // Target is a mirror origin
+            mirror = parsed.origin;
+            loadUrl = parsed.origin;
           }
+        } catch (_) {
+          loadUrl = activeMirror;
+          mirror = activeMirror;
         }
-      } catch (_) {
-        loadUrl = activeMirror;
+      } else if (rawTarget.startsWith('/') && rawTarget.includes('.html')) {
         mirror = activeMirror;
-      }
-    } else if (loadUrl.startsWith('/') && loadUrl.includes('.html')) {
-      loadUrl = `${mirror}${loadUrl}`;
-    } else {
-      const id = loadUrl.replace(/[^\d]/g, '');
-      const canonical = id ? (providerManager.getProvider() as any).mediaUrlCache?.get(id) : '';
-      if (canonical && canonical.startsWith('http')) {
-        loadUrl = canonical;
+        loadUrl = `${activeMirror}${rawTarget}`;
       } else {
-        loadUrl = mirror;
+        const id = rawTarget.replace(/[^\d]/g, '');
+        const canonical = id ? (providerManager.getProvider() as any).mediaUrlCache?.get(id) : '';
+        if (canonical && canonical.startsWith('http')) {
+          try {
+            const parsed = new URL(canonical);
+            loadUrl = `${activeMirror}${parsed.pathname}`;
+          } catch (_) {
+            loadUrl = canonical;
+          }
+        } else {
+          loadUrl = activeMirror;
+        }
+        mirror = activeMirror;
       }
     }
 
-    // Normalize known dead/broken mirrors (hdrezka.ag, rezka-ua.tv) to stable working mirror
-    const isBadMirror = !mirror || mirror.includes('hdrezka.ag') || mirror.includes('rezka-ua.tv');
+    // Normalize known dead/broken mirrors (hdrezka.ag, rezka-ua.tv, rezka.fi) to active or stable mirror
+    const isBadMirror = !mirror || mirror.includes('hdrezka.ag') || mirror.includes('rezka-ua.tv') || mirror.includes('rezka.fi');
     if (isBadMirror) {
-      mirror = 'https://hdrezka-home.tv';
-      loadUrl = 'https://hdrezka-home.tv';
+      mirror = 'https://hdrezka.kim';
+      loadUrl = 'https://hdrezka.kim';
       providerManager.getProvider().setActiveMirror(mirror);
       db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
     }
@@ -233,44 +256,71 @@ export function registerIpcHandlers(): void {
       const checkPassed = async () => {
         if (isClosed || win.isDestroyed()) return;
         try {
-          // 1. Check if real HDRezka content loaded in DOM
-          const isSiteLoaded = await win.webContents.executeJavaScript(
-            `!!(document.querySelector('.b-content') || document.querySelector('.b-post') || document.querySelector('.b-top') || document.querySelector('#search-field') || document.querySelector('.b-users__login') || document.querySelector('.b-sidecover'))`
-          ).catch(() => false);
+          // 1. Inspect DOM state in verification window
+          const domState = await win.webContents.executeJavaScript(`
+            (() => {
+              const hasRezkaContent = !!(
+                document.querySelector('.b-content') ||
+                document.querySelector('.b-post') ||
+                document.querySelector('.b-top') ||
+                document.querySelector('#search-field') ||
+                document.querySelector('.b-users__login') ||
+                document.querySelector('.b-sidecover')
+              );
+              const isChallengeActive = !!(
+                document.querySelector('#anubis_challenge') ||
+                document.querySelector('#anubis-main') ||
+                document.querySelector('#challenge-running') ||
+                document.querySelector('.cf-browser-verification') ||
+                document.querySelector('#cf-wrapper') ||
+                (document.title && (
+                  document.title.includes('Проверяем, что вы не бот') ||
+                  document.title.includes('Just a moment') ||
+                  document.title.includes('Attention Required')
+                ))
+              );
+              return { hasRezkaContent, isChallengeActive };
+            })()
+          `).catch(() => ({ hasRezkaContent: false, isChallengeActive: true }));
 
-          // 2. Check if newly issued Anubis / Cloudflare verification auth cookies are present
+          // NEVER close while challenge is actively running on page
+          if (domState.isChallengeActive) {
+            return;
+          }
+
+          // 2. Check if valid Anubis / Cloudflare verification auth cookies are present
           const sessionCookies = await session.defaultSession.cookies.get({ url: mirror }).catch(() => []);
-          const hasAuthCookie = sessionCookies.some(
-            (c) => c.name.toLowerCase().includes('anubis-auth') || c.name.toLowerCase().includes('cf_clearance')
+          const hasValidAuthCookie = sessionCookies.some(
+            (c) =>
+              (c.name.toLowerCase().includes('anubis-auth') && c.value && c.value.length > 10) ||
+              (c.name.toLowerCase().includes('cf_clearance') && c.value && c.value.length > 10)
           );
 
-          // 3. Check current navigation URL
-          const curUrl = win.webContents.getURL() || '';
-          const isAtChallenge = curUrl.includes('pass-challenge') || curUrl.includes('within.website') || curUrl.includes('anubis');
-
-          if (isSiteLoaded || (hasAuthCookie && !isAtChallenge)) {
+          // Verification is passed when real content loaded or valid auth cookie present without active challenge
+          if (domState.hasRezkaContent || hasValidAuthCookie) {
             isClosed = true;
             clearInterval(timer);
             cleanupCookieListener();
-            cleanupHttp500Listener();
             providerManager.getProvider().setActiveMirror(mirror);
             db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
             setTimeout(() => {
               if (!win.isDestroyed()) win.close();
-            }, 600);
+            }, 800);
           }
         } catch (_) {}
       };
 
       // Instantly react when Anubis sets a newly solved auth cookie in session
       const onCookieChanged = (_: any, cookie: any, __: any, removed: boolean) => {
-        if (!removed && cookie?.name && cookie.name.toLowerCase().includes('anubis-auth')) {
-          checkPassed();
+        if (!removed && cookie?.name && cookie.name.toLowerCase().includes('anubis-auth') && cookie.value && cookie.value.length > 10) {
+          setTimeout(checkPassed, 500);
         }
       };
       session.defaultSession.cookies.on('changed', onCookieChanged);
       const cleanupCookieListener = () => {
-        session.defaultSession.cookies.removeListener('changed', onCookieChanged);
+        try {
+          session.defaultSession.cookies.removeListener('changed', onCookieChanged);
+        } catch (_) {}
       };
 
       // If server returns HTTP >= 500 on main frame due to cached tokens, clear and reload once
@@ -293,19 +343,17 @@ export function registerIpcHandlers(): void {
           }, 300);
         }
       };
-      session.defaultSession.webRequest.onCompleted({ urls: ['*://*/*'] }, onCompletedListener);
-      const cleanupHttp500Listener = () => {
-        // webRequest.onCompleted doesn't have direct removeListener in all Electron versions, but guard with isClosed
-      };
+      try {
+        session.defaultSession.webRequest.onCompleted({ urls: ['*://*/*'] }, onCompletedListener);
+      } catch (_) {}
 
       const timer = setInterval(checkPassed, 800);
-      win.webContents.on('did-finish-load', checkPassed);
+      win.webContents.on('did-finish-load', () => setTimeout(checkPassed, 400));
 
       win.on('closed', () => {
         isClosed = true;
         clearInterval(timer);
         cleanupCookieListener();
-        cleanupHttp500Listener();
         resolve(true);
       });
 
