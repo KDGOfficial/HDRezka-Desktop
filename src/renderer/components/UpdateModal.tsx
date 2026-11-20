@@ -12,9 +12,14 @@ export const UpdateModal: React.FC = () => {
     return null;
   }
 
-  const isDownloading = updateProgress?.status === 'downloading';
-  const isReady = updateProgress?.status === 'ready';
   const isInstalling = updateProgress?.status === 'installing';
+  const isReady =
+    !isInstalling &&
+    (updateProgress?.status === 'ready' ||
+      (updateProgress?.status === 'downloading' &&
+        (updateProgress.percent >= 100 ||
+          (updateProgress.transferredBytes > 0 && updateProgress.transferredBytes >= updateProgress.totalBytes))));
+  const isDownloading = updateProgress?.status === 'downloading' && !isReady;
   const isError = updateProgress?.status === 'error';
   const isOpenedInBrowser = updateProgress?.status === 'opened_in_browser';
 

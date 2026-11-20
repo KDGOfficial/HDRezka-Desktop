@@ -127,9 +127,14 @@ export const SettingsPage: React.FC = () => {
     reader.readAsText(file);
   };
 
-  const isDownloading = updateProgress?.status === 'downloading';
-  const isReady = updateProgress?.status === 'ready';
   const isInstalling = updateProgress?.status === 'installing';
+  const isReady =
+    !isInstalling &&
+    (updateProgress?.status === 'ready' ||
+      (updateProgress?.status === 'downloading' &&
+        (updateProgress.percent >= 100 ||
+          (updateProgress.transferredBytes > 0 && updateProgress.transferredBytes >= updateProgress.totalBytes))));
+  const isDownloading = updateProgress?.status === 'downloading' && !isReady;
 
   return (
     <div className="w-full pb-20 text-left select-none max-w-4xl mx-auto animate-fadeIn">

@@ -143,7 +143,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         });
         return;
       }
-      if (!res.success) {
+      if (res.success) {
+        set((state) => ({
+          updateProgress: {
+            percent: 100,
+            transferredBytes: state.updateProgress?.totalBytes || updateInfo.assetSize || 0,
+            totalBytes: state.updateProgress?.totalBytes || updateInfo.assetSize || 0,
+            status: 'ready',
+            filePath: res.filePath,
+          },
+        }));
+      } else {
         set({
           updateProgress: {
             percent: 0,

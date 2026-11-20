@@ -447,10 +447,12 @@ export function registerIpcHandlers(): void {
         });
 
         downloadedUpdatePath = destPath;
+        const finalStat = await fs.promises.stat(destPath).catch(() => null);
+        const finalSize = finalStat ? finalStat.size : 0;
         win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
           percent: 100,
-          transferredBytes: 0,
-          totalBytes: 0,
+          transferredBytes: finalSize,
+          totalBytes: finalSize,
           status: 'ready',
           filePath: destPath,
         } as UpdateProgress);
