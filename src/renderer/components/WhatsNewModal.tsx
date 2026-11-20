@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Pin, EyeOff, Subtitles, Maximize2, RefreshCw, X, Check } from 'lucide-react';
+import { Sparkles, Move, Scaling, Layers, Clapperboard, X, Check } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { APP_VERSION } from '../../shared/constants';
 
@@ -15,27 +15,27 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
 
   const features = [
     {
-      icon: <Pin className="w-4 h-4 text-brand-red rotate-45" />,
+      icon: <Sparkles className="w-4 h-4 text-brand-red" />,
       title: t.whatsNew.f1_title,
       desc: t.whatsNew.f1_desc,
     },
     {
-      icon: <EyeOff className="w-4 h-4 text-amber-400" />,
+      icon: <Move className="w-4 h-4 text-amber-400" />,
       title: t.whatsNew.f2_title,
       desc: t.whatsNew.f2_desc,
     },
     {
-      icon: <Subtitles className="w-4 h-4 text-cyan-400" />,
+      icon: <Scaling className="w-4 h-4 text-cyan-400" />,
       title: t.whatsNew.f3_title,
       desc: t.whatsNew.f3_desc,
     },
     {
-      icon: <Maximize2 className="w-4 h-4 text-emerald-400" />,
+      icon: <Layers className="w-4 h-4 text-emerald-400" />,
       title: t.whatsNew.f4_title,
       desc: t.whatsNew.f4_desc,
     },
     {
-      icon: <RefreshCw className="w-4 h-4 text-orange-400" />,
+      icon: <Clapperboard className="w-4 h-4 text-orange-400" />,
       title: t.whatsNew.f5_title,
       desc: t.whatsNew.f5_desc,
     },
