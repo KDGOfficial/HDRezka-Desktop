@@ -26,9 +26,12 @@ if (!gotTheLock) {
     // 1. Initialize DB and Provider
     const db = AppDatabase.getInstance();
     const settings = db.getSettings();
+    const provider = ProviderManager.getInstance().getProvider();
     if (settings.app.activeMirror) {
-      ProviderManager.getInstance().getProvider().setActiveMirror(settings.app.activeMirror);
+      provider.setActiveMirror(settings.app.activeMirror);
     }
+    // Automatically select the best reachable mirror in background
+    provider.selectBestMirror().catch(() => {});
 
     // 2. Register all IPC handlers
     registerIpcHandlers();

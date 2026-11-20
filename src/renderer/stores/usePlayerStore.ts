@@ -159,8 +159,22 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   switchTranslator: async (translatorId: number) => {
     const { mediaDetails, seasonId, episodeId } = get();
     if (!mediaDetails) return;
+
+    let updatedDetails = { ...mediaDetails, currentTranslatorId: translatorId };
+    if (
+      window.api &&
+      (mediaDetails.type === 'series' || mediaDetails.type === 'animation' || mediaDetails.type === 'cartoons')
+    ) {
+      try {
+        const newSeasons = await window.api.getSeriesEpisodes(mediaDetails.id, translatorId);
+        if (newSeasons && newSeasons.length > 0) {
+          updatedDetails.seasons = newSeasons;
+        }
+      } catch (_) {}
+    }
+
     await get().openPlayer({
-      details: mediaDetails,
+      details: updatedDetails,
       translatorId,
       seasonId,
       episodeId,

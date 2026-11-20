@@ -67,13 +67,8 @@ export const useMediaStore = create<MediaState>((set, get) => ({
         description: preloaded.info || (preloaded as any).description || 'Загрузка информации о фильме...',
         directors: (preloaded as any).directors || [],
         actors: (preloaded as any).actors || [],
-        translators: (preloaded as any).translators || [
-          { id: 56, name: 'Дубляж / HDRezka Studio', premium: false },
-          { id: 238, name: 'LostFilm', premium: false },
-          { id: 70, name: 'Кубик в Кубе', premium: false },
-          { id: 4, name: 'Оригинал (+субтитры)', premium: false },
-        ],
-        currentTranslatorId: (preloaded as any).currentTranslatorId || 56,
+        translators: (preloaded as any).translators || [],
+        currentTranslatorId: (preloaded as any).currentTranslatorId || 0,
         seasons: (preloaded as any).seasons || [],
         similar: (preloaded as any).similar || [],
       };
