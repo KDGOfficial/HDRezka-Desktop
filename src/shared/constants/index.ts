@@ -4,12 +4,11 @@ export const APP_NAME = 'HDREZKA Desktop';
 export const APP_VERSION = '0.0.10';
 
 export const DEFAULT_MIRRORS = [
-  'https://hdrezka.ag',
   'https://hdrezka-home.tv',
-  'https://rezka.ag',
   'https://hdrezka.me',
-  'https://hdrezka.cm',
+  'https://rezka.ag',
   'https://rezkify.com',
+  'https://hdrezka.ag',
 ];
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
@@ -37,7 +36,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   app: {
     autoLaunch: false,
     checkUpdatesOnStart: true,
-    activeMirror: 'https://hdrezka.ag',
+    activeMirror: 'https://hdrezka-home.tv',
     mirrors: DEFAULT_MIRRORS,
     requestTimeoutMs: 8000,
   },

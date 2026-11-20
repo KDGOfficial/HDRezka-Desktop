@@ -82,37 +82,61 @@ export function registerIpcHandlers(): void {
   });
 
   // Opens the mirror in a visible window so the user passes the site's bot check; cookies land in the shared session
-  ipcMain.handle(IPC_CHANNELS.VERIFY_MIRROR, () => {
+  ipcMain.handle(IPC_CHANNELS.VERIFY_MIRROR, (event, targetMirror?: string) => {
     return new Promise<boolean>((resolve) => {
+      let mirror = targetMirror || providerManager.getProvider().getActiveMirror();
+      // hdrezka.ag has broken Anubis scripts (404 on main.mjs); redirect to working mirror
+      if (!mirror || mirror.includes('hdrezka.ag')) {
+        mirror = 'https://hdrezka-home.tv';
+        providerManager.getProvider().setActiveMirror(mirror);
+        db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
+      }
+
       const win = new BrowserWindow({
-        width: 900,
-        height: 700,
-        parent: getMainWindow() ?? undefined,
-        modal: true,
-        title: 'Проверка HDRezka',
+        width: 960,
+        height: 720,
+        center: true,
+        title: 'Проверка HDRezka — Пройдите проверку (окно закроется автоматически)',
         autoHideMenuBar: true,
-        webPreferences: { contextIsolation: true, nodeIntegration: false },
+        show: true,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+        },
       });
 
+      win.focus();
+
+      let isClosed = false;
       const checkPassed = async () => {
-        if (win.isDestroyed()) return;
+        if (isClosed || win.isDestroyed()) return;
         try {
-          const title: string = await win.webContents.executeJavaScript('document.title').catch(() => '');
-          if (title && !title.includes('не бот') && !title.includes('Checking') && !title.includes('Just a moment')) {
+          const isSiteLoaded = await win.webContents.executeJavaScript(
+            `!!(document.querySelector('.b-content') || document.querySelector('.b-post') || document.querySelector('.b-top') || document.querySelector('#search-field') || document.querySelector('.b-users__login') || document.querySelector('.b-sidecover'))`
+          ).catch(() => false);
+
+          if (isSiteLoaded) {
+            isClosed = true;
             clearInterval(timer);
-            win.close();
+            providerManager.getProvider().setActiveMirror(mirror);
+            db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
+            setTimeout(() => {
+              if (!win.isDestroyed()) win.close();
+            }, 600);
           }
         } catch (_) {}
       };
 
-      const timer = setInterval(checkPassed, 500);
+      const timer = setInterval(checkPassed, 1000);
       win.webContents.on('did-finish-load', checkPassed);
-      win.webContents.on('did-navigate', checkPassed);
+
       win.on('closed', () => {
+        isClosed = true;
         clearInterval(timer);
         resolve(true);
       });
-      win.loadURL(providerManager.getProvider().getActiveMirror());
+
+      win.loadURL(mirror).catch(() => {});
     });
   });
 

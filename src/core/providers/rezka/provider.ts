@@ -43,7 +43,7 @@ export class RezkaProvider implements IProvider {
   private mediaCache: Map<string, Partial<MediaItem>> = new Map();
   private mediaUrlCache: Map<string, string> = new Map();
 
-  constructor(activeMirror = 'https://hdrezka.ag', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
+  constructor(activeMirror = 'https://hdrezka-home.tv', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
     this.activeMirror = activeMirror;
     this.mirrors = [...mirrors];
     this.timeoutMs = timeoutMs;

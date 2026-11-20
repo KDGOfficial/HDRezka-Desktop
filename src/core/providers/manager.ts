@@ -9,7 +9,7 @@ export class ProviderManager {
 
   private constructor() {
     // Register default HDRezka provider
-    const defaultRezka = new RezkaProvider('https://hdrezka.ag', DEFAULT_MIRRORS);
+    const defaultRezka = new RezkaProvider('https://hdrezka-home.tv', DEFAULT_MIRRORS);
     this.registerProvider(defaultRezka);
   }
 

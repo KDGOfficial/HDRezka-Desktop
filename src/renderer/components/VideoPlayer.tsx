@@ -61,6 +61,7 @@ export const VideoPlayer: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
 
   const hideTimerRef = useRef<any>(null);
@@ -408,16 +409,25 @@ export const VideoPlayer: React.FC = () => {
           <div className="flex flex-wrap items-center justify-center gap-3">
             {window.api?.verifyMirror && (
               <button
+                disabled={isVerifying}
                 onClick={async () => {
+                  setIsVerifying(true);
                   try {
                     await window.api.verifyMirror();
                     await retryPlayback();
-                  } catch (_) {}
+                  } catch (_) {
+                  } finally {
+                    setIsVerifying(false);
+                  }
                 }}
-                className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-amber-500 text-black font-bold hover:bg-amber-400 shadow-glow transition-all cursor-pointer"
+                className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-bold transition-all shadow-glow cursor-pointer ${
+                  isVerifying
+                    ? 'bg-amber-500/50 text-black/60 cursor-not-allowed'
+                    : 'bg-amber-500 text-black hover:bg-amber-400 active:scale-95'
+                }`}
               >
-                <ShieldCheck className="w-4 h-4" />
-                <span>Пройти проверку</span>
+                <ShieldCheck className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} />
+                <span>{isVerifying ? 'Идет проверка...' : 'Пройти проверку'}</span>
               </button>
             )}
             <button

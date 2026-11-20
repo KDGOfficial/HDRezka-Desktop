@@ -26,7 +26,7 @@ export const TitleBar: React.FC = () => {
   const handleClose = () => window.api?.close();
 
   // Active mirror status
-  const currentMirror = settings.app.activeMirror || 'https://hdrezka.ag';
+  const currentMirror = settings.app.activeMirror || 'https://hdrezka-home.tv';
   const mirrorStatus = mirrorsStatus.find((m) => m.url === currentMirror);
   const isAvailable = mirrorStatus ? mirrorStatus.isAvailable : true;
 

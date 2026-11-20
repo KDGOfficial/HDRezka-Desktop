@@ -33,8 +33,11 @@ if (!gotTheLock) {
     const db = AppDatabase.getInstance();
     const settings = db.getSettings();
     const provider = ProviderManager.getInstance().getProvider();
-    if (settings.app.activeMirror) {
-      provider.setActiveMirror(settings.app.activeMirror);
+    const currentMirror = settings.app?.activeMirror;
+    const workingMirror = (!currentMirror || currentMirror.includes('hdrezka.ag')) ? 'https://hdrezka-home.tv' : currentMirror;
+    provider.setActiveMirror(workingMirror);
+    if (workingMirror !== currentMirror) {
+      db.saveSettings({ app: { ...settings.app, activeMirror: workingMirror } });
     }
     // Automatically select the best reachable mirror in background
     provider.selectBestMirror().catch(() => {});
