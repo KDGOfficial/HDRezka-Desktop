@@ -201,7 +201,7 @@ export interface UpdateProgress {
   percent: number;
   transferredBytes: number;
   totalBytes: number;
-  status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'opened_in_browser';
+  status: 'idle' | 'checking' | 'downloading' | 'ready' | 'error' | 'opened_in_browser' | 'installing';
   error?: string;
   filePath?: string;
 }

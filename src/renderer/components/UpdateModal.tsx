@@ -14,6 +14,7 @@ export const UpdateModal: React.FC = () => {
 
   const isDownloading = updateProgress?.status === 'downloading';
   const isReady = updateProgress?.status === 'ready';
+  const isInstalling = updateProgress?.status === 'installing';
   const isError = updateProgress?.status === 'error';
   const isOpenedInBrowser = updateProgress?.status === 'opened_in_browser';
 
@@ -95,7 +96,25 @@ export const UpdateModal: React.FC = () => {
             </div>
           )}
 
-          {isReady && (
+          {isInstalling && (
+            <div className="p-4 rounded-2xl bg-dark-bg/95 border border-emerald-500/30 space-y-3 animate-fade-in shadow-glow-sm">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-semibold text-white flex items-center space-x-2">
+                  <RefreshCw className="w-4 h-4 text-emerald-400 animate-spin" />
+                  <span>{t.updateModal.installing}</span>
+                </span>
+                <span className="font-mono text-emerald-400 font-bold">100%</span>
+              </div>
+              <div className="w-full h-2.5 rounded-full bg-zinc-800 overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full w-full animate-pulse" />
+              </div>
+              <p className="text-[11px] text-zinc-400 leading-relaxed text-center">
+                {t.updateModal.installingDesc}
+              </p>
+            </div>
+          )}
+
+          {isReady && !isInstalling && (
             <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 flex items-center space-x-3 text-xs text-emerald-400">
               <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400" />
               <span>Обновление успешно загружено и готово к установке.</span>
@@ -144,10 +163,15 @@ export const UpdateModal: React.FC = () => {
               {t.updateModal.later}
             </button>
 
-            {isReady ? (
+            {isInstalling ? (
+              <div className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-emerald-600/50 text-white font-bold text-xs">
+                <RefreshCw className="w-4 h-4 animate-spin text-emerald-300" />
+                <span>{t.updateModal.installing}</span>
+              </div>
+            ) : isReady ? (
               <button
                 onClick={installUpdate}
-                className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-glow transition-all active:scale-95"
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-bold text-xs shadow-glow transition-all active:scale-95 cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 <span>{t.updateModal.installBtn}</span>

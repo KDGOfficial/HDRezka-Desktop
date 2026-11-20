@@ -129,6 +129,7 @@ export const SettingsPage: React.FC = () => {
 
   const isDownloading = updateProgress?.status === 'downloading';
   const isReady = updateProgress?.status === 'ready';
+  const isInstalling = updateProgress?.status === 'installing';
 
   return (
     <div className="w-full pb-20 text-left select-none max-w-4xl mx-auto animate-fadeIn">
@@ -236,15 +237,20 @@ export const SettingsPage: React.FC = () => {
                 </button>
               )}
 
-              {isReady && (
+              {isInstalling ? (
+                <div className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-emerald-600/50 text-white text-xs font-bold shadow-glow">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-300" />
+                  <span>{t.updateModal.installing}</span>
+                </div>
+              ) : isReady ? (
                 <button
                   onClick={installUpdate}
-                  className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-bold shadow-glow transition-all active:scale-95"
+                  className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-bold shadow-glow transition-all active:scale-95 cursor-pointer"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>{t.settings.installRestart}</span>
                 </button>
-              )}
+              ) : null}
 
               <a
                 href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"

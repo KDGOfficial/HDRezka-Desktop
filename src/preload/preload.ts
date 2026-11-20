@@ -109,6 +109,7 @@ export const api = {
   downloadUpdate: (assetUrl?: string): Promise<{ success: boolean; filePath?: string; openedInBrowser?: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.DOWNLOAD_UPDATE, assetUrl),
   installUpdate: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.INSTALL_UPDATE),
+  checkJustUpdated: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CHECK_JUST_UPDATED),
   onUpdateProgress: (callback: (progress: import('../shared/types').UpdateProgress) => void) => {
     const handler = (_: any, progress: import('../shared/types').UpdateProgress) => callback(progress);
     ipcRenderer.on(IPC_CHANNELS.ON_UPDATE_PROGRESS, handler);

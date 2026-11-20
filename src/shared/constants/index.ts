@@ -107,6 +107,7 @@ export const IPC_CHANNELS = {
   ON_UPDATE_PROGRESS: 'app:updateProgress',
   CLEAR_CACHE: 'app:clearCache',
   OPEN_EXTERNAL_URL: 'app:openExternal',
+  CHECK_JUST_UPDATED: 'app:checkJustUpdated',
 };
 
 export const GENRES = [

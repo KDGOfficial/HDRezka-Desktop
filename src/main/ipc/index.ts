@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import https from 'https';
 import http from 'http';
+import { spawn } from 'child_process';
 import { IPC_CHANNELS, APP_VERSION } from '../../shared/constants';
 import { getMainWindow } from '../window';
 import { ProviderManager } from '../../core/providers/manager';
@@ -470,12 +471,93 @@ export function registerIpcHandlers(): void {
     }
   );
 
+  let justUpdatedFlag = process.argv.includes('--just-updated');
+
+  ipcMain.handle(IPC_CHANNELS.CHECK_JUST_UPDATED, () => {
+    const flag = justUpdatedFlag;
+    justUpdatedFlag = false;
+    return flag;
+  });
+
   ipcMain.handle(IPC_CHANNELS.INSTALL_UPDATE, async () => {
     if (!downloadedUpdatePath || !fs.existsSync(downloadedUpdatePath)) {
       return false;
     }
+    const win = getMainWindow();
     try {
-      shell.openPath(downloadedUpdatePath);
+      // Notify UI that installation process has begun
+      win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
+        percent: 100,
+        transferredBytes: 0,
+        totalBytes: 0,
+        status: 'installing',
+      } as UpdateProgress);
+
+      const pid = process.pid;
+      const installerPath = downloadedUpdatePath;
+      const tempDir = app.getPath('temp');
+      const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || app.getPath('exe');
+
+      const batPath = path.join(tempDir, 'hdrezka-update-runner.bat');
+      const vbsPath = path.join(tempDir, 'hdrezka-update-runner.vbs');
+
+      const batContent = `@echo off
+setlocal
+set "PARENT_PID=${pid}"
+set "INSTALLER=${installerPath}"
+set "APP_EXE=${targetExe}"
+
+:wait_pid
+timeout /t 1 /nobreak >nul
+tasklist /fi "PID eq %PARENT_PID%" 2>nul | find "%PARENT_PID%" >nul
+if not errorlevel 1 goto wait_pid
+
+:: Run installer silently to apply update quickly without dialog deadlocks
+start /wait "" "%INSTALLER%" /S
+
+:: Give the system a brief moment to finish writing files
+timeout /t 2 /nobreak >nul
+
+:: Relaunch the updated application
+if exist "%APP_EXE%" (
+    start "" "%APP_EXE%" --just-updated
+    exit
+)
+
+set "DEFAULT_EXE=%LOCALAPPDATA%\\Programs\\hdrezka-desktop\\HDREZKA Desktop.exe"
+if exist "%DEFAULT_EXE%" (
+    start "" "%DEFAULT_EXE%" --just-updated
+    exit
+)
+
+set "PROG_EXE=%ProgramFiles%\\HDREZKA Desktop\\HDREZKA Desktop.exe"
+if exist "%PROG_EXE%" (
+    start "" "%PROG_EXE%" --just-updated
+    exit
+)
+exit
+`;
+      fs.writeFileSync(batPath, batContent, 'utf-8');
+
+      // VBS wrapper to run the batch script completely hidden (no black CMD popup)
+      const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\nWshShell.Run Chr(34) & "${batPath.replace(/\\/g, '\\\\')}" & Chr(34), 0, False\n`;
+      fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
+
+      try {
+        const runner = spawn('wscript.exe', [vbsPath], {
+          detached: true,
+          stdio: 'ignore',
+        });
+        runner.unref();
+      } catch {
+        // Fallback to direct cmd spawn if wscript is restricted
+        const runner = spawn('cmd.exe', ['/c', batPath], {
+          detached: true,
+          stdio: 'ignore',
+        });
+        runner.unref();
+      }
+
       setTimeout(() => {
         app.quit();
       }, 1500);

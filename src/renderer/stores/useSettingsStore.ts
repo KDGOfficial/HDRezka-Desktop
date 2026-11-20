@@ -171,6 +171,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   installUpdate: async () => {
     if (!window.api) return;
+    set({
+      updateProgress: {
+        percent: 100,
+        transferredBytes: 0,
+        totalBytes: 0,
+        status: 'installing',
+      },
+    });
     try {
       await window.api.installUpdate();
     } catch (err) {

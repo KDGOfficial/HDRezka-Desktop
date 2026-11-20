@@ -6,9 +6,11 @@ import { Header } from './components/Header';
 import { VideoPlayer } from './components/VideoPlayer';
 import { CollectionModal } from './components/CollectionModal';
 import { UpdateModal } from './components/UpdateModal';
+import { WhatsNewModal } from './components/WhatsNewModal';
 import { useMediaStore } from './stores/useMediaStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useTranslation } from './i18n';
+import { APP_VERSION } from '../shared/constants';
 
 // Pages
 import { HomePage } from './pages/HomePage';
@@ -24,11 +26,27 @@ export const App: React.FC = () => {
   const { currentPage, loadFavorites, loadWatchHistory } = useMediaStore();
   const { loadSettings, updateInfo, isUpdateModalOpen, setUpdateModalOpen } = useSettingsStore();
   const { t } = useTranslation();
+  const [isWhatsNewOpen, setIsWhatsNewOpen] = React.useState(false);
 
   useEffect(() => {
     loadSettings();
     loadFavorites();
     loadWatchHistory();
+
+    // Check if the application was just updated and show What's New modal
+    const checkUpdateFlag = async () => {
+      let justUpdated = false;
+      if (window.api?.checkJustUpdated) {
+        justUpdated = await window.api.checkJustUpdated();
+      }
+      const lastSeen = localStorage.getItem('hdrezka_seen_version');
+      if (justUpdated || (lastSeen && lastSeen !== APP_VERSION)) {
+        setIsWhatsNewOpen(true);
+      }
+      localStorage.setItem('hdrezka_seen_version', APP_VERSION);
+    };
+    checkUpdateFlag();
+
     // Check for updates periodically every 30 minutes
     const interval = setInterval(() => {
       useSettingsStore.getState().checkForUpdates(false);
@@ -115,6 +133,12 @@ export const App: React.FC = () => {
 
       {/* Auto Update GitHub Modal */}
       <UpdateModal />
+
+      {/* What's New Changelog Modal */}
+      <WhatsNewModal
+        isOpen={isWhatsNewOpen}
+        onClose={() => setIsWhatsNewOpen(false)}
+      />
     </div>
   );
 };
