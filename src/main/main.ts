@@ -4,6 +4,10 @@ import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
 
+// Disable hardware acceleration to eliminate Windows 11 DWM / GPU composition black window bug
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('disable-gpu');
+
 // Acquire single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
 

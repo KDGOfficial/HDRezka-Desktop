@@ -27,7 +27,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
   }[size];
 
   const handleCardClick = () => {
-    openDetails(item.url || item.id);
+    openDetails(item.url || item.id, item);
   };
 
   const handleFavoriteClick = (e: React.MouseEvent) => {

@@ -57,9 +57,9 @@ export const Header: React.FC = () => {
     }
   };
 
-  const handleSelectSuggestion = (item: { title: string; url: string }) => {
+  const handleSelectSuggestion = (item: any) => {
     setIsOpen(false);
-    openDetails(item.url);
+    openDetails(item.url, item);
   };
 
   return (

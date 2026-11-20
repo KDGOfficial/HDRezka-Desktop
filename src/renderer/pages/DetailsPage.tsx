@@ -20,12 +20,12 @@ import { MediaSlider } from '../components/MediaSlider';
 import { getRatingColor } from '../../shared/utils';
 
 export const DetailsPage: React.FC = () => {
-  const { selectedMediaId, favorites, toggleFavorite, openCollectionModal } = useMediaStore();
+  const { selectedMediaId, selectedMediaDetails, favorites, toggleFavorite, openCollectionModal } = useMediaStore();
   const { openPlayer } = usePlayerStore();
 
-  const [details, setDetails] = useState<MediaDetails | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [selectedTranslatorId, setSelectedTranslatorId] = useState<number>(0);
+  const [details, setDetails] = useState<MediaDetails | null>(selectedMediaDetails);
+  const [loading, setLoading] = useState<boolean>(!selectedMediaDetails);
+  const [selectedTranslatorId, setSelectedTranslatorId] = useState<number>(selectedMediaDetails?.currentTranslatorId || 56);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number>(1);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState<boolean>(false);
@@ -34,15 +34,24 @@ export const DetailsPage: React.FC = () => {
 
   useEffect(() => {
     if (selectedMediaId) {
+      if (selectedMediaDetails) {
+        setDetails(selectedMediaDetails);
+        setSeasons(selectedMediaDetails.seasons || []);
+        if (selectedMediaDetails.translators && selectedMediaDetails.translators.length > 0) {
+          setSelectedTranslatorId(selectedMediaDetails.translators[0].id);
+        }
+      }
       loadMediaDetails(selectedMediaId);
     }
   }, [selectedMediaId]);
 
   const loadMediaDetails = async (idOrUrl: string) => {
     if (!window.api) return;
-    setLoading(true);
+    if (!details && !selectedMediaDetails) {
+      setLoading(true);
+    }
     try {
-      const data = await window.api.getDetails(idOrUrl);
+      const data = await window.api.getDetails(idOrUrl, selectedMediaDetails || undefined);
       setDetails(data);
       if (data.translators && data.translators.length > 0) {
         setSelectedTranslatorId(data.translators[0].id);
@@ -50,6 +59,8 @@ export const DetailsPage: React.FC = () => {
       if (data.seasons && data.seasons.length > 0) {
         setSeasons(data.seasons);
         setSelectedSeasonId(data.seasons[0].id);
+      } else {
+        setSeasons([]);
       }
     } catch (err) {
       console.error('Failed to load details:', err);
@@ -60,12 +71,12 @@ export const DetailsPage: React.FC = () => {
 
   const handleTranslatorChange = async (trId: number) => {
     setSelectedTranslatorId(trId);
-    if (details?.type === 'series' && window.api) {
+    if ((details?.type === 'series' || details?.type === 'animation') && window.api) {
       setLoadingEpisodes(true);
       try {
         const newSeasons = await window.api.getSeriesEpisodes(details.id, trId);
-        setSeasons(newSeasons);
-        if (newSeasons.length > 0) {
+        setSeasons(newSeasons || []);
+        if (newSeasons && newSeasons.length > 0) {
           setSelectedSeasonId(newSeasons[0].id);
         }
       } catch (err) {
@@ -78,11 +89,12 @@ export const DetailsPage: React.FC = () => {
 
   const handleWatch = (seasonId?: number, episodeId?: number) => {
     if (!details) return;
+    const isSeriesLike = details.type === 'series' || details.type === 'animation' || (seasons && seasons.length > 0);
     openPlayer({
       details,
-      translatorId: selectedTranslatorId || details.translators[0]?.id || 56,
-      seasonId: details.type === 'series' ? seasonId || selectedSeasonId : undefined,
-      episodeId: details.type === 'series' ? episodeId || 1 : undefined,
+      translatorId: selectedTranslatorId || details.translators?.[0]?.id || 56,
+      seasonId: isSeriesLike ? seasonId || selectedSeasonId : undefined,
+      episodeId: isSeriesLike ? episodeId || 1 : undefined,
     });
   };
 
@@ -214,7 +226,7 @@ export const DetailsPage: React.FC = () => {
                   <span>{details.duration}</span>
                 </span>
               )}
-              {details.genres.length > 0 && (
+              {details.genres && details.genres.length > 0 && (
                 <span className="text-zinc-400">
                   {details.genres.join(', ')}
                 </span>
@@ -281,7 +293,7 @@ export const DetailsPage: React.FC = () => {
         {/* Left Column: Description & Seasons / Translators */}
         <div className="lg:col-span-2 space-y-8">
           {/* Translators Section */}
-          {details.translators.length > 0 && (
+          {details.translators && details.translators.length > 0 && (
             <div className="bg-dark-surface border border-white/5 rounded-2xl p-5 shadow-card">
               <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider mb-3">
                 Озвучка и перевод
@@ -305,8 +317,8 @@ export const DetailsPage: React.FC = () => {
             </div>
           )}
 
-          {/* Series: Seasons and Episodes selector */}
-          {details.type === 'series' && seasons.length > 0 && (
+          {/* Series / Animation: Seasons and Episodes selector */}
+          {(details.type === 'series' || details.type === 'animation' || (seasons && seasons.length > 0)) && seasons && seasons.length > 0 && (
             <div className="bg-dark-surface border border-white/5 rounded-2xl p-5 shadow-card space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">
@@ -335,7 +347,7 @@ export const DetailsPage: React.FC = () => {
               </div>
 
               {/* Episodes grid */}
-              {currentSeason && (
+              {currentSeason && currentSeason.episodes && (
                 <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-2 pt-2">
                   {currentSeason.episodes.map((ep) => (
                     <button
@@ -372,14 +384,14 @@ export const DetailsPage: React.FC = () => {
               О фильме
             </h3>
 
-            {details.directors.length > 0 && (
+            {details.directors && details.directors.length > 0 && (
               <div className="space-y-1">
                 <span className="text-xs text-zinc-500 font-semibold uppercase">Режиссёр</span>
                 <p className="text-sm font-medium text-zinc-300">{details.directors.join(', ')}</p>
               </div>
             )}
 
-            {details.actors.length > 0 && (
+            {details.actors && details.actors.length > 0 && (
               <div className="space-y-1">
                 <span className="text-xs text-zinc-500 font-semibold uppercase">В главных ролях</span>
                 <div className="flex flex-wrap gap-1.5 pt-1">
@@ -406,7 +418,7 @@ export const DetailsPage: React.FC = () => {
       </div>
 
       {/* Similar Movies */}
-      {details.similar.length > 0 && (
+      {details.similar && details.similar.length > 0 && (
         <MediaSlider title="Похожие фильмы и сериалы" items={details.similar} />
       )}
     </div>

@@ -38,7 +38,7 @@ export interface IProvider {
     hasMore: boolean;
   }>;
 
-  getDetails(urlOrId: string): Promise<MediaDetails>;
+  getDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails>;
 
   getSeriesEpisodes(mediaId: string, translatorId: number): Promise<Season[]>;
 

@@ -18,13 +18,21 @@ export function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      webSecurity: true,
+      webSecurity: false,
     },
   });
 
   // Setup stream CDN header interceptor to ensure voidboost / rezka CDN requests succeed
   const provider = ProviderManager.getInstance().getProvider();
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    // Only intercept remote external HTTP/HTTPS requests, NEVER local file:// or localhost
+    if (!details.url.startsWith('http://') && !details.url.startsWith('https://')) {
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+    if (details.url.startsWith('http://localhost') || details.url.startsWith('http://127.0.0.1')) {
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+
     const url = details.url.toLowerCase();
     const activeMirror = provider.getActiveMirror();
 
@@ -47,6 +55,17 @@ export function createMainWindow(): BrowserWindow {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
+  });
+
+  // Fallback to show window if ready-to-show hangs on some Windows GPUs
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      mainWindow.show();
+    }
+  }, 3000);
+
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[MainWindow] Failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
   });
 
   // Open external links in default OS browser safely

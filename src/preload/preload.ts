@@ -18,7 +18,7 @@ export const api = {
   // Provider & Content
   getHomeSections: () => ipcRenderer.invoke(IPC_CHANNELS.GET_HOME_SECTIONS),
   getCatalog: (filter: CatalogFilter) => ipcRenderer.invoke(IPC_CHANNELS.GET_CATALOG, filter),
-  getDetails: (urlOrId: string) => ipcRenderer.invoke(IPC_CHANNELS.GET_DETAILS, urlOrId),
+  getDetails: (urlOrId: string, meta?: any) => ipcRenderer.invoke(IPC_CHANNELS.GET_DETAILS, urlOrId, meta),
   getSeriesEpisodes: (mediaId: string, translatorId: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SERIES_EPISODES, mediaId, translatorId),
   getStream: (params: {

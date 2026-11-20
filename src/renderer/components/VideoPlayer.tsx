@@ -19,6 +19,7 @@ import {
   Tv,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
+import { useMediaStore } from '../stores/useMediaStore';
 import { formatDuration } from '../../shared/utils';
 
 export const VideoPlayer: React.FC = () => {
@@ -115,6 +116,16 @@ export const VideoPlayer: React.FC = () => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
+              // Try MP4 fallback if HLS network fails
+              const altMp4 = streamData?.streams?.find((s) => s.mp4 && s.mp4 !== currentStreamUrl)?.mp4;
+              if (altMp4 && videoRef.current) {
+                hls.destroy();
+                hlsRef.current = null;
+                videoRef.current.src = altMp4;
+                videoRef.current.load();
+                videoRef.current.play().catch(() => setIsPlaying(false));
+                return;
+              }
               hls.startLoad();
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
@@ -122,6 +133,9 @@ export const VideoPlayer: React.FC = () => {
               break;
             default:
               hls.destroy();
+              usePlayerStore.setState({
+                error: 'Не удалось загрузить видеопоток. Попробуйте выбрать другое качество или сменить активное зеркало в Настройках.',
+              });
               break;
           }
         }
@@ -297,6 +311,11 @@ export const VideoPlayer: React.FC = () => {
     closePlayer();
   };
 
+  const handleOpenSettings = () => {
+    handleClose();
+    useMediaStore.getState().setPage('settings');
+  };
+
   // Find next episode
   const currentSeason = mediaDetails?.seasons?.find((s) => s.id === seasonId);
   const currentEpIndex = currentSeason?.episodes.findIndex((e) => e.episodeId === episodeId) ?? -1;
@@ -331,6 +350,12 @@ export const VideoPlayer: React.FC = () => {
         }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
+        onError={() => {
+          setIsPlaying(false);
+          usePlayerStore.setState({
+            error: 'Ошибка воспроизведения видеопотока. Попробуйте сменить качество видео или зеркало в Настройках.',
+          });
+        }}
         onEnded={() => {
           setIsPlaying(false);
           if (nextEpisode) handleNextEpisode();
@@ -355,17 +380,24 @@ export const VideoPlayer: React.FC = () => {
           <AlertCircle className="w-16 h-16 text-brand-red mb-4" />
           <h3 className="text-xl font-bold text-white mb-2">Не удалось воспроизвести видео</h3>
           <p className="text-sm text-zinc-400 max-w-md text-center mb-6">{error}</p>
-          <div className="flex space-x-3">
+          <div className="flex flex-wrap items-center justify-center gap-3">
             <button
               onClick={retryPlayback}
-              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-brand-red text-white font-bold hover:bg-brand-redHover shadow-glow transition-all"
+              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-brand-red text-white font-bold hover:bg-brand-redHover shadow-glow transition-all cursor-pointer"
             >
               <RefreshCw className="w-4 h-4" />
               <span>Повторить</span>
             </button>
             <button
+              onClick={handleOpenSettings}
+              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white/10 text-white font-medium hover:bg-white/20 transition-all cursor-pointer"
+            >
+              <Settings className="w-4 h-4" />
+              <span>Настройки</span>
+            </button>
+            <button
               onClick={handleClose}
-              className="px-5 py-2.5 rounded-xl bg-white/10 text-white font-medium hover:bg-white/20 transition-all"
+              className="px-5 py-2.5 rounded-xl bg-white/10 text-white font-medium hover:bg-white/20 transition-all cursor-pointer"
             >
               Назад
             </button>
@@ -376,7 +408,7 @@ export const VideoPlayer: React.FC = () => {
       {/* Controls Overlay */}
       <div
         className={`absolute inset-0 flex flex-col justify-between p-6 pointer-events-none transition-opacity duration-300 ${
-          showControls ? 'opacity-100' : 'opacity-0'
+          showControls && !error ? 'opacity-100' : 'opacity-0'
         }`}
       >
         {/* Top bar */}
@@ -402,7 +434,7 @@ export const VideoPlayer: React.FC = () => {
                   <>
                     <span>•</span>
                     <span className="text-zinc-300">
-                      {mediaDetails?.translators.find((t) => t.id === translatorId)?.name}
+                      {mediaDetails?.translators?.find((t) => t.id === translatorId)?.name || 'Оригинал'}
                     </span>
                   </>
                 )}
@@ -699,7 +731,7 @@ export const VideoPlayer: React.FC = () => {
         )}
 
         {/* Episodes Menu Popup */}
-        {activeMenu === 'episodes' && currentSeason && (
+        {activeMenu === 'episodes' && currentSeason && currentSeason.episodes && (
           <div className="absolute bottom-20 right-6 bg-dark-surface/95 border border-white/15 rounded-xl p-3 shadow-2xl backdrop-blur-md pointer-events-auto w-80 max-h-80 overflow-y-auto space-y-2">
             <div className="text-xs font-bold text-white mb-2">Серии ({currentSeason.title})</div>
             <div className="grid grid-cols-4 gap-2">

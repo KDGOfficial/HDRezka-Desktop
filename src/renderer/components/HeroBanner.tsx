@@ -58,7 +58,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item }) => {
         {/* Buttons */}
         <div className="flex items-center space-x-4">
           <button
-            onClick={() => openDetails(item.url || item.id)}
+            onClick={() => openDetails(item.url || item.id, item)}
             className="flex items-center space-x-2 px-6 py-3 rounded-xl bg-brand-red hover:bg-brand-redHover text-white font-bold text-sm shadow-glow transition-all active:scale-95"
           >
             <Play className="w-4 h-4 fill-white" />
@@ -66,7 +66,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item }) => {
           </button>
 
           <button
-            onClick={() => openDetails(item.url || item.id)}
+            onClick={() => openDetails(item.url || item.id, item)}
             className="flex items-center space-x-2 px-5 py-3 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md text-white font-semibold text-sm border border-white/10 transition-all"
           >
             <Info className="w-4 h-4" />

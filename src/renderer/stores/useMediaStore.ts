@@ -25,7 +25,7 @@ interface MediaState {
   collectionModalItem: MediaItem | null;
 
   setPage: (page: AppPage) => void;
-  openDetails: (mediaId: string) => void;
+  openDetails: (mediaId: string, preloaded?: Partial<MediaItem | MediaDetails>) => void;
   setSelectedMediaDetails: (details: MediaDetails | null) => void;
   setSearchQuery: (query: string) => void;
   setFavorites: (favorites: FavoriteItem[]) => void;
@@ -47,10 +47,41 @@ export const useMediaStore = create<MediaState>((set, get) => ({
 
   setPage: (page) => set({ currentPage: page }),
 
-  openDetails: (mediaId) => {
+  openDetails: (mediaId, preloaded) => {
+    let preloadedDetails: MediaDetails | null = null;
+    if (preloaded) {
+      preloadedDetails = {
+        id: preloaded.id || mediaId,
+        title: preloaded.title || '',
+        origTitle: preloaded.origTitle || '',
+        url: preloaded.url || mediaId,
+        poster: preloaded.poster || '',
+        backdrop: (preloaded as any).backdrop || preloaded.poster || '',
+        year: preloaded.year || 2024,
+        country: preloaded.country || 'США',
+        type: preloaded.type || 'films',
+        ratingRezka: (preloaded as any).ratingRezka || preloaded.rating || 7.8,
+        ratingImdb: (preloaded as any).ratingImdb || 7.6,
+        ratingKp: (preloaded as any).ratingKp || 7.5,
+        genres: (preloaded as any).genres || ['Боевик', 'Приключения'],
+        description: preloaded.info || (preloaded as any).description || 'Загрузка информации о фильме...',
+        directors: (preloaded as any).directors || [],
+        actors: (preloaded as any).actors || [],
+        translators: (preloaded as any).translators || [
+          { id: 56, name: 'Дубляж / HDRezka Studio', premium: false },
+          { id: 238, name: 'LostFilm', premium: false },
+          { id: 70, name: 'Кубик в Кубе', premium: false },
+          { id: 4, name: 'Оригинал (+субтитры)', premium: false },
+        ],
+        currentTranslatorId: (preloaded as any).currentTranslatorId || 56,
+        seasons: (preloaded as any).seasons || [],
+        similar: (preloaded as any).similar || [],
+      };
+    }
+
     set({
       selectedMediaId: mediaId,
-      selectedMediaDetails: null,
+      selectedMediaDetails: preloadedDetails,
       currentPage: 'details',
     });
   },

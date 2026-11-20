@@ -44,9 +44,9 @@ export function registerIpcHandlers(): void {
     return await provider.getCatalog(filter);
   });
 
-  ipcMain.handle(IPC_CHANNELS.GET_DETAILS, async (_, urlOrId: string) => {
+  ipcMain.handle(IPC_CHANNELS.GET_DETAILS, async (_, urlOrId: string, meta?: any) => {
     const provider = providerManager.getProvider();
-    return await provider.getDetails(urlOrId);
+    return await provider.getDetails(urlOrId, meta);
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_SERIES_EPISODES, async (_, mediaId: string, translatorId: number) => {

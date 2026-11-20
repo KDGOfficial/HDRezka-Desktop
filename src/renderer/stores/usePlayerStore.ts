@@ -104,9 +104,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
     } catch (err: any) {
       console.error('[usePlayerStore] Open error:', err);
+      let message = err?.message || 'Ошибка воспроизведения видео';
+      // Clean up internal Electron IPC prefixes
+      message = message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
+      if (message.includes('<!doctype') || message.includes('Unexpected token') || message.includes('is not valid JSON')) {
+        message = 'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте сменить зеркало в Настройках.';
+      }
       set({
         isLoading: false,
-        error: err?.message || 'Ошибка воспроизведения видео',
+        error: message,
       });
     }
   },
