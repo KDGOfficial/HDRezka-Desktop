@@ -17,6 +17,7 @@ import {
   RefreshCw,
   Sliders,
   Tv,
+  ShieldCheck,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
@@ -389,7 +390,36 @@ export const VideoPlayer: React.FC = () => {
           <AlertCircle className="w-16 h-16 text-brand-red mb-4" />
           <h3 className="text-xl font-bold text-white mb-2">Не удалось воспроизвести видео</h3>
           <p className="text-sm text-zinc-400 max-w-md text-center mb-6">{error}</p>
+          {mediaDetails?.translators && mediaDetails.translators.length > 1 && (
+            <div className="flex flex-wrap justify-center gap-2 max-w-2xl mb-5" aria-label="Выбор озвучки">
+              <span className="w-full text-center text-sm text-zinc-400">Попробовать другую озвучку</span>
+              {mediaDetails.translators.map((tr) => (
+                <button
+                  key={tr.id}
+                  onClick={() => switchTranslator(tr.id)}
+                  aria-pressed={translatorId === tr.id}
+                  className={`px-3 py-2 rounded-lg text-sm font-semibold ${translatorId === tr.id ? 'bg-brand-red text-white' : 'bg-white/10 text-zinc-200 hover:bg-white/20'}`}
+                >
+                  {tr.name}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex flex-wrap items-center justify-center gap-3">
+            {window.api?.verifyMirror && (
+              <button
+                onClick={async () => {
+                  try {
+                    await window.api.verifyMirror();
+                    await retryPlayback();
+                  } catch (_) {}
+                }}
+                className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-amber-500 text-black font-bold hover:bg-amber-400 shadow-glow transition-all cursor-pointer"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>Пройти проверку</span>
+              </button>
+            )}
             <button
               onClick={retryPlayback}
               className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-brand-red text-white font-bold hover:bg-brand-redHover shadow-glow transition-all cursor-pointer"

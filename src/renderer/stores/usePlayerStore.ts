@@ -75,10 +75,11 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       set({ initialTime: startPosition });
 
-      const tr = details.translators?.find((t) => t.id === translatorId);
+      const activeTranslatorId = translatorId || details.currentTranslatorId || details.translators?.[0]?.id || 56;
+      const tr = details.translators?.find((t) => t.id === activeTranslatorId);
       const stream = await window.api.getStream({
         mediaId: details.id,
-        translatorId,
+        translatorId: activeTranslatorId,
         season: seasonId,
         episode: episodeId,
         isCamRip: tr?.camrip,
@@ -111,8 +112,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       let message = err?.message || 'Ошибка воспроизведения видео';
       // Clean up internal Electron IPC prefixes
       message = message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
-      if (message.includes('<!doctype') || message.includes('Unexpected token') || message.includes('is not valid JSON')) {
-        message = 'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте сменить зеркало в Настройках.';
+      if (message.includes('сесси') || message.includes('бот') || message.includes('проверку')) {
+        message = 'HDRezka требует пройти проверку «Я не бот» или обновить сессию. Нажмите «Пройти проверку» ниже.';
+      } else if (message.includes('<!doctype') || message.includes('Unexpected token') || message.includes('is not valid JSON')) {
+        message = 'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте пройти проверку или сменить зеркало в Настройках.';
       }
       set({
         isLoading: false,
@@ -161,7 +164,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   switchTranslator: async (translatorId: number) => {
-    const { mediaDetails, seasonId, episodeId, currentTime } = get();
+    const { mediaDetails, seasonId, episodeId, initialTime } = get();
     if (!mediaDetails) return;
 
     let updatedDetails = { ...mediaDetails, currentTranslatorId: translatorId };
@@ -182,16 +185,27 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       translatorId,
       seasonId,
       episodeId,
-      startTime: currentTime || 0,
+      startTime: initialTime || 0,
     });
   },
 
   retryPlayback: async () => {
     const { mediaDetails, translatorId, seasonId, episodeId } = get();
     if (!mediaDetails) return;
+
+    let detailsToUse = mediaDetails;
+    if (window.api && (!mediaDetails.translators || mediaDetails.translators.length === 0)) {
+      try {
+        const fresh = await window.api.getDetails(mediaDetails.id);
+        if (fresh && fresh.translators && fresh.translators.length > 0) {
+          detailsToUse = fresh;
+        }
+      } catch (_) {}
+    }
+
     await get().openPlayer({
-      details: mediaDetails,
-      translatorId,
+      details: detailsToUse,
+      translatorId: detailsToUse.currentTranslatorId || translatorId || detailsToUse.translators?.[0]?.id || 56,
       seasonId,
       episodeId,
       startTime: 0,

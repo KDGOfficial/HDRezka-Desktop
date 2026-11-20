@@ -93,11 +93,25 @@ export function registerIpcHandlers(): void {
         autoHideMenuBar: true,
         webPreferences: { contextIsolation: true, nodeIntegration: false },
       });
-      win.webContents.on('did-finish-load', async () => {
-        const title: string = await win.webContents.executeJavaScript('document.title').catch(() => '');
-        if (!title.includes('не бот')) win.close();
+
+      const checkPassed = async () => {
+        if (win.isDestroyed()) return;
+        try {
+          const title: string = await win.webContents.executeJavaScript('document.title').catch(() => '');
+          if (title && !title.includes('не бот') && !title.includes('Checking') && !title.includes('Just a moment')) {
+            clearInterval(timer);
+            win.close();
+          }
+        } catch (_) {}
+      };
+
+      const timer = setInterval(checkPassed, 500);
+      win.webContents.on('did-finish-load', checkPassed);
+      win.webContents.on('did-navigate', checkPassed);
+      win.on('closed', () => {
+        clearInterval(timer);
+        resolve(true);
       });
-      win.on('closed', () => resolve(true));
       win.loadURL(providerManager.getProvider().getActiveMirror());
     });
   });

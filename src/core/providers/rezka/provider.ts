@@ -20,15 +20,28 @@ import {
   getFallbackDetails,
 } from './fallbackData';
 
+async function appFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
+  try {
+    // In Electron main process, electron.net.fetch uses Chromium network stack and session cookies
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const electron = require('electron');
+    if (electron && electron.net && typeof electron.net.fetch === 'function') {
+      return await electron.net.fetch(input as any, { credentials: 'include', ...init });
+    }
+  } catch (_) {}
+  return await globalThis.fetch(input, init);
+}
+
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.8';
+  public version = '0.0.10';
 
   private activeMirror: string;
   private mirrors: string[];
   private timeoutMs: number;
   private mediaCache: Map<string, Partial<MediaItem>> = new Map();
+  private mediaUrlCache: Map<string, string> = new Map();
 
   constructor(activeMirror = 'https://hdrezka.ag', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
     this.activeMirror = activeMirror;
@@ -43,7 +56,10 @@ export class RezkaProvider implements IProvider {
       html.includes('Проверяем, что вы не бот') ||
       html.includes('cf-browser-verification') ||
       html.includes('challenge-running') ||
-      html.includes('Attention Required! | Cloudflare')
+      html.includes('Attention Required! | Cloudflare') ||
+      html.includes('b-antibot') ||
+      html.includes('within.website') ||
+      html.includes('Время сессии истекло')
     );
   }
 
@@ -77,7 +93,7 @@ export class RezkaProvider implements IProvider {
     let lastError: any;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const res = await fetch(url, {
+        const res = await appFetch(url, {
           headers: this.getHeaders(),
           signal: AbortSignal.timeout(this.timeoutMs),
         });
@@ -105,7 +121,7 @@ export class RezkaProvider implements IProvider {
       const cleanUrl = mirror.replace(/\/$/, '');
       const t0 = Date.now();
       try {
-        const res = await fetch(cleanUrl, {
+        const res = await appFetch(cleanUrl, {
           headers: this.getHeaders(),
           signal: AbortSignal.timeout(5000),
         });
@@ -430,7 +446,7 @@ export class RezkaProvider implements IProvider {
     430: 'HDRezka (18+)',
   };
 
-  public async probeTranslators(mediaId: string, isMovie?: boolean): Promise<Translator[]> {
+  public async probeTranslators(mediaId: string, isMovie?: boolean, pageUrl?: string): Promise<Translator[]> {
     if (!mediaId) return [];
     const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
     const primaryMirrors = mirrorsToTry.slice(0, 2);
@@ -445,12 +461,12 @@ export class RezkaProvider implements IProvider {
           formData.append('translator_id', trId.toString());
           formData.append('action', act);
 
-          const res = await fetch(`${mirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
+          const res = await appFetch(`${mirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
               'X-Requested-With': 'XMLHttpRequest',
-              'Referer': mirror + '/',
+              'Referer': pageUrl?.replace(/^https?:\/\/[^/]+/, mirror) || `${mirror}/`,
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             },
             body: formData.toString(),
@@ -515,6 +531,7 @@ export class RezkaProvider implements IProvider {
       if (!targetUrl.startsWith('http')) {
         targetUrl = targetUrl.startsWith('/') ? `${this.activeMirror}${targetUrl}` : `${this.activeMirror}/${targetUrl}`;
       }
+      this.mediaUrlCache.set(normId, targetUrl);
 
       // Extract the path so we can try other mirrors
       let urlPath = '';
@@ -545,7 +562,7 @@ export class RezkaProvider implements IProvider {
         fb.antiBot = true;
         if (fb.id) {
           try {
-            const probed = await this.probeTranslators(fb.id, fb.type === 'films');
+            const probed = await this.probeTranslators(fb.id, fb.type === 'films', targetUrl);
             if (probed.length > 0) {
               fb.translators = probed;
               const preferred = probed.find((t) => t.id === 1) || probed.find((t) => t.id === 56) || probed[0];
@@ -699,7 +716,7 @@ export class RezkaProvider implements IProvider {
     // A single guessed/default translator is not a real choice; discover the available options.
     if (translators.length <= 1 && id) {
       try {
-        const probed = await this.probeTranslators(id, type === 'films');
+        const probed = await this.probeTranslators(id, type === 'films', targetUrl);
         if (probed.length > 0) {
           translators.length = 0;
           translators.push(...probed);
@@ -786,7 +803,7 @@ export class RezkaProvider implements IProvider {
     const fb = getFallbackDetails(urlOrId, cachedMeta);
     if (fb.id) {
       try {
-        const probed = await this.probeTranslators(fb.id, fb.type === 'films');
+        const probed = await this.probeTranslators(fb.id, fb.type === 'films', this.mediaUrlCache.get(fb.id));
         if (probed.length > 0) {
           fb.translators = probed;
           const preferred = probed.find((t) => t.id === 1) || probed.find((t) => t.id === 56) || probed[0];
@@ -821,12 +838,12 @@ export class RezkaProvider implements IProvider {
           formData.append('translator_id', trId.toString());
           formData.append('action', 'get_episodes');
 
-          const res = await fetch(`${mirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
+          const res = await appFetch(`${mirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
               'X-Requested-With': 'XMLHttpRequest',
-              'Referer': mirror + '/',
+            'Referer': this.mediaUrlCache.get(mediaId)?.replace(/^https?:\/\/[^/]+/, mirror) || `${mirror}/`,
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
             },
             body: formData.toString(),
@@ -904,8 +921,19 @@ export class RezkaProvider implements IProvider {
     const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
     const translatorsToTry = [params.translatorId];
 
+    // If primary translator fails, try known popular fallbacks
+    const cachedTranslators = this.mediaCache.get(params.mediaId)?.translators;
+    if (cachedTranslators) {
+      for (const t of cachedTranslators) {
+        if (!translatorsToTry.includes(t.id)) translatorsToTry.push(t.id);
+      }
+    }
+    for (const popId of [56, 1, 238, 430]) {
+      if (!translatorsToTry.includes(popId)) translatorsToTry.push(popId);
+    }
+
     const actionsToTry: Array<{ action: 'get_stream' | 'get_movie'; season?: number; episode?: number }> = [];
-    if (params.season !== undefined && params.episode !== undefined) {
+    if (params.season !== undefined && params.episode !== undefined && params.season > 0 && params.episode > 0) {
       actionsToTry.push({ action: 'get_stream', season: params.season, episode: params.episode });
       actionsToTry.push({ action: 'get_movie' });
     } else {
@@ -913,7 +941,7 @@ export class RezkaProvider implements IProvider {
       actionsToTry.push({ action: 'get_stream', season: 1, episode: 1 });
     }
 
-    let lastError: any = null;
+    let hadAntiBotOrSession = false;
 
     for (const mirror of mirrorsToTry) {
       for (const trId of translatorsToTry) {
@@ -935,12 +963,14 @@ export class RezkaProvider implements IProvider {
               formData.append('action', 'get_movie');
             }
 
-            const res = await fetch(`${mirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
+            const referer = this.mediaUrlCache.get(params.mediaId)?.replace(/^https?:\/\/[^/]+/, mirror) || `${mirror}/`;
+
+            const res = await appFetch(`${mirror}/ajax/get_cdn_series/?t=${Date.now()}`, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                 'X-Requested-With': 'XMLHttpRequest',
-                'Referer': mirror + '/',
+                'Referer': referer,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
               },
               body: formData.toString(),
@@ -950,6 +980,9 @@ export class RezkaProvider implements IProvider {
             if (!res.ok) continue;
             const text = await res.text();
             if (!text || text.trim().startsWith('<') || text.includes('<!doctype') || text.includes('<!DOCTYPE')) {
+              if (this.isAntiBot(text)) {
+                hadAntiBotOrSession = true;
+              }
               continue;
             }
             let json: any;
@@ -958,14 +991,26 @@ export class RezkaProvider implements IProvider {
             } catch {
               continue;
             }
+            if (json && !json.success) {
+              if (this.isAntiBot(json.message || '')) {
+                hadAntiBotOrSession = true;
+              }
+              continue;
+            }
             if (json && json.success && json.url) {
               return parseStreamData(json.url, json.subtitle, json.thumbnails);
             }
           } catch (err: any) {
-            lastError = err;
+            // ignore and try next mirror/translator
           }
         }
       }
+    }
+
+    if (hadAntiBotOrSession) {
+      throw new Error(
+        'HDRezka требует пройти проверку «Я не бот» или обновить сессию. Нажмите «Пройти проверку» для запуска видео.'
+      );
     }
 
     throw new Error(
@@ -979,7 +1024,7 @@ export class RezkaProvider implements IProvider {
       const formData = new URLSearchParams();
       formData.append('q', query.trim());
 
-      const res = await fetch(`${this.activeMirror}/engine/ajax/search.php`, {
+      const res = await appFetch(`${this.activeMirror}/engine/ajax/search.php`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
