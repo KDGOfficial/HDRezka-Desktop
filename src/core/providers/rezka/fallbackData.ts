@@ -484,12 +484,8 @@ export function getFallbackDetails(urlOrId: string, meta?: Partial<MediaItem>): 
     description,
     directors: isSpiderMan ? ['Сэм Рэйми', 'Джон Уоттс', 'Марк Уэбб'] : ['Сэм Рэйми', 'Кристофер Нолан'],
     actors: isSpiderMan ? ['Тоби Магуайр', 'Том Холланд', 'Эндрю Гарфилд', 'Зендея'] : ['Тоби Магуайр', 'Том Холланд', 'Зендея', 'Бенедикт Камбербэтч'],
-    translators: [
-      { id: 56, name: 'Дубляж / HDRezka Studio', premium: false },
-      { id: 238, name: 'LostFilm', premium: false },
-      { id: 70, name: 'Кубик в Кубе', premium: false },
-      { id: 4, name: 'Оригинал (+субтитры)', premium: false },
-    ],
+    // Real translators are only known from the title page; never show made-up ones
+    translators: [],
     currentTranslatorId: 56,
     seasons: isSeries
       ? [

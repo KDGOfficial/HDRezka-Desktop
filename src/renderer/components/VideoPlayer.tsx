@@ -64,6 +64,14 @@ export const VideoPlayer: React.FC = () => {
 
   const hideTimerRef = useRef<any>(null);
 
+  const subtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
+
+  // Dynamically inserted <track default> is not always shown by Chromium; force it on
+  useEffect(() => {
+    const tracks = videoRef.current?.textTracks;
+    if (tracks) for (const t of Array.from(tracks)) t.mode = 'showing';
+  }, [subtitleTrack?.url]);
+
   // Auto-hide controls
   const resetHideTimer = () => {
     setShowControls(true);
@@ -90,6 +98,7 @@ export const VideoPlayer: React.FC = () => {
 
     const video = videoRef.current;
     video.volume = volume;
+    video.defaultPlaybackRate = playbackSpeed; // survives source changes, unlike playbackRate
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -361,8 +370,8 @@ export const VideoPlayer: React.FC = () => {
           if (nextEpisode) handleNextEpisode();
         }}
       >
-        {currentSubtitle !== 'off' && (
-          <track kind="subtitles" src={currentSubtitle} default srcLang="ru" label="Русский" />
+        {subtitleTrack && (
+          <track key={subtitleTrack.url} kind="subtitles" src={subtitleTrack.url} default srcLang="ru" label={subtitleTrack.language} />
         )}
       </video>
 
@@ -586,7 +595,7 @@ export const VideoPlayer: React.FC = () => {
                 <button
                   onClick={() => setActiveMenu(activeMenu === 'subtitles' ? 'none' : 'subtitles')}
                   className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${
-                    currentSubtitle !== 'off' ? 'text-brand-red' : 'text-zinc-300'
+                    subtitleTrack ? 'text-brand-red' : 'text-zinc-300'
                   }`}
                   title="Субтитры"
                 >
@@ -655,7 +664,7 @@ export const VideoPlayer: React.FC = () => {
                 key={spd}
                 onClick={() => {
                   setPlaybackSpeed(spd);
-                  if (videoRef.current) videoRef.current.playbackRate = spd;
+                  if (videoRef.current) videoRef.current.playbackRate = videoRef.current.defaultPlaybackRate = spd;
                   setActiveMenu('none');
                 }}
                 className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
@@ -691,11 +700,11 @@ export const VideoPlayer: React.FC = () => {
               <button
                 key={i}
                 onClick={() => {
-                  setSubtitle(sub.url);
+                  setSubtitle(sub.language);
                   setActiveMenu('none');
                 }}
                 className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                  currentSubtitle === sub.url
+                  currentSubtitle === sub.language
                     ? 'bg-brand-red text-white'
                     : 'text-zinc-300 hover:bg-white/10 hover:text-white'
                 }`}

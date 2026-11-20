@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.6';
+export const APP_VERSION = '0.0.7';
 
 export const DEFAULT_MIRRORS = [
   'https://hdrezka.ag',
@@ -60,6 +60,7 @@ export const IPC_CHANNELS = {
   SEARCH_ADVANCED: 'provider:searchAdvanced',
   CHECK_MIRRORS: 'provider:checkMirrors',
   SET_ACTIVE_MIRROR: 'provider:setActiveMirror',
+  VERIFY_MIRROR: 'provider:verifyMirror',
 
   // Database - History
   GET_WATCH_HISTORY: 'db:getWatchHistory',

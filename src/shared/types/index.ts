@@ -78,6 +78,7 @@ export interface MediaDetails {
   currentTranslatorId?: number;
   seasons?: Season[];
   similar: MediaItem[];
+  antiBot?: boolean; // site page was behind the bot check; translators are unknown until the user passes it
 }
 
 export interface CatalogFilter {

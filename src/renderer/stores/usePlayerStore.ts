@@ -11,7 +11,7 @@ interface PlayerState {
   currentQuality: string;
   currentStreamUrl: string;
   isHls: boolean;
-  currentSubtitle: string; // url or 'off'
+  currentSubtitle: string; // subtitle language or 'off' (kept across episodes/translators)
   playbackSpeed: number;
   volume: number;
   initialTime: number;
@@ -27,7 +27,7 @@ interface PlayerState {
   }) => Promise<void>;
   closePlayer: () => void;
   setQuality: (quality: string) => void;
-  setSubtitle: (subUrl: string) => void;
+  setSubtitle: (language: string) => void;
   setPlaybackSpeed: (speed: number) => void;
   setVolume: (volume: number) => void;
   switchEpisode: (seasonId: number, episodeId: number) => Promise<void>;
@@ -75,11 +75,15 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       }
       set({ initialTime: startPosition });
 
+      const tr = details.translators?.find((t) => t.id === translatorId);
       const stream = await window.api.getStream({
         mediaId: details.id,
         translatorId,
         season: seasonId,
         episode: episodeId,
+        isCamRip: tr?.camrip,
+        isAds: tr?.ads,
+        isDirector: tr?.director,
       });
 
       if (!stream || !stream.streams || stream.streams.length === 0) {
@@ -140,7 +144,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     }
   },
 
-  setSubtitle: (subUrl: string) => set({ currentSubtitle: subUrl }),
+  setSubtitle: (language: string) => set({ currentSubtitle: language }),
   setPlaybackSpeed: (speed: number) => set({ playbackSpeed: speed }),
   setVolume: (volume: number) => set({ volume }),
 

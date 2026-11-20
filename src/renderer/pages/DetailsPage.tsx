@@ -38,7 +38,7 @@ export const DetailsPage: React.FC = () => {
         setDetails(selectedMediaDetails);
         setSeasons(selectedMediaDetails.seasons || []);
         if (selectedMediaDetails.translators && selectedMediaDetails.translators.length > 0) {
-          setSelectedTranslatorId(selectedMediaDetails.translators[0].id);
+          setSelectedTranslatorId(selectedMediaDetails.currentTranslatorId || selectedMediaDetails.translators[0].id);
         }
       }
       loadMediaDetails(selectedMediaId);
@@ -54,7 +54,7 @@ export const DetailsPage: React.FC = () => {
       const data = await window.api.getDetails(idOrUrl, selectedMediaDetails || undefined);
       setDetails(data);
       if (data.translators && data.translators.length > 0) {
-        setSelectedTranslatorId(data.translators[0].id);
+        setSelectedTranslatorId(data.currentTranslatorId || data.translators[0].id);
       }
       if (data.seasons && data.seasons.length > 0) {
         setSeasons(data.seasons);
@@ -292,6 +292,25 @@ export const DetailsPage: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-12">
         {/* Left Column: Description & Seasons / Translators */}
         <div className="lg:col-span-2 space-y-8">
+          {/* Site bot check: real translators/streams are unavailable until the user passes it */}
+          {details.antiBot && (
+            <div className="bg-amber-950/40 border border-amber-500/30 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-amber-200 flex-1 min-w-[240px]">
+                HDRezka требует пройти проверку «Я не бот». Без неё недоступны список озвучек, субтитры и видео.
+              </p>
+              <button
+                onClick={async () => {
+                  if (!window.api || !selectedMediaId) return;
+                  await window.api.verifyMirror();
+                  loadMediaDetails(selectedMediaId);
+                }}
+                className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-sm font-bold transition-all"
+              >
+                Пройти проверку
+              </button>
+            </div>
+          )}
+
           {/* Translators Section */}
           {details.translators && details.translators.length > 0 && (
             <div className="bg-dark-surface border border-white/5 rounded-2xl p-5 shadow-card">

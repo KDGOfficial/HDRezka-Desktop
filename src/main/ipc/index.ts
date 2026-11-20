@@ -1,4 +1,4 @@
-import { ipcMain, app } from 'electron';
+import { ipcMain, app, BrowserWindow } from 'electron';
 import { IPC_CHANNELS } from '../../shared/constants';
 import { getMainWindow } from '../window';
 import { ProviderManager } from '../../core/providers/manager';
@@ -79,6 +79,27 @@ export function registerIpcHandlers(): void {
     provider.setActiveMirror(mirror);
     db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
     return provider.getActiveMirror();
+  });
+
+  // Opens the mirror in a visible window so the user passes the site's bot check; cookies land in the shared session
+  ipcMain.handle(IPC_CHANNELS.VERIFY_MIRROR, () => {
+    return new Promise<boolean>((resolve) => {
+      const win = new BrowserWindow({
+        width: 900,
+        height: 700,
+        parent: getMainWindow() ?? undefined,
+        modal: true,
+        title: 'Проверка HDRezka',
+        autoHideMenuBar: true,
+        webPreferences: { contextIsolation: true, nodeIntegration: false },
+      });
+      win.webContents.on('did-finish-load', async () => {
+        const title: string = await win.webContents.executeJavaScript('document.title').catch(() => '');
+        if (!title.includes('не бот')) win.close();
+      });
+      win.on('closed', () => resolve(true));
+      win.loadURL(providerManager.getProvider().getActiveMirror());
+    });
   });
 
   // --- Watch History ---

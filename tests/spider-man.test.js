@@ -18,8 +18,8 @@ const fn = new Function('module', 'exports', 'require', moduleCode);
 fn(m, m.exports, require);
 const { getFallbackDetails } = m.exports;
 
-test('App version must be 0.0.6', () => {
-  assert.equal(packageJson.version, '0.0.6');
+test('App version must be 0.0.7', () => {
+  assert.equal(packageJson.version, '0.0.7');
 });
 
 test('Fallback stream must return empty streams (no Big Buck Bunny)', () => {
@@ -80,9 +80,8 @@ test('Fallback details must always supply non-null arrays for directors, actors,
   assert.ok(Array.isArray(details.genres), 'genres must be an array');
 });
 
-test('Fallback details must use valid translator 56 and recognize animated series', () => {
+test('Fallback details must not invent translators and must recognize animated series', () => {
   const details = getFallbackDetails('https://hdrezka.ag/cartoons/fiction/11999-chelovek-pauk-1994-latest.html');
-  assert.equal(details.currentTranslatorId, 56);
-  assert.ok(details.translators.some((t) => t.id === 56), 'Must include translator 56');
+  assert.equal(details.translators.length, 0, 'Fallback must not show fake translators');
   assert.ok(details.seasons && details.seasons.length > 0, 'Spider-Man 1994 must have seasons');
 });
