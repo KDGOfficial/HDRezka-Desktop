@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.35';
+export const APP_VERSION = '0.0.36';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
@@ -20,17 +20,22 @@ export function isBadMirrorUrl(url: string): boolean {
   return BAD_MIRROR_PATTERNS.some((p) => lower.includes(p));
 }
 
+const CAMRIP_RE = /(?:^|[\s([,/|_-])(?:camrip|cam|ts|tc|telesync|telecine|экранка|тс)(?=$|[\s)\],/|_-])/i;
+
+export function isCamRipText(text?: string): boolean {
+  return Boolean(text && CAMRIP_RE.test(text));
+}
+
+export const OPEN_MIRROR_SEEDS = [
+  'https://kinobase.org',
+  'https://www.kinobase.org',
+  'https://kinogo.film',
+];
+
 export const DEFAULT_MIRRORS = [
   'https://kinobase.org',
-  'https://rezka.ag',
-  'https://hdrezka.me',
-  'https://hdrezka.club',
-  'https://rezka-tv.org',
-  'https://hdrezka.sh',
-  'https://rezka.pub',
-  'https://hdrezka.kim',
-  'https://hdrezka-home.tv',
-  'https://rezka-ua.org',
+  'https://www.kinobase.org',
+  'https://kinogo.film',
 ];
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {

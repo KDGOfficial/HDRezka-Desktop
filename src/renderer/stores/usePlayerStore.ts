@@ -105,11 +105,12 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         throw new Error('Потоки для данного перевода временно недоступны.');
       }
 
-      // Find best quality or 1080p / 720p
+      // Prefer crisp FullHD/4K/HD quality first; avoid auto-selecting low/camrip streams
       const streams = stream.streams;
-      const targetQuality = streams.find((s) => s.quality === '1080p') ||
-                            streams.find((s) => s.quality === '720p') ||
-                            streams[0];
+      const preferredOrder = ['1080p Ultra', '1080p', '2160p', '1440p', '720p'];
+      const targetQuality =
+        preferredOrder.map((q) => streams.find((s) => s.quality === q)).find(Boolean) ||
+        [...streams].sort((a, b) => (parseInt(b.quality, 10) || 0) - (parseInt(a.quality, 10) || 0))[0];
 
       const useHls = !!targetQuality.hls;
       const streamUrl = targetQuality.hls || targetQuality.mp4;

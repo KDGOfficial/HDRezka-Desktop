@@ -315,3 +315,75 @@ test('parseKinobaseFileString parses multi-voiceover quality streams and transla
   assert.equal(parsed.defaultStreams[0].hls, 'https://cdn1.redcdn.org/1080.m3u8');
   assert.equal(parsed.streamsByTranslator.get(2)?.length, 2);
 });
+
+test('pruneProtectedMirrors removes bot-gated and dead mirrors and activates fastest open mirror', async () => {
+  const provider = new RezkaProvider('https://rezka.ag', [
+    'https://rezka.ag',
+    'https://dead-mirror.example',
+    'https://kinobase.org',
+    'https://kinogo.film',
+  ]);
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('rezka.ag')) {
+      return new Response('<title>Проверяем, что вы не бот!</title>' + 'x'.repeat(300), { status: 200 });
+    }
+    if (u.includes('dead-mirror')) {
+      throw new Error('ECONNREFUSED');
+    }
+    if (u.includes('kinogo.film')) {
+      return new Response('<div class="shortStory">kinogo ' + 'x'.repeat(300) + '</div>', { status: 200 });
+    }
+    return new Response('<div class="container">kinobase ' + 'x'.repeat(300) + '</div>', { status: 200 });
+  };
+
+  try {
+    const best = await provider.pruneProtectedMirrors();
+    const remaining = provider.getMirrors();
+    assert.ok(!remaining.includes('https://rezka.ag'), 'Protected anti-bot mirror must be pruned');
+    assert.ok(!remaining.includes('https://dead-mirror.example'), 'Dead mirror must be pruned');
+    assert.deepEqual(new Set(remaining), new Set(['https://kinobase.org', 'https://kinogo.film']));
+    assert.ok(best === 'https://kinobase.org' || best === 'https://kinogo.film');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('Anti-CamRip filter removes TS / CAMRip / Экранка releases from items and translators', async () => {
+  const provider = new RezkaProvider('https://kinogo.film', ['https://kinogo.film']);
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      `<!doctype html><html><body>
+        <div class="shortStory">
+          <div class="hTitle"><h2><a href="https://kinogo.film/101-cam.html" title="Блокбастер (2026)">Блокбастер</a></h2></div>
+          <div class="sPoster"><img data-src="/p1.jpg" /></div>
+          <div class="sInfo"><span class="fQuality"><b>Качество:</b>TS</span></div>
+        </div>
+        <div class="shortStory">
+          <div class="hTitle"><h2><a href="https://kinogo.film/102-hd.html" title="Чистый HD (2026)">Чистый HD</a></h2></div>
+          <div class="sPoster"><img data-src="/p2.jpg" /></div>
+          <div class="sInfo"><span class="fQuality"><b>Качество:</b>WEB-DL 1080p</span></div>
+        </div>
+        <div class="shortStory">
+          <div class="hTitle"><h2><a href="https://kinogo.film/103-cats.html" title="Cats Musical (2019)">Cats</a></h2></div>
+          <div class="sPoster"><img data-src="/p3.jpg" /></div>
+          <div class="sInfo"><span class="fQuality"><b>Качество:</b>BDRip 1080p</span></div>
+        </div>
+      </body></html>`,
+      { status: 200 }
+    );
+
+  try {
+    const res = await provider.searchAdvanced('тест');
+    assert.deepEqual(
+      res.items.map((i) => i.id),
+      ['102', '103'],
+      'TS CamRip item must be excluded while non-CamRip titles including "Cats" remain'
+    );
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

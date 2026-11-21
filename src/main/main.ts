@@ -3,7 +3,7 @@ import { createMainWindow, getMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
-import { DEFAULT_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../shared/constants';
+import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../shared/constants';
 
 // Ensure consistent app name and userData path across versions and packaging
 app.name = 'hdrezka-desktop';
@@ -43,24 +43,21 @@ if (!gotTheLock) {
     const settings = db.getSettings();
     const provider = ProviderManager.getInstance().getProvider();
 
-    // Clean user settings from dead or phishing mirrors (hdrezka.is, rezka.fi, rezkify.com, etc.)
+    // Seed verified open mirrors and strip dead/phishing entries
     const userMirrors = settings.app?.mirrors || [];
     const cleanedMirrors = userMirrors.filter((m) => !isBadMirrorUrl(m));
     const baseMirrors = cleanedMirrors.length > 0 ? cleanedMirrors : DEFAULT_MIRRORS;
-    const finalMirrors = baseMirrors.includes('https://kinobase.org')
-      ? baseMirrors
-      : ['https://kinobase.org', ...baseMirrors];
+    const finalMirrors = Array.from(new Set([...OPEN_MIRROR_SEEDS, ...baseMirrors]));
     provider.setMirrors(finalMirrors);
 
     const currentMirror = settings.app?.activeMirror;
     const isBad = isBadMirrorUrl(currentMirror || '');
-    const workingMirror = isBad ? (finalMirrors[0] || 'https://kinobase.org') : currentMirror;
+    const workingMirror = isBad ? (finalMirrors[0] || OPEN_MIRROR_SEEDS[0]) : currentMirror;
     provider.setActiveMirror(workingMirror);
 
     if (
       workingMirror !== currentMirror ||
-      cleanedMirrors.length !== userMirrors.length ||
-      finalMirrors.length !== baseMirrors.length
+      finalMirrors.join('|') !== userMirrors.join('|')
     ) {
       db.saveSettings({
         app: {
@@ -72,26 +69,31 @@ if (!gotTheLock) {
     }
 
     const persistBestMirror = (bestMirror: string) => {
-      if (!bestMirror) return;
       const curSettings = db.getSettings();
       const mergedMirrors = provider.getMirrors();
-      if (bestMirror !== curSettings.app?.activeMirror || mergedMirrors.length !== (curSettings.app?.mirrors?.length || 0)) {
+      const targetMirror = bestMirror || provider.getActiveMirror();
+      if (
+        (targetMirror && targetMirror !== curSettings.app?.activeMirror) ||
+        mergedMirrors.join('|') !== (curSettings.app?.mirrors || []).join('|')
+      ) {
         db.saveSettings({
           app: {
             ...curSettings.app,
-            activeMirror: bestMirror,
+            activeMirror: targetMirror || curSettings.app?.activeMirror,
             mirrors: mergedMirrors,
           },
         });
       }
     };
 
-    // Automatically discover fresh mirrors online and select best reachable mirror in background
-    provider.findOnlineMirrors().then(() => {
-      return provider.selectBestMirror();
-    }).then(persistBestMirror).catch(() => {
-      provider.selectBestMirror().then(persistBestMirror).catch(() => {});
-    });
+    // Discover fresh mirrors, prune protected/unreachable ones, and persist clean mirror list
+    provider
+      .findOnlineMirrors()
+      .then(() => provider.pruneProtectedMirrors())
+      .then(persistBestMirror)
+      .catch(() => {
+        provider.pruneProtectedMirrors().then(persistBestMirror).catch(() => {});
+      });
 
     // 2. Register all IPC handlers
     registerIpcHandlers();

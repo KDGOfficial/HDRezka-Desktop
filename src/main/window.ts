@@ -67,6 +67,13 @@ export function createMainWindow(): BrowserWindow {
       return callback({ requestHeaders: details.requestHeaders });
     }
 
+    if (url.includes('cinemar.cc') || url.includes('cinemap.cc')) {
+      details.requestHeaders['Referer'] = 'https://cinemar.cc/';
+      details.requestHeaders['Origin'] = 'https://cinemar.cc';
+      details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+
     const isStreamOrApi =
       details.resourceType === 'media' ||
       details.resourceType === 'xhr' ||

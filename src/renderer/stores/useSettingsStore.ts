@@ -73,7 +73,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({ isCheckingMirrors: true });
       try {
         const statuses = await window.api.checkMirrors();
-        set({ mirrorsStatus: statuses, isCheckingMirrors: false });
+        const s = await window.api.getSettings();
+        const allowed = new Set(s.app?.mirrors || []);
+        const visibleStatuses = allowed.size > 0 ? statuses.filter((st) => allowed.has(st.url)) : statuses;
+        set({ settings: s, mirrorsStatus: visibleStatuses, isCheckingMirrors: false });
       } catch (err) {
         console.error('Failed to check mirrors:', err);
         set({ isCheckingMirrors: false });
@@ -89,7 +92,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const s = await window.api.getSettings();
       set({ settings: s, isFindingMirrors: false });
       // Refresh mirrors status ping
-      get().checkMirrors();
+      await get().checkMirrors();
       return res.added.length;
     } catch (err) {
       console.error('Failed to find online mirrors:', err);

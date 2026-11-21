@@ -4,7 +4,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { spawn } from 'child_process';
-import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
+import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
 import { getMainWindow } from '../window';
 import { ProviderManager } from '../../core/providers/manager';
 import { clearStaleAnubisCookies } from '../../core/providers/rezka/provider';
@@ -118,36 +118,74 @@ export function registerIpcHandlers(): void {
     const provider = providerManager.getProvider();
     const curSettings = db.getSettings();
     const cleanedMirrors = (curSettings.app?.mirrors || DEFAULT_MIRRORS).filter((m) => !isBadMirrorUrl(m));
-    const finalMirrors = cleanedMirrors.includes('https://kinobase.org')
-      ? cleanedMirrors
-      : ['https://kinobase.org', ...cleanedMirrors];
+    const seededMirrors = Array.from(new Set([...OPEN_MIRROR_SEEDS, ...cleanedMirrors]));
+    const statuses = await provider.checkMirrors(seededMirrors);
+    const cleanStatuses = statuses.filter((s) => s.isAvailable && !s.needsVerification);
+
+    if (cleanStatuses.length > 0) {
+      const prunedMirrors = cleanStatuses
+        .slice()
+        .sort((a, b) => a.latencyMs - b.latencyMs)
+        .map((s) => s.url);
+      const nextActive = prunedMirrors.includes(provider.getActiveMirror())
+        ? provider.getActiveMirror()
+        : prunedMirrors[0];
+      provider.setMirrors(prunedMirrors);
+      provider.setActiveMirror(nextActive);
+      if (
+        nextActive !== curSettings.app?.activeMirror ||
+        prunedMirrors.join('|') !== (curSettings.app?.mirrors || []).join('|')
+      ) {
+        db.saveSettings({
+          app: {
+            ...curSettings.app,
+            activeMirror: nextActive,
+            mirrors: prunedMirrors,
+          },
+        });
+      }
+      return cleanStatuses;
+    }
+
     if (
       !curSettings.app?.mirrors ||
-      finalMirrors.length !== curSettings.app.mirrors.length ||
-      finalMirrors.some((m, i) => m !== curSettings.app.mirrors[i])
+      seededMirrors.join('|') !== curSettings.app.mirrors.join('|')
     ) {
-      db.saveSettings({ app: { ...curSettings.app, mirrors: finalMirrors } });
+      db.saveSettings({ app: { ...curSettings.app, mirrors: seededMirrors } });
     }
-    return await provider.checkMirrors(finalMirrors);
+    return statuses;
   });
 
   ipcMain.handle(IPC_CHANNELS.FIND_ONLINE_MIRRORS, async () => {
     const provider = providerManager.getProvider();
     const result = await provider.findOnlineMirrors();
-    if (result.added.length > 0) {
-      const curSettings = db.getSettings();
-      // Combine newly found mirrors with existing settings, filtering out bad domains
-      const existing = (curSettings.app?.mirrors || []).filter((m) => !isBadMirrorUrl(m));
-      const validAdded = result.added.filter((m) => !isBadMirrorUrl(m));
-      const merged = Array.from(new Set([...existing, ...validAdded]));
-      db.saveSettings({
-        app: {
-          ...curSettings.app,
-          mirrors: merged,
-        },
-      });
+    const best = await provider.pruneProtectedMirrors();
+    const curSettings = db.getSettings();
+    const merged = Array.from(
+      new Set([...(provider.getMirrors() || [])].filter((m) => !isBadMirrorUrl(m)))
+    );
+    const nextActive = merged.includes(best)
+      ? best
+      : merged.includes(curSettings.app?.activeMirror)
+        ? curSettings.app.activeMirror
+        : (merged[0] || curSettings.app?.activeMirror);
+    if (merged.length > 0) {
+      provider.setMirrors(merged);
+      if (nextActive) provider.setActiveMirror(nextActive);
+      if (
+        nextActive !== curSettings.app?.activeMirror ||
+        merged.join('|') !== (curSettings.app?.mirrors || []).join('|')
+      ) {
+        db.saveSettings({
+          app: {
+            ...curSettings.app,
+            activeMirror: nextActive,
+            mirrors: merged,
+          },
+        });
+      }
     }
-    return result;
+    return { ...result, all: provider.getMirrors() };
   });
 
   ipcMain.handle(IPC_CHANNELS.SET_ACTIVE_MIRROR, (_, mirror: string) => {
@@ -534,11 +572,12 @@ export function registerIpcHandlers(): void {
     const s = db.getSettings();
     if (s.app?.mirrors) {
       const cleaned = s.app.mirrors.filter((m) => !isBadMirrorUrl(m));
-      const withKinobase = cleaned.includes('https://kinobase.org')
-        ? cleaned
-        : ['https://kinobase.org', ...cleaned];
-      if (withKinobase.length !== s.app.mirrors.length || withKinobase.some((m, i) => m !== s.app.mirrors[i])) {
-        return db.saveSettings({ app: { ...s.app, mirrors: withKinobase } });
+      const seeded = Array.from(new Set([...OPEN_MIRROR_SEEDS, ...cleaned]));
+      const nextActive = cleaned.length === 0 || isBadMirrorUrl(s.app.activeMirror)
+        ? seeded[0]
+        : s.app.activeMirror;
+      if (seeded.join('|') !== s.app.mirrors.join('|') || nextActive !== s.app.activeMirror) {
+        return db.saveSettings({ app: { ...s.app, activeMirror: nextActive, mirrors: seeded } });
       }
     }
     return s;

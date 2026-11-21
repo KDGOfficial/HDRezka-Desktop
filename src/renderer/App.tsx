@@ -29,7 +29,9 @@ export const App: React.FC = () => {
   const [isWhatsNewOpen, setIsWhatsNewOpen] = React.useState(false);
 
   useEffect(() => {
-    loadSettings();
+    loadSettings().then(() => {
+      useSettingsStore.getState().findOnlineMirrors();
+    });
     loadFavorites();
     loadWatchHistory();
 
@@ -47,11 +49,19 @@ export const App: React.FC = () => {
     };
     checkUpdateFlag();
 
+    // Refresh & prune mirrors every 5 minutes
+    const mirrorInterval = setInterval(() => {
+      useSettingsStore.getState().findOnlineMirrors();
+    }, 5 * 60 * 1000);
+
     // Check for updates periodically every 30 minutes
     const interval = setInterval(() => {
       useSettingsStore.getState().checkForUpdates(false);
     }, 30 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(mirrorInterval);
+      clearInterval(interval);
+    };
   }, []);
 
   const renderCurrentPage = () => {
