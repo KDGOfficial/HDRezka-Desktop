@@ -11,9 +11,11 @@ export interface MediaItem {
   genres?: string[];
   type: ContentType;
   rating?: number;
+  views?: number;
   info?: string;
   isWatched?: boolean;
   watchProgress?: number; // 0 to 100
+  historyId?: string;
 }
 
 export interface Translator {

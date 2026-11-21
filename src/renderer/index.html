@@ -1,9 +1,21 @@
 <!DOCTYPE html>
-<html lang="ru" class="dark">
+<html lang="ru">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light dark" />
+    <script>
+      try {
+        var saved = localStorage.getItem('color-scheme');
+        var meta = document.querySelector('meta[name="color-scheme"]');
+        if (meta) meta.content = saved === 'light' || saved === 'dark' ? saved : 'light dark';
+        var resolved = saved === 'light' || saved === 'dark'
+          ? saved
+          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.dataset.theme = resolved;
+        document.documentElement.classList.toggle('dark', resolved === 'dark');
+      } catch (e) {}
+    </script>
     <title>HDREZKA Desktop</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

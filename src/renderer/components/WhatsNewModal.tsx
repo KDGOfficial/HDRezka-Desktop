@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Palette, LayoutDashboard, Play, Sparkles, BookCheck, Check, X, ExternalLink, Send } from 'lucide-react';
+import { Sparkles, Search, ShieldCheck, Sun, Monitor, Check, X, ExternalLink, Send } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
@@ -49,27 +49,27 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
 
   const features = [
     {
-      icon: <Palette className="w-4 h-4 text-brand-orange" />,
+      icon: <Sparkles className="w-4 h-4 text-brand-orange" />,
       title: t.whatsNew.f1_title,
       desc: t.whatsNew.f1_desc,
     },
     {
-      icon: <LayoutDashboard className="w-4 h-4 text-brand-crimson" />,
+      icon: <Search className="w-4 h-4 text-brand-crimson" />,
       title: t.whatsNew.f2_title,
       desc: t.whatsNew.f2_desc,
     },
     {
-      icon: <Play className="w-4 h-4 text-brand-gold fill-current" />,
+      icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
       title: t.whatsNew.f3_title,
       desc: t.whatsNew.f3_desc,
     },
     {
-      icon: <Sparkles className="w-4 h-4 text-amber-300" />,
+      icon: <Sun className="w-4 h-4 text-brand-gold" />,
       title: t.whatsNew.f4_title,
       desc: t.whatsNew.f4_desc,
     },
     {
-      icon: <BookCheck className="w-4 h-4 text-emerald-400" />,
+      icon: <Monitor className="w-4 h-4 text-amber-300" />,
       title: t.whatsNew.f5_title,
       desc: t.whatsNew.f5_desc,
     },
@@ -155,11 +155,11 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
           <button
             type="button"
             onClick={handleOpenTelegram}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-[#2AABEE]/15 hover:bg-[#2AABEE]/25 text-[#58C4FF] border border-[#2AABEE]/30 text-xs font-bold active:scale-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] text-zinc-400 hover:text-white border border-white/[0.08] text-xs font-semibold active:scale-95 cursor-pointer"
           >
-            <Send className="w-3.5 h-3.5" />
+            <Send className="w-3.5 h-3.5 opacity-75" />
             <span>@HDRezkaPC</span>
-            <ExternalLink className="w-3 h-3 opacity-60 ml-0.5" />
+            <ExternalLink className="w-3 h-3 opacity-50 ml-0.5" />
           </button>
 
           <button

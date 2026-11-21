@@ -15,6 +15,9 @@ import {
   Send,
   Search,
   ShieldCheck,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
@@ -163,24 +166,55 @@ export const SettingsPage: React.FC = () => {
             {t.settings.subtitle} <span className="font-mono text-zinc-300">v{APP_VERSION}</span>
           </p>
         </div>
-
-        <button
-          type="button"
-          onClick={() => {
-            if (window.api?.openExternalUrl) {
-              window.api.openExternalUrl(TELEGRAM_CHANNEL_URL);
-            }
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/15 hover:bg-[#2AABEE]/25 text-[#58C4FF] border border-[#2AABEE]/30 text-xs font-bold active:scale-95 cursor-pointer self-start sm:self-auto"
-          title="Telegram @HDRezkaPC"
-        >
-          <Send className="w-4 h-4 flex-shrink-0" />
-          <span>Telegram @HDRezkaPC</span>
-          <ExternalLink className="w-3.5 h-3.5 opacity-60 ml-0.5" />
-        </button>
       </div>
 
       <div className="space-y-7">
+        {/* Section: Theme (Light / Dark / System) */}
+        <section className="p-6 rounded-3xl cinema-panel flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-brand-crimson/15 border border-brand-ember/30 flex items-center justify-center text-brand-orange">
+              {settings.theme === 'light' ? (
+                <Sun className="w-5 h-5" />
+              ) : settings.theme === 'system' ? (
+                <Monitor className="w-5 h-5" />
+              ) : (
+                <Moon className="w-5 h-5" />
+              )}
+            </div>
+            <div>
+              <h2 className="font-display text-sm font-black text-white">Тема оформления</h2>
+              <p className="text-xs text-zinc-400 mt-0.5">Светлая, тёмная или как в системе</p>
+            </div>
+          </div>
+
+          <div className="theme-input-bg flex items-center bg-[#0B070A] p-1 rounded-full border border-white/[0.08]">
+            {(
+              [
+                { id: 'dark', label: 'Тёмная', icon: Moon },
+                { id: 'light', label: 'Светлая', icon: Sun },
+                { id: 'system', label: 'Системная', icon: Monitor },
+              ] as const
+            ).map((opt) => {
+              const Icon = opt.icon;
+              const active = (settings.theme || 'dark') === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => updateSettings({ theme: opt.id })}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold cursor-pointer ${
+                    active ? 'btn-ember text-white' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" aria-hidden="true" />
+                  <span>{opt.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
         {/* Section: Language */}
         <section className="p-6 rounded-3xl cinema-panel flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
@@ -662,15 +696,27 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
 
-          <a
-            href="https://github.com/KDGOfficial/HDRezka-Desktop"
-            target="_blank"
-            rel="noreferrer"
-            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-white flex-shrink-0 active:scale-95"
-          >
-            <span>GitHub Repository</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+          <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => window.api?.openExternalUrl?.(TELEGRAM_CHANNEL_URL)}
+              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-semibold text-zinc-400 hover:text-white active:scale-95 cursor-pointer"
+              title="Telegram @HDRezkaPC"
+            >
+              <Send className="w-3.5 h-3.5 opacity-75" />
+              <span>@HDRezkaPC</span>
+            </button>
+
+            <a
+              href="https://github.com/KDGOfficial/HDRezka-Desktop"
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-white flex-shrink-0 active:scale-95"
+            >
+              <span>GitHub Repository</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+          </div>
         </section>
       </div>
     </div>

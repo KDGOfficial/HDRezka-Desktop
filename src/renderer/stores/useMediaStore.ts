@@ -37,6 +37,7 @@ interface MediaState {
   toggleFavorite: (item: MediaItem) => Promise<boolean>;
   setWatchHistory: (history: WatchHistoryEntry[]) => void;
   loadWatchHistory: () => Promise<void>;
+  removeFromWatchHistory: (historyId: string) => Promise<void>;
   openCollectionModal: (item: MediaItem | null) => void;
 }
 
@@ -158,6 +159,21 @@ export const useMediaStore = create<MediaState>((set, get) => ({
         set({ watchHistory: history });
       } catch (err) {
         console.error('Failed to load watch history:', err);
+      }
+    }
+  },
+
+  removeFromWatchHistory: async (historyId: string) => {
+    if (!historyId) return;
+    set((state) => ({
+      watchHistory: state.watchHistory.filter((h) => h.id !== historyId),
+    }));
+    if (window.api?.deleteWatchHistory) {
+      try {
+        await window.api.deleteWatchHistory(historyId);
+      } catch (err) {
+        console.error('Failed to delete watch history item:', err);
+        get().loadWatchHistory();
       }
     }
   },

@@ -76,7 +76,7 @@ export const VideoPlayer: React.FC = () => {
   const [isPinned, setIsPinned] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [showScaleMenu, setShowScaleMenu] = useState(false);
-  const [videoFit, setVideoFit] = useState<'contain' | 'cover' | 'fill'>('contain');
+  const [videoFit, setVideoFit] = useState<'contain' | '16:10' | '21:9' | '4:3' | 'cover' | 'fill'>('contain');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const hideTimerRef = useRef<any>(null);
@@ -192,17 +192,26 @@ export const VideoPlayer: React.FC = () => {
   };
 
   const cycleVideoFit = () => {
+    const order: Array<'contain' | '16:10' | '21:9' | '4:3' | 'cover' | 'fill'> = [
+      'contain',
+      '16:10',
+      '21:9',
+      '4:3',
+      'cover',
+      'fill',
+    ];
+    const labels: Record<(typeof order)[number], string> = {
+      contain: t.player.scaleOriginal,
+      '16:10': 'Масштаб: 16:10',
+      '21:9': 'Масштаб: 21:9 (Ultrawide)',
+      '4:3': 'Масштаб: 4:3',
+      cover: t.player.scaleCover,
+      fill: t.player.scaleFill,
+    };
     setVideoFit((prev) => {
-      if (prev === 'contain') {
-        showToast(t.player.scaleCover);
-        return 'cover';
-      } else if (prev === 'cover') {
-        showToast(t.player.scaleFill);
-        return 'fill';
-      } else {
-        showToast(t.player.scaleOriginal);
-        return 'contain';
-      }
+      const next = order[(order.indexOf(prev) + 1) % order.length];
+      showToast(labels[next]);
+      return next;
     });
   };
 
@@ -569,7 +578,7 @@ export const VideoPlayer: React.FC = () => {
   return (
     <div
       ref={containerRef}
-      className={`fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden ${
+      className={`cinema-player-surface fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden ${
         isUiLocked ? 'cursor-none' : ''
       }`}
     >
@@ -583,8 +592,18 @@ export const VideoPlayer: React.FC = () => {
       {/* Video Element */}
       <video
         ref={videoRef}
-        className={`w-full h-full cursor-pointer transition-all duration-200 ${
-          videoFit === 'cover' ? 'object-cover' : videoFit === 'fill' ? 'object-fill' : 'object-contain'
+        className={`cursor-pointer transition-all duration-200 ${
+          videoFit === 'cover'
+            ? 'w-full h-full object-cover'
+            : videoFit === 'fill'
+              ? 'w-full h-full object-fill'
+              : videoFit === '16:10'
+                ? 'max-w-full max-h-full aspect-[16/10] object-cover'
+                : videoFit === '21:9'
+                  ? 'max-w-full max-h-full aspect-[21/9] object-cover'
+                  : videoFit === '4:3'
+                    ? 'max-w-full max-h-full aspect-[4/3] object-cover'
+                    : 'w-full h-full object-contain'
         }`}
         onClick={togglePlay}
         onTimeUpdate={() => {
@@ -825,7 +844,9 @@ export const VideoPlayer: React.FC = () => {
                       {[
                         { w: 480, h: 270, label: t.player.sizeCompact, tag: '16:9 S' },
                         { w: 720, h: 405, label: t.player.sizeMedium, tag: '16:9 M' },
+                        { w: 800, h: 500, label: '800×500', tag: '16:10 M' },
                         { w: 960, h: 540, label: t.player.sizeLarge, tag: '16:9 L' },
+                        { w: 1280, h: 800, label: '1280×800', tag: '16:10' },
                         { w: 1280, h: 720, label: t.player.sizeStandard, tag: 'HD' },
                       ].map((p) => (
                         <button
@@ -1089,7 +1110,7 @@ export const VideoPlayer: React.FC = () => {
                 className="px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-xs font-bold text-zinc-200 hover:text-white border border-white/15 cursor-pointer"
                 title={t.player.scale}
               >
-                {videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? 'Кадр' : 'Растянуть'}
+                {videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? 'Кадр' : videoFit === 'fill' ? 'Растянуть' : videoFit}
               </button>
 
               <button

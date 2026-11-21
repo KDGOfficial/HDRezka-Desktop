@@ -54,7 +54,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
       aria-label={activeItem.title}
       onMouseEnter={() => setIsPaused(true)}
       onMouseLeave={() => setIsPaused(false)}
-      className="relative -mx-7 lg:-mx-9 -mt-6 mb-10 min-h-[470px] lg:min-h-[515px] overflow-hidden select-none border-b border-white/[0.06]"
+      className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 min-h-[clamp(360px,46dvh,540px)] overflow-hidden select-none border-b border-white/[0.06]"
     >
       {/* Full-Bleed Atmospheric Cinema Backdrop */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -81,7 +81,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
       <div className="absolute inset-0 bg-gradient-to-t from-[#0B070A] via-[#0B070A]/25 to-[#070507]/45 pointer-events-none" />
 
       {/* Main Content Stage */}
-      <div className="relative z-10 w-full h-full min-h-[470px] lg:min-h-[515px] px-7 lg:px-12 py-10 flex items-center justify-between gap-8">
+      <div className="relative z-10 w-full h-full min-h-[clamp(360px,46dvh,540px)] px-7 lg:px-12 py-8 lg:py-10 flex items-center justify-between gap-8">
         {/* Left: Editorial Cinema Typography & Actions */}
         <div className="max-w-2xl flex flex-col justify-end text-left flex-1 min-w-0">
           {/* Logo-inspired Metadata Pill Row */}
@@ -116,7 +116,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
           </div>
 
           {/* Bold Geometric Display Title */}
-          <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight leading-[1.08] mb-3.5 line-clamp-2 drop-shadow-[0_6px_24px_rgba(0,0,0,0.85)]">
+          <h1 className="font-display text-[clamp(1.7rem,3.1vw,3.1rem)] font-black text-white tracking-tight leading-[1.08] mb-3.5 line-clamp-2 drop-shadow-[0_6px_24px_rgba(0,0,0,0.85)]">
             {activeItem.title}
           </h1>
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Star, Heart, Play, Plus } from 'lucide-react';
+import { Star, Heart, Play, Plus, X } from 'lucide-react';
 import { MediaItem } from '../../shared/types';
 import { getRatingColor } from '../../shared/utils';
 import { useMediaStore } from '../stores/useMediaStore';
@@ -9,23 +9,18 @@ interface MediaCardProps {
   item: MediaItem;
   size?: 'small' | 'medium' | 'large';
   showProgress?: boolean;
+  onRemove?: (item: MediaItem) => void;
 }
 
-export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', showProgress = false }) => {
+export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', showProgress = false, onRemove }) => {
   const { openDetails, favorites, toggleFavorite, openCollectionModal } = useMediaStore();
   const { t } = useTranslation();
   const isFav = favorites.some((f) => f.mediaId === item.id);
 
   const sizeClasses = {
     small: 'w-36 md:w-40',
-    medium: 'w-44 md:w-[196px]',
+    medium: 'w-full min-w-[152px] max-w-[198px]',
     large: 'w-52 md:w-60',
-  }[size];
-
-  const posterHeight = {
-    small: 'h-52 md:h-56',
-    medium: 'h-[262px] md:h-[292px]',
-    large: 'h-76 md:h-88',
   }[size];
 
   const handleCardClick = () => {
@@ -40,6 +35,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
   const handleCollectionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
     openCollectionModal(item);
+  };
+
+  const handleRemoveClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onRemove?.(item);
   };
 
   return (
@@ -58,7 +58,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
     >
       {/* 2:3 Cinema Poster Frame */}
       <div
-        className={`relative w-full ${posterHeight} rounded-2xl overflow-hidden bg-dark-surface border border-white/[0.08] shadow-card group-hover:border-brand-ember/60 group-hover:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.88),0_0_26px_-6px_rgba(255,42,66,0.45)] transition-all duration-300`}
+        className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-dark-surface border border-white/[0.08] shadow-card group-hover:border-brand-ember/60 group-hover:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.88),0_0_26px_-6px_rgba(255,42,66,0.45)] transition-all duration-300"
       >
         {item.poster ? (
           <img
@@ -94,10 +94,23 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
           </div>
         )}
 
+        {/* Always-Visible Quick Remove Button (for Continue Watching) */}
+        {onRemove && (
+          <button
+            type="button"
+            onClick={handleRemoveClick}
+            aria-label={t.history.deleteEntry}
+            title={t.history.deleteEntry}
+            className="absolute top-2.5 right-2.5 z-20 p-1.5 rounded-full bg-black/75 hover:bg-brand-crimson text-white border border-white/20 backdrop-blur-md opacity-85 group-hover:opacity-100 cursor-pointer active:scale-90 transition-all"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+
         {/* Cinematic Hover Overlay */}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#070507]/95 via-[#0B070A]/35 to-[#070507]/40 opacity-0 group-hover:opacity-100 transition-opacity duration-250 flex flex-col justify-between p-3">
+        <div className="cinema-player-surface !bg-transparent absolute inset-0 bg-gradient-to-t from-[#070507]/95 via-[#0B070A]/35 to-[#070507]/40 opacity-0 group-hover:opacity-100 transition-opacity duration-250 flex flex-col justify-between p-3">
           {/* Top Actions Row */}
-          <div className="flex justify-between items-start gap-1">
+          <div className={`flex justify-between items-start gap-1 ${onRemove ? 'pr-8' : ''}`}>
             {item.rating ? (
               <span
                 className={`px-2 py-0.5 rounded-full text-[11px] font-extrabold tabular-nums flex items-center backdrop-blur-md shadow-md ${getRatingColor(

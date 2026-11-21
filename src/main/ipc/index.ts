@@ -6,6 +6,7 @@ import http from 'http';
 import { spawn } from 'child_process';
 import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, HDREZKA_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
 import { getMainWindow } from '../window';
+import { setBrowserAdBlockEnabled, getBrowserAdBlockStats } from '../main';
 import { ProviderManager } from '../../core/providers/manager';
 import { clearStaleAnubisCookies } from '../../core/providers/rezka/provider';
 import { AppDatabase } from '../database';
@@ -932,13 +933,18 @@ exit
   });
 
   ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL_URL, (_, url: string) => {
-    if (
-      typeof url === 'string' &&
-      /^https:\/\/(github\.com|objects\.githubusercontent\.com|t\.me|telegram\.me)\//i.test(url)
-    ) {
-      return shell.openExternal(url);
+    if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+      return shell.openExternal(url).then(() => true).catch(() => false);
     }
     return false;
+  });
+
+  ipcMain.handle(IPC_CHANNELS.BROWSER_SET_ADBLOCK, (_, enabled: boolean) => {
+    return setBrowserAdBlockEnabled(enabled);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.BROWSER_GET_ADBLOCK, () => {
+    return getBrowserAdBlockStats();
   });
 
   ipcMain.handle(IPC_CHANNELS.CLEAR_CACHE, async () => {

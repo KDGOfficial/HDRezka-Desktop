@@ -99,7 +99,7 @@ export const TitleBar: React.FC = () => {
   const cleanMirror = currentMirror.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
   return (
-    <div className="h-10 w-full bg-[#070507]/95 border-b border-white/[0.06] flex items-center justify-between px-3.5 select-none drag-region z-50 relative">
+    <div className="app-titlebar h-10 w-full bg-[#070507]/95 border-b border-white/[0.06] flex items-center justify-between px-3.5 select-none drag-region z-50 relative">
       {/* Subtle neon ember hairline along very top */}
       <div
         className="absolute top-0 left-0 right-0 h-[1.5px] opacity-65 pointer-events-none"

@@ -25,9 +25,36 @@ import { BrowserPage } from './pages/BrowserPage';
 
 export const App: React.FC = () => {
   const { currentPage, loadFavorites, loadWatchHistory } = useMediaStore();
-  const { loadSettings, updateInfo, isUpdateModalOpen, setUpdateModalOpen } = useSettingsStore();
+  const { settings, loadSettings, updateInfo, isUpdateModalOpen, setUpdateModalOpen } = useSettingsStore();
   const { t } = useTranslation();
   const [isWhatsNewOpen, setIsWhatsNewOpen] = React.useState(false);
+
+  // Apply light / dark / system color-scheme cleanly and listen for OS changes
+  useEffect(() => {
+    const applyTheme = () => {
+      const mode = settings.theme === 'light' ? 'light' : settings.theme === 'system' ? 'system' : 'dark';
+      const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+      if (mode === 'system') {
+        try { localStorage.removeItem('color-scheme'); } catch {}
+        if (meta) meta.content = 'light dark';
+      } else {
+        try { localStorage.setItem('color-scheme', mode); } catch {}
+        if (meta) meta.content = mode;
+      }
+      const prefersLight = window.matchMedia?.('(prefers-color-scheme: light)').matches;
+      const resolved = mode === 'system' ? (prefersLight ? 'light' : 'dark') : mode;
+      document.documentElement.dataset.theme = resolved;
+      document.documentElement.classList.toggle('dark', resolved === 'dark');
+    };
+
+    applyTheme();
+    const mql = window.matchMedia?.('(prefers-color-scheme: light)');
+    const onSystemChange = () => {
+      if (settings.theme === 'system') applyTheme();
+    };
+    mql?.addEventListener?.('change', onSystemChange);
+    return () => mql?.removeEventListener?.('change', onSystemChange);
+  }, [settings.theme]);
 
   useEffect(() => {
     loadSettings().then(() => {
@@ -99,7 +126,7 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-dark-void text-white overflow-hidden">
+    <div className="flex flex-col h-screen h-[100dvh] w-screen w-[100dvw] bg-dark-void text-white overflow-hidden">
       {/* Frameless Integrated TitleBar */}
       <TitleBar />
 

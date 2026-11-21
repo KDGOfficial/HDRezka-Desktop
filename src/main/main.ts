@@ -3,7 +3,19 @@ import { createMainWindow, getMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
-import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../shared/constants';
+import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, isBadMirrorUrl, BROWSER_USER_AGENT, isAdUrl } from '../shared/constants';
+
+let browserAdBlockEnabled = true;
+let browserAdBlockedCount = 0;
+
+export function setBrowserAdBlockEnabled(enabled: boolean): { enabled: boolean; blockedCount: number } {
+  browserAdBlockEnabled = Boolean(enabled);
+  return { enabled: browserAdBlockEnabled, blockedCount: browserAdBlockedCount };
+}
+
+export function getBrowserAdBlockStats(): { enabled: boolean; blockedCount: number } {
+  return { enabled: browserAdBlockEnabled, blockedCount: browserAdBlockedCount };
+}
 
 // Ensure consistent app name and userData path across versions and packaging
 app.name = 'hdrezka-desktop';
@@ -98,16 +110,30 @@ if (!gotTheLock) {
     // 2. Register all IPC handlers
     registerIpcHandlers();
 
-    // Configure built-in cinema browser webview: match desktop UA and keep valid links inside webview while blocking ad popups
+    // Setup AdBlock network interceptor for built-in cinema browser webview partition
+    const browserSession = session.fromPartition('persist:cinema-browser');
+    browserSession.setUserAgent(BROWSER_USER_AGENT);
+    browserSession.webRequest.onBeforeRequest((details, callback) => {
+      if (
+        browserAdBlockEnabled &&
+        details.resourceType !== 'mainFrame' &&
+        isAdUrl(details.url)
+      ) {
+        browserAdBlockedCount += 1;
+        return callback({ cancel: true });
+      }
+      return callback({});
+    });
+
+    // Configure built-in cinema browser webview: match desktop UA, block ad popups, sync HTML5 fullscreen
     app.on('web-contents-created', (_, contents) => {
       if (contents.getType() === 'webview') {
         contents.setUserAgent(BROWSER_USER_AGENT);
         contents.setWindowOpenHandler(({ url }) => {
-          if (
-            /^https?:\/\//i.test(url) &&
-            !/(?:1xbet|mostbet|pinup|vulcan|casino|bet|poker|doubleclick|popunder)/i.test(url)
-          ) {
+          if (/^https?:\/\//i.test(url) && !(browserAdBlockEnabled && isAdUrl(url))) {
             contents.loadURL(url).catch(() => {});
+          } else if (browserAdBlockEnabled && isAdUrl(url)) {
+            browserAdBlockedCount += 1;
           }
           return { action: 'deny' };
         });

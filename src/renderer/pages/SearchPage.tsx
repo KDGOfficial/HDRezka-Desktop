@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Search, History, X, Globe } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Search, History, X, Globe, ArrowDownWideNarrow, ArrowUpNarrowWide, Calendar, Star, Eye, Wand2 } from 'lucide-react';
 import { MediaCard } from '../components/MediaCard';
 import { MediaItem, SearchHistoryEntry } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
+import { getT9Correction, sortMediaItems, SearchSortBy, SortDirection } from '../../shared/utils';
 import appLogo from '../assets/logo.png';
 
 export const SearchPage: React.FC = () => {
@@ -15,6 +16,19 @@ export const SearchPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
+  const [sortBy, setSortBy] = useState<SearchSortBy>('relevance');
+  const [sortDir, setSortDir] = useState<SortDirection>('desc');
+  const [t9Applied, setT9Applied] = useState<string | null>(null);
+
+  const t9Hint = useMemo(
+    () => getT9Correction(query, history.map((h) => h.query)),
+    [query, history]
+  );
+
+  const sortedResults = useMemo(
+    () => sortMediaItems(results, sortBy, sortDir),
+    [results, sortBy, sortDir]
+  );
 
   useEffect(() => {
     loadSearchHistory();
@@ -36,9 +50,20 @@ export const SearchPage: React.FC = () => {
     if (!q || !window.api) return;
 
     setLoading(true);
+    setT9Applied(null);
     try {
       window.api.addSearchHistory(q);
-      const res = await window.api.searchAdvanced(q, pageNum);
+      let res = await window.api.searchAdvanced(q, pageNum);
+      if (pageNum === 1 && (!res.items || res.items.length === 0)) {
+        const hint = getT9Correction(q, history.map((h) => h.query));
+        if (hint && hint.suggestion.toLowerCase() !== q.toLowerCase()) {
+          const altRes = await window.api.searchAdvanced(hint.suggestion, 1);
+          if (altRes.items && altRes.items.length > 0) {
+            res = altRes;
+            setT9Applied(hint.suggestion);
+          }
+        }
+      }
       if (pageNum === 1) {
         setResults(res.items);
       } else {
@@ -94,6 +119,12 @@ export const SearchPage: React.FC = () => {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Tab' && t9Hint) {
+                  e.preventDefault();
+                  setQuery(t9Hint.suggestion);
+                }
+              }}
               aria-label={t.search.placeholder}
               placeholder={t.search.placeholder}
               className="bg-transparent border-none outline-none text-white w-full text-sm placeholder-zinc-500 font-semibold"
@@ -120,6 +151,25 @@ export const SearchPage: React.FC = () => {
             </button>
           </div>
         </form>
+
+        {/* T9 Live Correction Hint */}
+        {t9Hint && query.trim().toLowerCase() !== t9Hint.suggestion.toLowerCase() && (
+          <div className="mt-2.5 flex items-center gap-2 px-4 py-2 rounded-2xl cinema-panel text-xs">
+            <Wand2 className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" aria-hidden="true" />
+            <span className="text-zinc-400">T9: Возможно, вы имели в виду</span>
+            <button
+              type="button"
+              onClick={() => {
+                setQuery(t9Hint.suggestion);
+                setSearchQuery(t9Hint.suggestion);
+                performSearch(t9Hint.suggestion, 1);
+              }}
+              className="font-extrabold text-brand-orange hover:underline cursor-pointer"
+            >
+              «{t9Hint.suggestion}»
+            </button>
+          </div>
+        )}
 
         {/* Recent Search Chips */}
         {history.length > 0 && (
@@ -156,15 +206,71 @@ export const SearchPage: React.FC = () => {
         )}
       </div>
 
-      {/* Results Header */}
+      {/* Results Header & Sorting Bar */}
       {searchQuery && !loading && (
-        <div className="mb-6 flex items-center justify-between pb-3.5 border-b border-white/[0.06]">
-          <h1 className="font-display text-lg font-black text-white">
-            {t.search.resultsFor} <span className="text-ember-gradient">«{searchQuery}»</span>
-          </h1>
-          <span className="text-xs text-zinc-400 font-mono">
-            {t.search.foundCount}: {results.length}
-          </span>
+        <div className="mb-6 pb-3.5 border-b border-white/[0.06] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div>
+            <h1 className="font-display text-lg font-black text-white">
+              {t.search.resultsFor} <span className="text-ember-gradient">«{t9Applied || searchQuery}»</span>
+            </h1>
+            <span className="text-xs text-zinc-400 font-mono">
+              {t.search.foundCount}: {results.length}
+              {t9Applied ? ` · T9 исправлено с «${searchQuery}»` : ''}
+            </span>
+          </div>
+
+          {results.length > 0 && (
+            <div className="flex items-center flex-wrap gap-1.5">
+              {([
+                { id: 'relevance', label: 'По релевантности', icon: null },
+                { id: 'year', label: 'Год выпуска', icon: Calendar },
+                { id: 'rating', label: 'Оценки', icon: Star },
+                { id: 'views', label: 'Просмотры', icon: Eye },
+              ] as const).map((opt) => {
+                const Icon = opt.icon;
+                const active = sortBy === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (active && opt.id !== 'relevance') {
+                        setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'));
+                      } else {
+                        setSortBy(opt.id);
+                        setSortDir('desc');
+                      }
+                    }}
+                    className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold cursor-pointer ${
+                      active
+                        ? 'btn-ember text-white'
+                        : 'bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    {Icon && <Icon className="w-3.5 h-3.5" aria-hidden="true" />}
+                    <span>{opt.label}</span>
+                  </button>
+                );
+              })}
+
+              {sortBy !== 'relevance' && (
+                <button
+                  type="button"
+                  onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
+                  title={sortDir === 'desc' ? 'По убыванию' : 'По возрастанию'}
+                  aria-label={sortDir === 'desc' ? 'По убыванию' : 'По возрастанию'}
+                  className="p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-brand-orange cursor-pointer"
+                >
+                  {sortDir === 'desc' ? (
+                    <ArrowDownWideNarrow className="w-3.5 h-3.5" />
+                  ) : (
+                    <ArrowUpNarrowWide className="w-3.5 h-3.5" />
+                  )}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -209,8 +315,8 @@ export const SearchPage: React.FC = () => {
       {/* Results Grid */}
       {!loading && results.length > 0 && (
         <>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-            {results.map((item, idx) => (
+          <div className="cinema-grid">
+            {sortedResults.map((item, idx) => (
               <div key={item.id ? `${item.id}-${idx}` : idx} className="flex justify-center">
                 <MediaCard item={item} />
               </div>

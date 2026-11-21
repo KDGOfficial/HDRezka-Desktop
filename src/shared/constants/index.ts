@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.39';
+export const APP_VERSION = '0.0.40';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
@@ -31,6 +31,31 @@ export const OPEN_MIRROR_SEEDS = [
   'https://www.kinobase.org',
   'https://kinogo.film',
 ];
+
+export const ANIME_MIRROR_SEEDS = [
+  'https://api.yani.tv',
+  'https://animego.me',
+  'https://uakino.biz',
+];
+
+const AD_HOST_RE =
+  /(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.|adnxs\.com|adfox\.ru|an\.yandex\.ru|mc\.yandex\.ru|metrika\.yandex\.|direct\.yandex\.|mgid\.com|marketgid\.com|lentainform\.com|exoclick\.com|exosrv\.com|propellerads\.com|popads\.net|popcash\.net|clickadu\.com|adsterra\.com|hilltopads\.net|juicyads\.com|trafficjunky\.net|trafficfactory\.biz|trafmag\.com|adriver\.ru|adskeeper\.co\.uk|outbrain\.com|taboola\.com|criteo\.com|rtbhouse\.com|betweendigital\.com|videoroll\.net|viqeo\.tv|mixmarket\.biz|directadvert\.ru|recreativ\.ru|smi2\.ru|teasernet\.com|bodyclick\.net|gnezdo\.ru|1xbet|mostbet|pinup|pin-up|vulcan|vulkan|azino|melbet|fonbet|vavada|joycasino|parimatch|betwinner|betboom|olimpbet|leonbets|pokerdom|ggbet)/i;
+
+const AD_PATH_RE =
+  /(?:\/(?:vast|vpaid|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|reklama|doubleclick)\b|[?&](?:vast|ad_tag|ad_url|preroll|popunder)=)/i;
+
+export function isAdUrl(url: string): boolean {
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) return false;
+  try {
+    const parsed = new URL(url);
+    if (AD_HOST_RE.test(parsed.hostname)) return true;
+    // Never block actual HLS/MP4 media segments on known streaming CDNs
+    if (/\.(?:m3u8|ts|mp4|vtt|srt)(?:$|\?)/i.test(parsed.pathname)) return false;
+    return AD_PATH_RE.test(parsed.pathname + parsed.search);
+  } catch {
+    return false;
+  }
+}
 
 export const HDREZKA_MIRRORS = [
   'https://rezka.ag',
@@ -151,6 +176,10 @@ export const IPC_CHANNELS = {
   CLEAR_CACHE: 'app:clearCache',
   OPEN_EXTERNAL_URL: 'app:openExternal',
   CHECK_JUST_UPDATED: 'app:checkJustUpdated',
+
+  // Browser AdBlock
+  BROWSER_SET_ADBLOCK: 'browser:setAdBlock',
+  BROWSER_GET_ADBLOCK: 'browser:getAdBlock',
 };
 
 export const GENRES = [

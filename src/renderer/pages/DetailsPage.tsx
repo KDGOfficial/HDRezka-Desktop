@@ -36,7 +36,7 @@ export const DetailsPage: React.FC = () => {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
-  const [reviewFilter, setReviewFilter] = useState<'all' | 'critic' | 'user'>('all');
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'kinopoisk' | 'critic' | 'user'>('all');
 
   useEffect(() => {
     if (selectedMediaId) {
@@ -150,7 +150,7 @@ export const DetailsPage: React.FC = () => {
   return (
     <div className="w-full pb-20 text-left select-none animate-fadeIn">
       {/* Full-Bleed Theater Backdrop Stage */}
-      <section className="relative -mx-7 lg:-mx-9 -mt-6 mb-9 overflow-hidden border-b border-white/[0.06] bg-dark-void">
+      <section className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 overflow-hidden border-b border-white/[0.06] bg-dark-void">
         {(details.backdrop || details.poster) && (
           <img
             src={details.backdrop || details.poster}
@@ -512,9 +512,12 @@ export const DetailsPage: React.FC = () => {
               <span>Комментарии и рецензии критиков</span>
             </h2>
 
-            <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-full border border-white/[0.08]">
+            <div className="flex items-center flex-wrap gap-1.5 bg-black/40 p-1 rounded-full border border-white/[0.08]">
               {([
                 { id: 'all', label: `Все (${details.reviews.length})` },
+                ...(details.reviews.some((r) => r.source === 'Кинопоиск')
+                  ? [{ id: 'kinopoisk' as const, label: `Кинопоиск (${details.reviews.filter((r) => r.source === 'Кинопоиск').length})` }]
+                  : []),
                 { id: 'critic', label: `Критики (${details.reviews.filter((r) => r.type === 'critic').length})` },
                 { id: 'user', label: `Зрители (${details.reviews.filter((r) => r.type === 'user').length})` },
               ] as const).map((tab) => (
@@ -537,7 +540,13 @@ export const DetailsPage: React.FC = () => {
 
           <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
             {details.reviews
-              .filter((r) => reviewFilter === 'all' || r.type === reviewFilter)
+              .filter((r) =>
+                reviewFilter === 'all'
+                  ? true
+                  : reviewFilter === 'kinopoisk'
+                    ? r.source === 'Кинопоиск'
+                    : r.type === reviewFilter
+              )
               .map((rev) => {
                 const isCritic = rev.type === 'critic';
                 const accent =

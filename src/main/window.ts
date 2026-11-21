@@ -1,4 +1,4 @@
-import { BrowserWindow, shell, session } from 'electron';
+import { BrowserWindow, shell, session, screen } from 'electron';
 import path from 'path';
 import { ProviderManager } from '../core/providers/manager';
 import { BROWSER_USER_AGENT } from '../shared/constants';
@@ -6,9 +6,14 @@ import { BROWSER_USER_AGENT } from '../shared/constants';
 let mainWindow: BrowserWindow | null = null;
 
 export function createMainWindow(): BrowserWindow {
+  // Adapt initial window dimensions to display aspect ratio (16:10, 16:9, 21:9, 4:3, HiDPI)
+  const workArea = screen.getPrimaryDisplay().workAreaSize;
+  const initWidth = Math.min(workArea.width, Math.max(Math.min(1024, workArea.width), Math.min(1680, Math.round(workArea.width * 0.84))));
+  const initHeight = Math.min(workArea.height, Math.max(Math.min(680, workArea.height), Math.min(1050, Math.round(workArea.height * 0.86))));
+
   mainWindow = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: initWidth,
+    height: initHeight,
     minWidth: 320,
     minHeight: 180,
     frame: false,

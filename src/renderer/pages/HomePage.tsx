@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw, ShieldCheck } from 'lucide-react';
+import { AlertCircle, RefreshCw, ShieldCheck, Clock, Sparkles, Trash2 } from 'lucide-react';
 import { HeroBanner } from '../components/HeroBanner';
 import { MediaSlider } from '../components/MediaSlider';
+import { MediaCard } from '../components/MediaCard';
 import { MediaItem } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -9,10 +10,11 @@ import { useTranslation } from '../i18n';
 import appLogo from '../assets/logo.png';
 
 export const HomePage: React.FC = () => {
-  const { setPage, watchHistory, loadWatchHistory } = useMediaStore();
+  const { setPage, watchHistory, loadWatchHistory, removeFromWatchHistory } = useMediaStore();
   const { settings, mirrorsStatus, verificationEpoch, verifyMirror } = useSettingsStore();
   const { t } = useTranslation();
 
+  const [activeTab, setActiveTab] = useState<'all' | 'continue'>('all');
   const [loading, setLoading] = useState(true);
   const [hero, setHero] = useState<MediaItem | null>(null);
   const [popular, setPopular] = useState<MediaItem[]>([]);
@@ -46,8 +48,9 @@ export const HomePage: React.FC = () => {
     }
   };
 
-  const continueWatchingItems: MediaItem[] = watchHistory.slice(0, 12).map((h) => ({
+  const continueWatchingItems: MediaItem[] = watchHistory.slice(0, 24).map((h) => ({
     id: h.mediaId,
+    historyId: h.id,
     title: h.title,
     origTitle: h.origTitle,
     poster: h.poster,
@@ -59,6 +62,13 @@ export const HomePage: React.FC = () => {
         : `${h.percent}% ${t.history.watched}`,
     url: h.url || h.mediaId,
   }));
+
+  const handleRemoveContinueItem = (item: MediaItem) => {
+    const targetId = item.historyId || watchHistory.find((h) => h.mediaId === item.id)?.id;
+    if (targetId) {
+      removeFromWatchHistory(targetId);
+    }
+  };
 
   if (loading) {
     return (
@@ -121,72 +131,166 @@ export const HomePage: React.FC = () => {
 
   return (
     <div className="w-full pb-16 animate-fadeIn">
-      {/* Full-Bleed Hero Showcase */}
-      {homeSections.hero && hero && <HeroBanner item={hero} slides={heroSlides} />}
-
-      {showVerifyBanner && (
-        <div className="mb-8 p-4 rounded-2xl bg-amber-950/35 border border-amber-500/35 text-amber-200 text-xs flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
-            <span className="leading-snug font-medium">{t.details.antiBotWarning}</span>
-          </div>
+      {/* Home Screen Tabs: Showcase vs Continue Watching */}
+      <div className="mb-5 flex items-center justify-between flex-wrap gap-3 relative z-20">
+        <div className="inline-flex items-center gap-1.5 p-1 rounded-full cinema-panel">
           <button
             type="button"
-            onClick={() => verifyMirror(settings.app.activeMirror)}
-            className="px-4 py-1.5 rounded-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
+            aria-pressed={activeTab === 'all'}
+            onClick={() => setActiveTab('all')}
+            className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-extrabold cursor-pointer ${
+              activeTab === 'all' ? 'btn-ember text-white' : 'text-zinc-400 hover:text-white'
+            }`}
           >
-            {t.details.passVerification}
+            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>{t.nav.home}</span>
+          </button>
+
+          <button
+            type="button"
+            aria-pressed={activeTab === 'continue'}
+            onClick={() => setActiveTab('continue')}
+            className={`inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-extrabold cursor-pointer ${
+              activeTab === 'continue' ? 'btn-ember text-white' : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>{t.home.continueWatching}</span>
+            {continueWatchingItems.length > 0 && (
+              <span
+                className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-black ${
+                  activeTab === 'continue' ? 'bg-black/25 text-white' : 'bg-white/[0.08] text-zinc-300'
+                }`}
+              >
+                {continueWatchingItems.length}
+              </span>
+            )}
           </button>
         </div>
-      )}
+      </div>
 
-      {homeSections.continueWatching && continueWatchingItems.length > 0 && (
-        <MediaSlider
-          title={t.home.continueWatching}
-          items={continueWatchingItems}
-          onViewAll={() => setPage('history')}
-          showProgress={true}
-        />
-      )}
+      {activeTab === 'continue' ? (
+        <section className="animate-fadeIn">
+          <div className="flex items-center justify-between mb-6 pb-3.5 border-b border-white/[0.06]">
+            <div className="flex items-center gap-3">
+              <span
+                className="w-1.5 h-5 rounded-full flex-shrink-0 shadow-glow-sm"
+                style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
+              />
+              <h2 className="font-display text-lg md:text-xl font-black text-white">
+                {t.home.continueWatching}
+              </h2>
+            </div>
+            {continueWatchingItems.length > 0 && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (window.api?.clearWatchHistory) {
+                    await window.api.clearWatchHistory();
+                    loadWatchHistory();
+                  }
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.05] hover:bg-rose-950/50 border border-white/[0.09] hover:border-rose-500/40 text-xs font-bold text-zinc-300 hover:text-rose-300 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{t.history.clearHistory}</span>
+              </button>
+            )}
+          </div>
 
-      {homeSections.popular && popular.length > 0 && (
-        <MediaSlider
-          title={t.home.popular}
-          items={popular}
-          onViewAll={() => setPage('catalog')}
-        />
-      )}
+          {continueWatchingItems.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <div className="w-16 h-16 rounded-3xl cinema-panel flex items-center justify-center mb-4">
+                <Clock className="w-7 h-7 text-brand-orange" />
+              </div>
+              <p className="font-display text-base font-black text-zinc-200">{t.history.emptyTitle}</p>
+              <p className="text-xs text-zinc-400 mt-1.5 max-w-sm leading-relaxed">{t.history.emptyDesc}</p>
+            </div>
+          ) : (
+            <div className="cinema-grid">
+              {continueWatchingItems.map((item) => (
+                <div key={item.historyId || item.id} className="flex justify-center">
+                  <MediaCard item={item} showProgress={true} onRemove={handleRemoveContinueItem} />
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      ) : (
+        <>
+          {/* Full-Bleed Hero Showcase */}
+          {homeSections.hero && hero && (
+            <div className="mt-6">
+              <HeroBanner item={hero} slides={heroSlides} />
+            </div>
+          )}
 
-      {homeSections.newReleases && newReleases.length > 0 && (
-        <MediaSlider
-          title={t.home.newReleases}
-          items={newReleases}
-          onViewAll={() => setPage('catalog')}
-        />
-      )}
+          {showVerifyBanner && (
+            <div className="mb-8 p-4 rounded-2xl bg-amber-950/35 border border-amber-500/35 text-amber-200 text-xs flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                <span className="leading-snug font-medium">{t.details.antiBotWarning}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => verifyMirror(settings.app.activeMirror)}
+                className="px-4 py-1.5 rounded-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
+              >
+                {t.details.passVerification}
+              </button>
+            </div>
+          )}
 
-      {homeSections.topMovies && topMovies.length > 0 && (
-        <MediaSlider
-          title={t.home.topMovies}
-          items={topMovies}
-          onViewAll={() => setPage('films')}
-        />
-      )}
+          {homeSections.continueWatching && continueWatchingItems.length > 0 && (
+            <MediaSlider
+              title={t.home.continueWatching}
+              items={continueWatchingItems}
+              onViewAll={() => setActiveTab('continue')}
+              showProgress={true}
+              onRemoveItem={handleRemoveContinueItem}
+            />
+          )}
 
-      {homeSections.topSeries && topSeries.length > 0 && (
-        <MediaSlider
-          title={t.home.topSeries}
-          items={topSeries}
-          onViewAll={() => setPage('series')}
-        />
-      )}
+          {homeSections.popular && popular.length > 0 && (
+            <MediaSlider
+              title={t.home.popular}
+              items={popular}
+              onViewAll={() => setPage('catalog')}
+            />
+          )}
 
-      {homeSections.recommendations && recommendations.length > 0 && (
-        <MediaSlider title={t.home.recommendations} items={recommendations} />
-      )}
+          {homeSections.newReleases && newReleases.length > 0 && (
+            <MediaSlider
+              title={t.home.newReleases}
+              items={newReleases}
+              onViewAll={() => setPage('catalog')}
+            />
+          )}
 
-      {homeSections.expected && expected.length > 0 && (
-        <MediaSlider title={t.home.expected} items={expected} />
+          {homeSections.topMovies && topMovies.length > 0 && (
+            <MediaSlider
+              title={t.home.topMovies}
+              items={topMovies}
+              onViewAll={() => setPage('films')}
+            />
+          )}
+
+          {homeSections.topSeries && topSeries.length > 0 && (
+            <MediaSlider
+              title={t.home.topSeries}
+              items={topSeries}
+              onViewAll={() => setPage('series')}
+            />
+          )}
+
+          {homeSections.recommendations && recommendations.length > 0 && (
+            <MediaSlider title={t.home.recommendations} items={recommendations} />
+          )}
+
+          {homeSections.expected && expected.length > 0 && (
+            <MediaSlider title={t.home.expected} items={expected} />
+          )}
+        </>
       )}
     </div>
   );

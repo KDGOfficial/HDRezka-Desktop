@@ -126,6 +126,10 @@ export const api = {
   openExternalUrl: (url: string): Promise<boolean> =>
     ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL_URL, url),
   clearCache: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_CACHE),
+  setAdBlock: (enabled: boolean): Promise<{ enabled: boolean; blockedCount: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_ADBLOCK, enabled),
+  getAdBlockStats: (): Promise<{ enabled: boolean; blockedCount: number }> =>
+    ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GET_ADBLOCK),
 };
 
 contextBridge.exposeInMainWorld('api', api);

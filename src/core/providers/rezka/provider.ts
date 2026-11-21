@@ -108,7 +108,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.39';
+  public version = '0.0.40';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -244,7 +244,12 @@ export class RezkaProvider implements IProvider {
             text.includes('Кинобейс') ||
             text.includes('shortStory') ||
             text.includes('shortstoryHeader') ||
-            text.includes('kinogo');
+            text.includes('kinogo') ||
+            text.includes('YummyAnime') ||
+            text.includes('anime_id') ||
+            text.includes('animego') ||
+            text.includes('UAKino') ||
+            text.includes('uakino');
           const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
           const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
           const isLiveSite = isLiveRezka && text.length > 200;
@@ -596,6 +601,442 @@ export class RezkaProvider implements IProvider {
   private isKinogo(urlOrMirror?: string): boolean {
     const target = (urlOrMirror || this.activeMirror || '').toLowerCase();
     return target.includes('kinogo.');
+  }
+
+  private isYummyAnime(urlOrMirror?: string): boolean {
+    const target = (urlOrMirror || '').toLowerCase();
+    return target.includes('api.yani.tv') || target.includes('yummyanime.') || target.includes('yummyani.me');
+  }
+
+  private isAnimeGo(urlOrMirror?: string): boolean {
+    const target = (urlOrMirror || '').toLowerCase();
+    return target.includes('animego.');
+  }
+
+  private isUaKino(urlOrMirror?: string): boolean {
+    const target = (urlOrMirror || '').toLowerCase();
+    return target.includes('uakino.');
+  }
+
+  private isAnimeMirror(urlOrMirror?: string): boolean {
+    return this.isYummyAnime(urlOrMirror) || this.isAnimeGo(urlOrMirror) || this.isUaKino(urlOrMirror);
+  }
+
+  public parseYummyAnimeItems(list: any[]): MediaItem[] {
+    if (!Array.isArray(list)) return [];
+    const items: MediaItem[] = [];
+    const seen = new Set<string>();
+    for (const raw of list) {
+      if (!raw || !raw.anime_id || !raw.title) continue;
+      const id = `yani-${raw.anime_id}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const rawPoster = raw.poster?.big || raw.poster?.medium || raw.poster?.fullsize || raw.poster?.small || '';
+      const poster = rawPoster.startsWith('//') ? `https:${rawPoster}` : rawPoster;
+      const ratingNum = Number(raw.rating?.average || raw.rating?.shikimori_rating || raw.rating?.kp_rating || 0);
+      const viewsNum = Number(raw.views || 0);
+      const yearNum = Number(raw.year || 0);
+      const url = `https://api.yani.tv/anime/${raw.anime_id}`;
+      const item: MediaItem = {
+        id,
+        title: String(raw.title).trim(),
+        origTitle: raw.original ? String(raw.original).trim() : undefined,
+        url,
+        poster,
+        year: yearNum > 1900 ? yearNum : undefined,
+        type: 'animation',
+        rating: ratingNum > 0 ? Math.round(ratingNum * 10) / 10 : undefined,
+        views: viewsNum > 0 ? viewsNum : undefined,
+        info: `YummyAnime${yearNum > 1900 ? ` · ${yearNum}` : ''}`,
+      };
+      this.mediaCache.set(url, item);
+      this.mediaCache.set(id, item);
+      this.mediaUrlCache.set(id, url);
+      items.push(item);
+    }
+    return this.filterNonCamRipItems(items);
+  }
+
+  private async searchYummyAnime(query: string): Promise<MediaItem[]> {
+    const q = query.trim();
+    if (!q) return [];
+    try {
+      const res = await appFetch(`https://api.yani.tv/search?q=${encodeURIComponent(q)}&limit=15`, {
+        headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(3200),
+      });
+      if (!res.ok) return [];
+      const json: any = await res.json();
+      return this.parseYummyAnimeItems(json?.response || []);
+    } catch {
+      return [];
+    }
+  }
+
+  public parseAnimeGoItems(html: string): MediaItem[] {
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const items: MediaItem[] = [];
+    const seen = new Set<string>();
+    $('.ani-grid__item, .animes-grid-item').each((_, el) => {
+      const a = $(el).find('a[href*="/anime/"]').first();
+      const href = a.attr('href') || '';
+      if (!href || !href.includes('/anime/')) return;
+      const fullUrl = href.startsWith('http') ? href : `https://animego.me${href.startsWith('/') ? '' : '/'}${href}`;
+      const slugId = fullUrl.split('/').pop() || fullUrl;
+      const id = `animego-${slugId}`;
+      if (seen.has(id)) return;
+      seen.add(id);
+
+      const title =
+        $(el).find('.card-title, .h5, .ani-grid__item-title').first().text().trim() ||
+        a.attr('title')?.trim() ||
+        a.text().trim();
+      if (!title) return;
+
+      const img = $(el).find('img, [data-original]').first();
+      let poster = img.attr('data-original') || img.attr('data-src') || img.attr('src') || '';
+      if (poster.startsWith('//')) poster = `https:${poster}`;
+      else if (poster && !poster.startsWith('http')) poster = `https://animego.me${poster.startsWith('/') ? '' : '/'}${poster}`;
+
+      const cardText = $(el).text().replace(/\s+/g, ' ').trim();
+      const yearMatch = cardText.match(/\b(19\d{2}|20\d{2})\b/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
+      const ratingMatch = $(el).find('[class*="rating"], .p-rate-flag__text').first().text().match(/(\d+(?:[.,]\d+)?)/) ||
+        cardText.match(/^(\d\.\d)\b/);
+      const rating = ratingMatch ? parseFloat(ratingMatch[1].replace(',', '.')) : undefined;
+
+      const item: MediaItem = {
+        id,
+        title,
+        url: fullUrl,
+        poster,
+        year,
+        type: 'animation',
+        rating: rating && !Number.isNaN(rating) && rating <= 10 ? rating : undefined,
+        info: `AnimeGO${year ? ` · ${year}` : ''}`,
+      };
+      this.mediaCache.set(fullUrl, item);
+      this.mediaCache.set(id, item);
+      this.mediaUrlCache.set(id, fullUrl);
+      items.push(item);
+    });
+    return this.filterNonCamRipItems(items);
+  }
+
+  private async searchAnimeGo(query: string): Promise<MediaItem[]> {
+    const q = query.trim();
+    if (!q) return [];
+    try {
+      const res = await appFetch(`https://animego.me/search/anime?q=${encodeURIComponent(q)}`, {
+        headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept-Language': 'ru-RU,ru;q=0.9' },
+        signal: AbortSignal.timeout(3200),
+      });
+      if (!res.ok) return [];
+      const html = await res.text();
+      if (this.isAntiBot(html)) return [];
+      return this.parseAnimeGoItems(html);
+    } catch {
+      return [];
+    }
+  }
+
+  public parseUaKinoItems(html: string): MediaItem[] {
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const items: MediaItem[] = [];
+    const seen = new Set<string>();
+    $('.movie-item').each((_, el) => {
+      if ($(el).hasClass('swiper-slide')) return;
+      const a = $(el).find('a.movie-title, .movie-img a, a[href]').first();
+      const href = a.attr('href') || '';
+      if (!href || href.includes('/news/')) return;
+      const fullUrl = href.startsWith('http') ? href : `https://uakino.biz${href.startsWith('/') ? '' : '/'}${href}`;
+      const idMatch = fullUrl.match(/\/(\d+)-/);
+      const id = idMatch ? `uakino-${idMatch[1]}` : `uakino-${fullUrl}`;
+      if (seen.has(id)) return;
+      seen.add(id);
+
+      const title = $(el).find('a.movie-title').first().text().trim() || a.attr('title')?.trim() || a.text().trim();
+      if (!title) return;
+
+      const img = $(el).find('img').first();
+      let poster = img.attr('data-src') || img.attr('src') || '';
+      if (poster.startsWith('//')) poster = `https:${poster}`;
+      else if (poster && !poster.startsWith('http')) poster = `https://uakino.biz${poster.startsWith('/') ? '' : '/'}${poster}`;
+
+      const cardText = $(el).text().replace(/\s+/g, ' ').trim();
+      const yearMatch = cardText.match(/\b(19\d{2}|20\d{2})\b/);
+      const year = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
+      const ratingMatch = cardText.match(/IMDB:\s*(\d+(?:\.\d+)?)/i);
+      const rating = ratingMatch ? parseFloat(ratingMatch[1]) : undefined;
+      const type: ContentType = fullUrl.includes('/anime')
+        ? 'animation'
+        : fullUrl.includes('/seri')
+          ? 'series'
+          : fullUrl.includes('/cartoon')
+            ? 'cartoons'
+            : 'films';
+
+      const item: MediaItem = {
+        id,
+        title,
+        url: fullUrl,
+        poster,
+        year,
+        type,
+        rating: rating && !Number.isNaN(rating) ? rating : undefined,
+        info: `UAKino${year ? ` · ${year}` : ''}`,
+      };
+      this.mediaCache.set(fullUrl, item);
+      this.mediaCache.set(id, item);
+      this.mediaUrlCache.set(id, fullUrl);
+      items.push(item);
+    });
+    return this.filterNonCamRipItems(items);
+  }
+
+  private async searchUaKino(query: string): Promise<MediaItem[]> {
+    const q = query.trim();
+    if (!q) return [];
+    try {
+      const res = await appFetch('https://uakino.biz/ua/', {
+        method: 'POST',
+        headers: {
+          'User-Agent': BROWSER_USER_AGENT,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Referer': 'https://uakino.biz/ua/',
+        },
+        body: new URLSearchParams({ do: 'search', subaction: 'search', story: q }).toString(),
+        signal: AbortSignal.timeout(3200),
+      });
+      if (!res.ok) return [];
+      const html = await res.text();
+      if (this.isAntiBot(html)) return [];
+      return this.parseUaKinoItems(html);
+    } catch {
+      return [];
+    }
+  }
+
+  private async searchAnimeMirrors(query: string): Promise<MediaItem[]> {
+    const [yaniRes, goRes, uaRes] = await Promise.allSettled([
+      this.searchYummyAnime(query),
+      this.searchAnimeGo(query),
+      this.searchUaKino(query),
+    ]);
+    const combined: MediaItem[] = [
+      ...(yaniRes.status === 'fulfilled' ? yaniRes.value : []),
+      ...(goRes.status === 'fulfilled' ? goRes.value : []),
+      ...(uaRes.status === 'fulfilled' ? uaRes.value : []),
+    ];
+    return this.dedupeMediaItems(combined);
+  }
+
+  private dedupeMediaItems(items: MediaItem[]): MediaItem[] {
+    const out: MediaItem[] = [];
+    const seen = new Set<string>();
+    for (const item of items) {
+      const key = `${item.title.toLowerCase().replace(/[^a-zа-яёіїє0-9]/gi, '')}:${item.year || ''}:${item.url}`;
+      const titleYearKey = `${item.title.toLowerCase().replace(/[^a-zа-яёіїє0-9]/gi, '')}:${item.year || ''}`;
+      if (seen.has(key) || (item.year && seen.has(titleYearKey))) continue;
+      seen.add(key);
+      if (item.year) seen.add(titleYearKey);
+      out.push(item);
+    }
+    return out;
+  }
+
+  private async getAnimeMirrorCatalog(filter: CatalogFilter): Promise<SearchResult | null> {
+    try {
+      const offset = Math.max(0, (filter.page - 1) * 24);
+      const sort = filter.sort === 'popular' || filter.sort === 'rating' ? 'top' : filter.sort === 'watching' ? 'views' : 'year';
+      const [yaniRes, uaRes] = await Promise.allSettled([
+        (async () => {
+          const r = await appFetch(`https://api.yani.tv/anime?limit=24&offset=${offset}&sort=${sort}`, {
+            headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(4000),
+          });
+          if (!r.ok) return [];
+          const j: any = await r.json();
+          return this.parseYummyAnimeItems(j?.response || []);
+        })(),
+        filter.page === 1
+          ? (async () => {
+              const r = await appFetch('https://uakino.biz/animeukr/', {
+                headers: { 'User-Agent': BROWSER_USER_AGENT },
+                signal: AbortSignal.timeout(3500),
+              });
+              if (!r.ok) return [];
+              return this.parseUaKinoItems(await r.text());
+            })()
+          : Promise.resolve([]),
+      ]);
+      const items = this.dedupeMediaItems([
+        ...(yaniRes.status === 'fulfilled' ? yaniRes.value : []),
+        ...(uaRes.status === 'fulfilled' ? uaRes.value : []),
+      ]);
+      if (items.length > 0) {
+        return { items, page: filter.page, hasMore: items.length >= 16 };
+      }
+      const goRes = await appFetch(`https://animego.me/anime${filter.page > 1 ? `?page=${filter.page}` : ''}`, {
+        headers: { 'User-Agent': BROWSER_USER_AGENT },
+        signal: AbortSignal.timeout(4000),
+      });
+      if (goRes.ok) {
+        const goItems = this.parseAnimeGoItems(await goRes.text());
+        if (goItems.length > 0) return { items: goItems, page: filter.page, hasMore: true };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async getAnimeMirrorDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails | null> {
+    const target = meta?.url || urlOrId;
+    try {
+      // YummyAnime JSON API details
+      if (this.isYummyAnime(target) || /^yani-\d+$/i.test(urlOrId)) {
+        const idMatch = target.match(/\/anime\/(\d+)/) || urlOrId.match(/yani-(\d+)/i);
+        const animeId = idMatch?.[1];
+        if (!animeId) return null;
+        const [infoRes, vidRes] = await Promise.all([
+          appFetch(`https://api.yani.tv/anime/${animeId}`, {
+            headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(4500),
+          }),
+          appFetch(`https://api.yani.tv/anime/${animeId}/videos`, {
+            headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+            signal: AbortSignal.timeout(4500),
+          }).catch(() => null),
+        ]);
+        if (!infoRes.ok) return null;
+        const raw = ((await infoRes.json()) as any)?.response;
+        if (!raw?.title) return null;
+
+        const rawPoster = raw.poster?.fullsize || raw.poster?.big || meta?.poster || '';
+        const poster = rawPoster.startsWith('//') ? `https:${rawPoster}` : rawPoster;
+        const title = String(raw.title).trim();
+        const origTitle = String(raw.original || meta?.origTitle || '').trim();
+        const year = Number(raw.year || meta?.year || 0);
+        const ratingRezka = Number(raw.rating?.average || raw.rating?.shikimori_rating || 0) || undefined;
+        const ratingKp = Number(raw.rating?.kp_rating || 0) || undefined;
+        const kpId = raw.remote_ids?.kp_id ? String(raw.remote_ids.kp_id) : undefined;
+        const genres = Array.isArray(raw.genres) ? raw.genres.map((g: any) => g?.title).filter(Boolean) : ['Аниме'];
+
+        const translators: Translator[] = [];
+        const episodesMap = new Map<number, { id: number; episodeId: number; seasonId: number; title: string }>();
+        if (vidRes?.ok) {
+          try {
+            const vids: any[] = ((await vidRes.json()) as any)?.response || [];
+            const seenDubs = new Set<string>();
+            for (const v of vids) {
+              const dub = String(v?.data?.dubbing || v?.data?.player || 'Озвучка').trim();
+              if (dub && !seenDubs.has(dub.toLowerCase())) {
+                seenDubs.add(dub.toLowerCase());
+                translators.push({ id: translators.length + 1, name: dub, premium: false });
+              }
+              const epNum = parseInt(String(v?.number || '0'), 10);
+              if (epNum > 0 && !episodesMap.has(epNum)) {
+                episodesMap.set(epNum, { id: epNum, episodeId: epNum, seasonId: 1, title: `Серия ${epNum}` });
+              }
+            }
+          } catch {}
+        }
+        if (translators.length === 0) {
+          translators.push({ id: 1, name: 'Озвучка / Субтитры', premium: false });
+        }
+        const episodes = Array.from(episodesMap.values()).sort((a, b) => a.episodeId - b.episodeId);
+        const seasons = episodes.length > 0 ? [{ id: 1, title: 'Сезон 1', episodes }] : undefined;
+
+        const [kpReviews, criticReviews] = await Promise.all([
+          this.fetchKinopoiskReviews(title, year, origTitle, kpId),
+          this.fetchCriticReviews(title, year, { ratingRezka, ratingKp, genres }),
+        ]);
+
+        return {
+          id: `yani-${animeId}`,
+          title,
+          origTitle,
+          poster,
+          backdrop: poster,
+          year,
+          country: 'Япония',
+          genres,
+          type: 'animation',
+          ratingRezka: ratingRezka ? Math.round(ratingRezka * 10) / 10 : undefined,
+          ratingKp: ratingKp ? Math.round(ratingKp * 10) / 10 : undefined,
+          description: String(raw.description || '').replace(/<[^>]+>/g, '').trim(),
+          directors: [],
+          actors: [],
+          translators: this.filterCamRipTranslators(translators),
+          currentTranslatorId: translators[0]?.id ?? 1,
+          seasons,
+          similar: [],
+          reviews: [...kpReviews, ...criticReviews],
+          url: target,
+          antiBot: false,
+        };
+      }
+
+      // AnimeGO / UAKino HTML details
+      const res = await appFetch(target, {
+        headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept-Language': 'ru-RU,ru;q=0.9,uk;q=0.8' },
+        signal: AbortSignal.timeout(4500),
+      });
+      if (!res.ok) return null;
+      const html = await res.text();
+      if (this.isAntiBot(html)) return null;
+      const $ = cheerio.load(html);
+      const title = $('h1').first().text().trim() || meta?.title || '';
+      if (!title) return null;
+
+      let poster =
+        $('.anime-poster img, .film-poster img, .fposter img, meta[property="og:image"]').first().attr('content') ||
+        $('.anime-poster img, .film-poster img, .fposter img').first().attr('src') ||
+        meta?.poster ||
+        '';
+      if (poster.startsWith('//')) poster = `https:${poster}`;
+      else if (poster && !poster.startsWith('http')) {
+        const origin = new URL(target).origin;
+        poster = `${origin}${poster.startsWith('/') ? '' : '/'}${poster}`;
+      }
+      const description =
+        $('.description, .full-text, [itemprop="description"]').first().text().trim() ||
+        $('meta[name="description"]').attr('content') ||
+        '';
+      const yearMatch = html.match(/\b(19\d{2}|20\d{2})\b/);
+      const year = meta?.year || (yearMatch ? parseInt(yearMatch[1], 10) : 0);
+      const [kpReviews, criticReviews] = await Promise.all([
+        this.fetchKinopoiskReviews(title, year, meta?.origTitle, html),
+        this.fetchCriticReviews(title, year, { ratingRezka: meta?.rating }),
+      ]);
+
+      return {
+        id: meta?.id || urlOrId,
+        title,
+        origTitle: meta?.origTitle || '',
+        poster,
+        backdrop: poster,
+        year,
+        country: this.isUaKino(target) ? 'Україна / Світ' : 'Япония',
+        genres: ['Аниме'],
+        type: meta?.type || 'animation',
+        ratingRezka: meta?.rating,
+        description,
+        directors: [],
+        actors: [],
+        translators: [{ id: 1, name: this.isUaKino(target) ? 'Українська озвучка' : 'Дубляж / Озвучка', premium: false }],
+        currentTranslatorId: 1,
+        similar: [],
+        reviews: [...kpReviews, ...criticReviews],
+        url: target,
+        antiBot: false,
+      };
+    } catch {
+      return null;
+    }
   }
 
   private getKinogoBaseUrl(): string {
@@ -1310,8 +1751,8 @@ export class RezkaProvider implements IProvider {
         ? this.parseKinobaseSeriesAndTranslators(playerData.file, playerData.subtitle)
         : { translators: [], seasons: undefined };
 
-      // Enrich voiceovers & viewer comments from Kinogo + critic reviews from Wikipedia in parallel
-      const [kinogoEnrichRes, criticReviewsRes] = await Promise.allSettled([
+      // Enrich voiceovers & viewer comments from Kinogo + Kinopoisk reviews + critic reviews in parallel
+      const [kinogoEnrichRes, criticReviewsRes, kpReviewsRes] = await Promise.allSettled([
         (async () => {
           const gUrl = await this.resolveKinogoUrl('', { title, origTitle, year });
           if (!gUrl) return null;
@@ -1324,10 +1765,12 @@ export class RezkaProvider implements IProvider {
           return { translators: tree?.translators || [], comments };
         })(),
         this.fetchCriticReviews(title, year, { ratingRezka, ratingImdb, ratingKp, genres, directors }),
+        this.fetchKinopoiskReviews(title, year, origTitle, playerData?.kpId || page.html),
       ]);
 
       const kinogoEnrich = kinogoEnrichRes.status === 'fulfilled' ? kinogoEnrichRes.value : null;
       const criticReviews = criticReviewsRes.status === 'fulfilled' ? criticReviewsRes.value : [];
+      const kpReviews = kpReviewsRes.status === 'fulfilled' ? kpReviewsRes.value : [];
 
       const baseTranslators: Translator[] = this.filterCamRipTranslators(
         parsedMedia.translators.length > 0
@@ -1339,6 +1782,7 @@ export class RezkaProvider implements IProvider {
         : baseTranslators;
 
       const reviews: MediaReview[] = [
+        ...kpReviews,
         ...criticReviews,
         ...(kinogoEnrich?.comments || []),
       ];
@@ -1468,6 +1912,9 @@ export class RezkaProvider implements IProvider {
       const rating = kpMatch ? parseFloat(kpMatch[1]) : undefined;
       const qualityText = $(el).find('.fQuality').text().replace(/Качество:/i, '').trim();
       const lentaText = $(el).find('.lenta .cont').text().trim();
+      const viewsRaw = $(el).find('.sViews, .views, [class*="view"]').first().text().replace(/\s+/g, '');
+      const viewsMatch = viewsRaw.match(/(\d+)/);
+      const views = viewsMatch ? parseInt(viewsMatch[1], 10) : undefined;
       const title = rawTitle.replace(/\s*\(\d{4}\)\s*$/, '').trim();
       const genreText = $(el).find('.sInfo a').text().toLowerCase();
 
@@ -1484,6 +1931,7 @@ export class RezkaProvider implements IProvider {
         year,
         type,
         rating: rating && !isNaN(rating) ? rating : undefined,
+        views: views && !isNaN(views) ? views : undefined,
         info: [qualityText, lentaText].filter(Boolean).join(' • ') || undefined,
       };
       this.mediaCache.set(fullUrl, item);
@@ -1760,7 +2208,7 @@ export class RezkaProvider implements IProvider {
       const ratingKp = kpMatch ? parseFloat(kpMatch[1]) : undefined;
       const description = $('.fullStory p').first().text().trim() || $('.excerpt').first().text().trim() || '';
 
-      const [treeRes, criticReviewsRes, kbEnrichRes] = await Promise.allSettled([
+      const [treeRes, criticReviewsRes, kbEnrichRes, kpReviewsRes] = await Promise.allSettled([
         this.extractKinogoPlayerTree(filmUrl, html),
         this.fetchCriticReviews(title, year, { ratingRezka: ratingKp || meta?.rating, ratingKp, genres, directors }),
         (async () => {
@@ -1769,11 +2217,13 @@ export class RezkaProvider implements IProvider {
           const pd = await this.extractKinobasePlayerData(kbUrl);
           return pd?.file ? this.parseKinobaseSeriesAndTranslators(pd.file).translators : [];
         })(),
+        this.fetchKinopoiskReviews(title, year, meta?.origTitle, html),
       ]);
 
       const tree = treeRes.status === 'fulfilled' ? treeRes.value : null;
       const criticReviews = criticReviewsRes.status === 'fulfilled' ? criticReviewsRes.value : [];
       const kbTranslators = kbEnrichRes.status === 'fulfilled' ? kbEnrichRes.value : [];
+      const kpReviews = kpReviewsRes.status === 'fulfilled' ? kpReviewsRes.value : [];
       const userComments = this.parseKinogoComments(html);
 
       const isSeries = Boolean(tree?.seasons && tree.seasons.length > 0) || genres.some((g) => /сериал/i.test(g));
@@ -1811,7 +2261,7 @@ export class RezkaProvider implements IProvider {
         currentTranslatorId: translators[0]?.id ?? 1,
         seasons: tree?.seasons,
         similar: [],
-        reviews: [...criticReviews, ...userComments],
+        reviews: [...kpReviews, ...criticReviews, ...userComments],
         url: filmUrl,
         antiBot: false,
       };
@@ -2009,6 +2459,10 @@ export class RezkaProvider implements IProvider {
   }
 
   public async getCatalog(filter: CatalogFilter) {
+    if (filter.type === 'animation') {
+      const animeCat = await this.getAnimeMirrorCatalog(filter);
+      if (animeCat && animeCat.items.length > 0) return animeCat;
+    }
     if (this.isKinobase()) {
       const kCat = (await this.getKinobaseCatalog(filter)) || (await this.getKinogoCatalog(filter));
       if (kCat) return kCat;
@@ -2210,6 +2664,11 @@ export class RezkaProvider implements IProvider {
           break;
         }
       }
+    }
+
+    if (this.isAnimeMirror(urlOrId) || this.isAnimeMirror(cachedMeta?.url) || /^yani-\d+$/i.test(urlOrId)) {
+      const ad = await this.getAnimeMirrorDetails(urlOrId, cachedMeta);
+      if (ad) return ad;
     }
 
     if (this.isKinobase(urlOrId) || this.isKinobase(cachedMeta?.url) || this.isKinobase()) {
@@ -2523,10 +2982,12 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    const [criticReviewsRes] = await Promise.allSettled([
+    const [criticReviewsRes, kpReviewsRes] = await Promise.allSettled([
       this.fetchCriticReviews(title, year, { ratingRezka, ratingImdb, ratingKp, genres, directors }),
+      this.fetchKinopoiskReviews(title, year, origTitle, html),
     ]);
     const criticReviews = criticReviewsRes.status === 'fulfilled' ? criticReviewsRes.value : [];
+    const kpReviews = kpReviewsRes.status === 'fulfilled' ? kpReviewsRes.value : [];
     const rezkaComments = this.parseRezkaComments(html);
 
     return {
@@ -2551,13 +3012,13 @@ export class RezkaProvider implements IProvider {
       currentTranslatorId,
       seasons,
       similar,
-      reviews: [...criticReviews, ...rezkaComments],
+      reviews: [...kpReviews, ...criticReviews, ...rezkaComments],
       url: targetUrl,
     };
   } catch (err) {
     console.warn('[RezkaProvider] Failed to fetch details, returning fallback:', err);
     const fb = getFallbackDetails(urlOrId, cachedMeta);
-    fb.url = targetUrl;
+    fb.url = cachedMeta?.url || urlOrId;
     if (fb.id) {
       try {
         const probed = await this.probeTranslators(fb.id, fb.type === 'films', this.mediaUrlCache.get(fb.id));
@@ -2785,6 +3246,129 @@ export class RezkaProvider implements IProvider {
     return reviews;
   }
 
+  public parseKinopoiskReviews(html: string): MediaReview[] {
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const reviews: MediaReview[] = [];
+    const seen = new Set<string>();
+
+    $('.reviewItem').each((idx, el) => {
+      const responseEl = $(el).find('.response').first();
+      const cls = (responseEl.attr('class') || '').toLowerCase();
+      const sentiment: 'positive' | 'neutral' | 'negative' = cls.includes('good')
+        ? 'positive'
+        : cls.includes('bad')
+          ? 'negative'
+          : 'neutral';
+
+      const authorRaw =
+        $(el).find('.profile_name a, [itemprop="author"] a').first().text().trim() ||
+        $(el).find('.profile_name, [itemprop="author"]').first().text().split(/\r?\n/)[0]?.trim() ||
+        'Пользователь Кинопоиска';
+      const author = authorRaw.replace(/\s+/g, ' ').trim();
+      const date = $(el).find('.date').first().text().trim();
+      const subTitle = $(el).find('.sub_title').first().text().trim();
+
+      const bodyNode = $(el).find('._reachbanner_, [itemprop="reviewBody"]').first().clone();
+      bodyNode.find('br').replaceWith('\n');
+      const bodyText = bodyNode.text().replace(/\n{3,}/g, '\n\n').trim();
+      if (bodyText.length < 10) return;
+
+      const text = subTitle ? `${subTitle}\n\n${bodyText}` : bodyText;
+      const key = `${author}:${bodyText.slice(0, 40)}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+
+      reviews.push({
+        id: `kp-${idx}-${seen.size}`,
+        author,
+        date: date || undefined,
+        text,
+        type: bodyText.length >= 600 ? 'critic' : 'user',
+        source: 'Кинопоиск',
+        sentiment,
+      });
+    });
+
+    return reviews.slice(0, 12);
+  }
+
+  private async resolveKinopoiskId(
+    title: string,
+    year?: number,
+    origTitle?: string,
+    knownKpIdOrHtml?: string
+  ): Promise<string | null> {
+    if (knownKpIdOrHtml) {
+      if (/^\d{3,10}$/.test(knownKpIdOrHtml.trim())) return knownKpIdOrHtml.trim();
+      const m = knownKpIdOrHtml.match(/kinopoisk\.ru\/(?:film|series)\/(\d+)/i) ||
+        knownKpIdOrHtml.match(/(?:data-kp_id|kp_id)["']?\s*[:=]\s*["']?(\d{3,10})/i);
+      if (m?.[1]) return m[1];
+    }
+
+    const cleanTitle = (title || origTitle || '').replace(/\s*\(\d{4}\).*$/, '').trim();
+    if (!cleanTitle) return null;
+
+    try {
+      const searchQuery = year ? `${cleanTitle} ${year}` : cleanTitle;
+      const srRes = await appFetch(
+        `https://ru.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(searchQuery)}&srlimit=3&format=json`,
+        { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2200) }
+      );
+      if (!srRes.ok) return null;
+      const srJson: any = await srRes.json();
+      const firstTitle = srJson?.query?.search?.[0]?.title;
+      if (!firstTitle) return null;
+
+      const ppRes = await appFetch(
+        `https://ru.wikipedia.org/w/api.php?action=query&prop=pageprops&ppprop=wikibase_item&titles=${encodeURIComponent(firstTitle)}&format=json`,
+        { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2200) }
+      );
+      if (!ppRes.ok) return null;
+      const ppJson: any = await ppRes.json();
+      const pages = ppJson?.query?.pages || {};
+      const pageObj: any = Object.values(pages)[0];
+      const qid = pageObj?.pageprops?.wikibase_item;
+      if (!qid) return null;
+
+      const wdRes = await appFetch(
+        `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${qid}&property=P2603&format=json`,
+        { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2200) }
+      );
+      if (!wdRes.ok) return null;
+      const wdJson: any = await wdRes.json();
+      const kpId = wdJson?.claims?.P2603?.[0]?.mainsnak?.datavalue?.value;
+      return kpId ? String(kpId) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private async fetchKinopoiskReviews(
+    title: string,
+    year?: number,
+    origTitle?: string,
+    knownKpIdOrHtml?: string
+  ): Promise<MediaReview[]> {
+    try {
+      const kpId = await this.resolveKinopoiskId(title, year, origTitle, knownKpIdOrHtml);
+      if (!kpId) return [];
+      const res = await appFetch(`https://www.kinopoisk.ru/film/${kpId}/reviews/`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+          'Accept-Language': 'ru-RU,ru;q=0.9',
+        },
+        skipCookies: true,
+        signal: AbortSignal.timeout(3500),
+      });
+      if (!res.ok) return [];
+      const html = await res.text();
+      return this.parseKinopoiskReviews(html);
+    } catch {
+      return [];
+    }
+  }
+
   private async fetchCriticReviews(
     title: string,
     year?: number,
@@ -3003,7 +3587,11 @@ export class RezkaProvider implements IProvider {
       this.isKinogo() ||
       this.isKinogo(params.mediaId) ||
       this.isKinogo(cachedItem?.url) ||
-      this.isKinogo(this.mediaUrlCache.get(params.mediaId) || this.mediaUrlCache.get(normId))
+      this.isKinogo(this.mediaUrlCache.get(params.mediaId) || this.mediaUrlCache.get(normId)) ||
+      this.isAnimeMirror(params.mediaId) ||
+      this.isAnimeMirror(cachedItem?.url) ||
+      this.isAnimeMirror(this.mediaUrlCache.get(params.mediaId) || this.mediaUrlCache.get(normId)) ||
+      /^yani-\d+$/i.test(params.mediaId)
     ) {
       const altStream = await this.findAlternativeStream({
         mediaId: params.mediaId,
@@ -3196,13 +3784,16 @@ export class RezkaProvider implements IProvider {
 
   public async searchFast(query: string) {
     if (!query.trim()) return [];
+    const animePromise = this.searchAnimeMirrors(query);
     if (this.isKinobase()) {
-      const kItems = await this.searchKinobase(query);
-      if (kItems.length > 0) return kItems;
+      const [kItems, animeItems] = await Promise.all([this.searchKinobase(query), animePromise]);
+      const merged = this.dedupeMediaItems([...kItems, ...animeItems]);
+      if (merged.length > 0) return merged.slice(0, 15);
     }
     if (this.isKinogo()) {
-      const gItems = await this.searchKinogo(query);
-      if (gItems.length > 0) return gItems;
+      const [gItems, animeItems] = await Promise.all([this.searchKinogo(query), animePromise]);
+      const merged = this.dedupeMediaItems([...gItems, ...animeItems]);
+      if (merged.length > 0) return merged.slice(0, 15);
     }
     try {
       const formData = new URLSearchParams();
@@ -3268,14 +3859,19 @@ export class RezkaProvider implements IProvider {
         }
       });
 
-      if (results.length > 0) return results;
+      if (results.length > 0) {
+        const animeItems = await animePromise;
+        return this.dedupeMediaItems([...(results as any), ...animeItems]).slice(0, 15);
+      }
     } catch {}
 
-    const kItems = await this.searchKinobase(query);
-    if (kItems.length > 0) return kItems;
-
-    const gItems = await this.searchKinogo(query);
-    if (gItems.length > 0) return gItems;
+    const [kItems, gItems, animeItems] = await Promise.all([
+      this.searchKinobase(query),
+      this.searchKinogo(query),
+      animePromise,
+    ]);
+    const combinedFallback = this.dedupeMediaItems([...kItems, ...gItems, ...animeItems]);
+    if (combinedFallback.length > 0) return combinedFallback.slice(0, 15);
 
     const q = query.toLowerCase();
     return FALLBACK_ITEMS.filter(
@@ -3297,16 +3893,19 @@ export class RezkaProvider implements IProvider {
   }
 
   public async searchAdvanced(query: string, page = 1): Promise<SearchResult> {
+    const animePromise = page === 1 ? this.searchAnimeMirrors(query) : Promise.resolve([]);
     if (this.isKinobase()) {
-      const kItems = await this.searchKinobase(query);
-      if (kItems.length > 0) {
-        return { items: kItems, page: 1, hasMore: false };
+      const [kItems, animeItems] = await Promise.all([this.searchKinobase(query), animePromise]);
+      const merged = this.dedupeMediaItems([...kItems, ...animeItems]);
+      if (merged.length > 0) {
+        return { items: merged, page: 1, hasMore: false };
       }
     }
     if (this.isKinogo()) {
-      const gItems = await this.searchKinogo(query);
-      if (gItems.length > 0) {
-        return { items: gItems, page: 1, hasMore: false };
+      const [gItems, animeItems] = await Promise.all([this.searchKinogo(query), animePromise]);
+      const merged = this.dedupeMediaItems([...gItems, ...animeItems]);
+      if (merged.length > 0) {
+        return { items: merged, page: 1, hasMore: false };
       }
     }
     try {
@@ -3326,23 +3925,26 @@ export class RezkaProvider implements IProvider {
       });
 
       if (items.length > 0) {
+        const animeItems = await animePromise;
+        const merged = this.dedupeMediaItems([...items, ...animeItems]);
         const hasMore = $('.b-navigation__next, a:contains("Вперед"), a:contains("Вперёд")').length > 0;
         return {
-          items,
+          items: merged,
           page,
           hasMore,
         };
       }
     } catch {}
 
-    // Fallback: Kinobase search, Kinogo search, then live search.php
-    const kItems = await this.searchKinobase(query);
-    if (kItems.length > 0) {
-      return { items: kItems, page: 1, hasMore: false };
-    }
-    const gItems = await this.searchKinogo(query);
-    if (gItems.length > 0) {
-      return { items: gItems, page: 1, hasMore: false };
+    // Fallback: Kinobase search, Kinogo search, unprotected Anime mirrors, then live search.php
+    const [kItems, gItems, animeItems] = await Promise.all([
+      this.searchKinobase(query),
+      this.searchKinogo(query),
+      animePromise,
+    ]);
+    const combinedAdv = this.dedupeMediaItems([...kItems, ...gItems, ...animeItems]);
+    if (combinedAdv.length > 0) {
+      return { items: combinedAdv, page: 1, hasMore: false };
     }
 
     const fastResults = await this.searchFast(query);

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Home,
   Compass,
@@ -12,15 +12,13 @@ import {
   Search,
   Settings,
   Globe,
-  Send,
-  ExternalLink,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react';
 import { useMediaStore, AppPage } from '../stores/useMediaStore';
 import { useTranslation, Locale } from '../i18n';
 import appLogo from '../assets/logo.png';
-import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
+import { APP_VERSION } from '../../shared/constants';
 
 interface NavItem {
   id: AppPage;
@@ -49,7 +47,21 @@ const NAV_ITEMS: NavItem[] = [
 export const Sidebar: React.FC = () => {
   const { currentPage, setPage } = useMediaStore();
   const { t, language, setLanguage } = useTranslation();
-  const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem('hdrezka_rail_collapsed') === '1');
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    const saved = localStorage.getItem('hdrezka_rail_collapsed');
+    if (saved === '1') return true;
+    if (saved === '0') return false;
+    return typeof window !== 'undefined' && window.innerWidth < 960;
+  });
+
+  useEffect(() => {
+    const onResize = () => {
+      if (localStorage.getItem('hdrezka_rail_collapsed') !== null) return;
+      setCollapsed(window.innerWidth < 960);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -169,27 +181,8 @@ export const Sidebar: React.FC = () => {
         {renderNavSection('system', t.nav.system)}
       </nav>
 
-      {/* Footer: Telegram, Language Switcher & Expand Toggle */}
+      {/* Footer: Language Switcher & Expand Toggle (Telegram moved discreetly to Settings → About) */}
       <div className="pt-3 border-t border-white/[0.06] space-y-2.5">
-        <button
-          type="button"
-          onClick={() => {
-            if (window.api?.openExternalUrl) {
-              window.api.openExternalUrl(TELEGRAM_CHANNEL_URL);
-            }
-          }}
-          className={`w-full flex items-center ${
-            collapsed ? 'justify-center p-2.5' : 'justify-between px-3 py-2'
-          } rounded-2xl bg-[#2AABEE]/10 hover:bg-[#2AABEE]/20 border border-[#2AABEE]/25 text-[#58C4FF] hover:text-white text-xs font-bold group cursor-pointer active:scale-95`}
-          title="Telegram @HDRezkaPC"
-        >
-          <div className="flex items-center gap-2 truncate">
-            <Send className="w-3.5 h-3.5 flex-shrink-0 group-hover:scale-110 transition-transform" />
-            {!collapsed && <span className="truncate">@HDRezkaPC</span>}
-          </div>
-          {!collapsed && <ExternalLink className="w-3 h-3 opacity-60 group-hover:opacity-100 flex-shrink-0" />}
-        </button>
-
         {!collapsed ? (
           <div className="flex items-center justify-between px-1">
             <span className="text-[11px] font-semibold text-zinc-400 flex items-center gap-1.5">

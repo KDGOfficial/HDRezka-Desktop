@@ -9,9 +9,16 @@ interface MediaSliderProps {
   items: MediaItem[];
   onViewAll?: () => void;
   showProgress?: boolean;
+  onRemoveItem?: (item: MediaItem) => void;
 }
 
-export const MediaSlider: React.FC<MediaSliderProps> = ({ title, items, onViewAll, showProgress = false }) => {
+export const MediaSlider: React.FC<MediaSliderProps> = ({
+  title,
+  items,
+  onViewAll,
+  showProgress = false,
+  onRemoveItem,
+}) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { t } = useTranslation();
 
@@ -78,8 +85,8 @@ export const MediaSlider: React.FC<MediaSliderProps> = ({ title, items, onViewAl
         className="flex items-start gap-4 overflow-x-auto pb-4 pt-1.5 px-0.5 scrollbar-none scroll-smooth"
       >
         {items.map((item, idx) => (
-          <div key={item.id ? `${item.id}-${idx}` : idx} className="flex-shrink-0">
-            <MediaCard item={item} showProgress={showProgress} />
+          <div key={item.historyId || (item.id ? `${item.id}-${idx}` : idx)} className="flex-shrink-0 w-[168px] md:w-[192px]">
+            <MediaCard item={item} showProgress={showProgress} onRemove={onRemoveItem} />
           </div>
         ))}
       </div>
