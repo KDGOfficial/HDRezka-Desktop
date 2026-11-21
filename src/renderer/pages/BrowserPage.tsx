@@ -871,7 +871,7 @@ export const BrowserPage: React.FC = () => {
       )}
 
       {/* Single Persistent Embedded Chromium Webview with AdBlock partition & 1:1 Cinema aspect/scale stage */}
-      <div className="w-full flex-1 flex items-center justify-center bg-[#070507] overflow-hidden relative">
+      <div className="cinema-player-surface w-full flex-1 flex items-center justify-center bg-[#070507] overflow-hidden relative">
         {React.createElement('webview', {
           ref: webviewRef,
           src: browserUrl || 'https://kinobase.org/',

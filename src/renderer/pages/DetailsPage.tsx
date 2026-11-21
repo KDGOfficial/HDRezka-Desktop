@@ -435,7 +435,7 @@ export const DetailsPage: React.FC = () => {
                   <span className="text-[10px] text-zinc-400 group-hover:text-white/85 uppercase font-mono">
                     {t.details.episode} {ep.episodeId}
                   </span>
-                  <span className="truncate w-full text-center mt-1 text-white">
+                  <span className="truncate w-full text-center mt-1 text-white group-hover:text-white">
                     {ep.title || `${t.details.episode} ${ep.episodeId}`}
                   </span>
                 </button>

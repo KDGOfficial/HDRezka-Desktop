@@ -256,9 +256,21 @@ html[data-theme="light"] .bg-dark-void:not(.cinema-player-surface):not(.cinema-p
   color: var(--text-primary);
 }
 
-/* Re-affirm forced-dark cinema surfaces with equal/higher specificity under Light Mode */
+/* Re-affirm forced-dark cinema surfaces & dark design tokens under Light Mode */
 html[data-theme="light"] .cinema-player-surface {
   color-scheme: only dark;
+  --surface-void: #070507;
+  --surface-canvas: #0B070A;
+  --surface-panel: #140E12;
+  --surface-panel-solid: #140E12;
+  --surface-elevated: #1D141A;
+  --surface-hover: #281C24;
+  --text-primary: #ffffff;
+  --text-secondary: #d4d4d8;
+  --text-muted: #a1a1aa;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --scrollbar-thumb: rgba(255, 255, 255, 0.28);
   background-color: #070507;
   color: #ffffff;
 }
@@ -302,54 +314,91 @@ html[data-theme="light"] .app-header {
   border-color: rgba(24, 16, 22, 0.09);
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *):not(.btn-ember):not(.btn-ember *):not(.play-squircle):not(.play-squircle *):not([class*="from-emerald-"]):not([class*="bg-emerald-600"]).text-white,
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *):not(.btn-ember):not(.btn-ember *):not(.play-squircle):not(.play-squircle *).text-zinc-100,
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *):not(.btn-ember):not(.btn-ember *):not(.play-squircle):not(.play-squircle *):not([class*="hover:bg-brand-crimson"]).hover\:text-white:hover {
+/* Zero-specificity :where() scoping lets Tailwind :hover / :focus / .group:hover variants win naturally in Light Mode */
+:where(html[data-theme="light"]) .text-white:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *, .play-squircle, .play-squircle *, [class*="from-emerald-"], [class*="bg-emerald-600"])),
+:where(html[data-theme="light"]) .text-zinc-100:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *, .play-squircle, .play-squircle *)) {
   color: #181016;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-zinc-200,
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-zinc-300 {
+html:where([data-theme="light"]) .hover\:text-white:hover:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *, .play-squircle, .play-squircle *, [class~="hover:bg-brand-crimson"], [class~="hover:from-brand-crimson"])) {
+  color: #181016;
+}
+
+:where(html[data-theme="light"]) .text-zinc-200:where(:not(.cinema-player-surface, .cinema-player-surface *)),
+:where(html[data-theme="light"]) .text-zinc-300:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
   color: #3E2F39;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-zinc-400,
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-zinc-500 {
+:where(html[data-theme="light"]) .text-zinc-400:where(:not(.cinema-player-surface, .cinema-player-surface *)),
+:where(html[data-theme="light"]) .text-zinc-500:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
   color: #675561;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-emerald-300,
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-emerald-400 {
+:where(html[data-theme="light"]) .text-emerald-300:where(:not(.cinema-player-surface, .cinema-player-surface *, [class*="bg-emerald-600"], [class*="bg-emerald-600"] *)),
+:where(html[data-theme="light"]) .text-emerald-400:where(:not(.cinema-player-surface, .cinema-player-surface *, [class*="bg-emerald-600"], [class*="bg-emerald-600"] *)) {
   color: #047857;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-amber-200,
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-amber-300,
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-brand-gold {
+:where(html[data-theme="light"]) .text-amber-200:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *)),
+:where(html[data-theme="light"]) .text-amber-300:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *)),
+:where(html[data-theme="light"]) .text-brand-gold:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *)) {
   color: #92400E;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-rose-300 {
+:where(html[data-theme="light"]) .text-rose-300:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
   color: #BE123C;
 }
 
-/* Match only static bg-white/[...] and bg-white/10 tokens (not hover:bg-white/[...]) so unhovered ghost buttons stay transparent */
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="bg-white/["],
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" bg-white/["],
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).bg-white\/10 {
+/* Match static bg-white/* and border-white/* at (0,1,0) so hover:/focus:/focus-within: accents remain active */
+:where(html[data-theme="light"]) [class^="bg-white/"]:where(:not(.cinema-player-surface, .cinema-player-surface *)),
+:where(html[data-theme="light"]) [class*=" bg-white/"]:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
   background-color: rgba(24, 16, 22, 0.06);
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*="hover:bg-white/["]:hover {
+html:where([data-theme="light"]) [class*="hover:bg-white/"]:hover:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
   background-color: rgba(24, 16, 22, 0.1);
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="border-white/["],
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" border-white/["] {
+:where(html[data-theme="light"]) [class^="border-white/"]:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *)),
+:where(html[data-theme="light"]) [class*=" border-white/"]:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *)) {
   border-color: rgba(24, 16, 22, 0.12);
 }
 
-html[data-theme="light"] :where(input, select, textarea):not(.cinema-player-surface):not(.cinema-player-surface *) {
+:where(html[data-theme="light"]) [class*=" border-l-white/"]:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
+  border-left-color: rgba(24, 16, 22, 0.22);
+}
+
+html:where([data-theme="light"]) [class*="hover:border-white/"]:hover:where(:not(.cinema-player-surface, .cinema-player-surface *, [class*="hover:from-brand-crimson"])) {
+  border-color: rgba(24, 16, 22, 0.24);
+}
+
+/* High-contrast light tints for dark-authored alert banners & installing status badges */
+:where(html[data-theme="light"]) [class*="bg-amber-950/"]:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
+  background-color: #FEF3C7;
+}
+
+:where(html[data-theme="light"]) [class*="bg-emerald-950/"]:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
+  background-color: #ECFDF5;
+}
+
+:where(html[data-theme="light"]) [class^="bg-rose-950/"]:where(:not(.cinema-player-surface, .cinema-player-surface *)),
+:where(html[data-theme="light"]) [class*=" bg-rose-950/"]:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
+  background-color: #FFF1F2;
+}
+
+html:where([data-theme="light"]) [class*="hover:bg-rose-950/"]:hover:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
+  background-color: #FFE4E6;
+}
+
+html:where([data-theme="light"]) .hover\:text-rose-300:hover:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
+  color: #BE123C;
+}
+
+:where(html[data-theme="light"]) [class*="bg-emerald-600/"]:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
+  background-color: #047857;
+}
+
+:where(html[data-theme="light"]) :where(input, select, textarea):where(:not(.cinema-player-surface, .cinema-player-surface *)) {
   color: #181016;
 }
 
@@ -358,15 +407,15 @@ html[data-theme="light"] select:not(.cinema-player-surface):not(.cinema-player-s
   color: #181016;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="bg-[#0"],
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" bg-[#0"],
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="bg-[#1"],
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" bg-[#1"] {
+:where(html[data-theme="light"]) [class^="bg-[#0"]:where(:not(.cinema-player-surface, .cinema-player-surface *)),
+:where(html[data-theme="light"]) [class*=" bg-[#0"]:where(:not(.cinema-player-surface, .cinema-player-surface *)),
+:where(html[data-theme="light"]) [class^="bg-[#1"]:where(:not(.cinema-player-surface, .cinema-player-surface *)),
+:where(html[data-theme="light"]) [class*=" bg-[#1"]:where(:not(.cinema-player-surface, .cinema-player-surface *)) {
   background-color: #F4ECF1;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="bg-black/"],
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" bg-black/"] {
+:where(html[data-theme="light"]) [class^="bg-black/"]:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *)),
+:where(html[data-theme="light"]) [class*=" bg-black/"]:where(:not(.cinema-player-surface, .cinema-player-surface *, .btn-ember, .btn-ember *)) {
   background-color: rgba(24, 16, 22, 0.06);
 }
 

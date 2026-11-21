@@ -22,8 +22,8 @@ const { fixKeyboardLayout, getT9Correction, sortMediaItems, formatCompactNumber 
 const { isAdUrl, APP_VERSION, ANIME_MIRROR_SEEDS } = loadTsModule('../src/shared/constants/index.ts');
 const { RezkaProvider } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('Version constants and anime mirror seeds are configured for 0.0.42', () => {
-  assert.equal(APP_VERSION, '0.0.42');
+test('Version constants and anime mirror seeds are configured for 0.0.43', () => {
+  assert.equal(APP_VERSION, '0.0.43');
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('yani.tv')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('animego')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('uakino')));
@@ -218,6 +218,7 @@ test('Light Mode CSS guards preserve .cinema-player-surface isolation and contra
   const detailsTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/DetailsPage.tsx'), 'utf8');
   const historyTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/HistoryPage.tsx'), 'utf8');
   const mediaCardTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/MediaCard.tsx'), 'utf8');
+  const browserTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/BrowserPage.tsx'), 'utf8');
 
   // Light Mode must never override .bg-dark-void, .bg-dark-surface, .cinema-panel, or .cinema-glass on/inside .cinema-player-surface
   assert.doesNotMatch(css, /html\[data-theme="light"\]\s+\.bg-dark-void\s*[{,]/);
@@ -227,11 +228,28 @@ test('Light Mode CSS guards preserve .cinema-player-surface isolation and contra
   assert.match(css, /html\[data-theme="light"\]\s+\.bg-dark-surface:not\(\.cinema-player-surface\):not\(\.cinema-player-surface \*\)/);
   assert.match(css, /html\[data-theme="light"\]\s+\.cinema-glass:not\(\.cinema-player-surface\):not\(\.cinema-player-surface \*\)/);
   assert.match(css, /html\[data-theme="light"\]\s+\.cinema-player-surface\s*\{[^}]*color-scheme:\s*only dark/);
+  // Forced-dark cinema surfaces must also restore dark design tokens (e.g. --border-subtle, --scrollbar-thumb)
+  assert.match(css, /html\[data-theme="light"\]\s+\.cinema-player-surface\s*\{[^}]*--border-subtle:\s*rgba\(255,\s*255,\s*255,\s*0\.08\)/);
 
-  // DetailsPage hero stage must not mix cinema-player-surface with bg-dark-void
+  // Static Light Mode utility remaps must use :where() so Tailwind :hover/:focus/.group:hover variants keep higher specificity
+  assert.match(css, /:where\(html\[data-theme="light"\]\)\s+\.text-white:where\(/);
+  assert.match(css, /:where\(html\[data-theme="light"\]\)\s+\.text-zinc-400:where\(/);
+  assert.match(css, /:where\(html\[data-theme="light"\]\)\s+\[class\*=" border-white\/"\]:where\(/);
+  // Close button exclusion must match exact solid hover:bg-brand-crimson token (not translucent hover:bg-brand-crimson/20)
+  assert.match(css, /\[class~="hover:bg-brand-crimson"\]/);
+  assert.doesNotMatch(css, /\[class\*="hover:bg-brand-crimson"\]/);
+  // Light Mode status alert banners must map dark 950/* translucent fills to high-contrast light tints
+  assert.match(css, /\[class\*="bg-amber-950\/"\][^{]*\{\s*background-color:\s*#FEF3C7/);
+  assert.match(css, /\[class\*="bg-emerald-950\/"\][^{]*\{\s*background-color:\s*#ECFDF5/);
+  assert.match(css, /\[class\*=" bg-rose-950\/"\][^{]*\{\s*background-color:\s*#FFF1F2/);
+
+  // DetailsPage hero stage must not mix cinema-player-surface with bg-dark-void, and episode title stays white on gradient hover
   assert.doesNotMatch(detailsTsx, /cinema-player-surface[^>]*bg-dark-void/);
+  assert.match(detailsTsx, /text-white group-hover:text-white/);
   // HistoryPage poster thumbnail must isolate its dark hover scrim via cinema-player-surface
   assert.match(historyTsx, /cinema-player-surface[^>]*w-16 h-24/);
   // MediaCard must not set color-scheme (.cinema-player-surface) on a transparent overlay
   assert.doesNotMatch(mediaCardTsx, /cinema-player-surface\s+!bg-transparent/);
+  // BrowserPage webview stage must stay dark via cinema-player-surface in Light Mode
+  assert.match(browserTsx, /cinema-player-surface w-full flex-1 flex items-center justify-center bg-\[#070507\]/);
 });

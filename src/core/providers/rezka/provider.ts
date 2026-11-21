@@ -108,7 +108,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.42';
+  public version = '0.0.43';
 
   private activeMirror: string;
   private mirrors: string[];
