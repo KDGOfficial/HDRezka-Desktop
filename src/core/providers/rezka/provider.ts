@@ -89,29 +89,6 @@ async function solveAnubisChallenge(mirrorOrUrl: string, html: string): Promise<
       redirect: 'manual',
     });
 
-    const setCookies = (passRes.headers as any).getSetCookie
-      ? (passRes.headers as any).getSetCookie()
-      : [passRes.headers.get('set-cookie')];
-
-    for (const sc of setCookies) {
-      if (!sc) continue;
-      const parts = sc.split(';')[0].split('=');
-      const name = parts[0]?.trim();
-      const value = parts.slice(1).join('=').trim();
-      if (name && name.toLowerCase().includes('anubis-auth') && value && electron?.session?.defaultSession?.cookies) {
-        try {
-          await electron.session.defaultSession.cookies.set({
-            url: origin,
-            name,
-            value,
-            path: '/',
-            secure: true,
-            sameSite: 'lax',
-          });
-        } catch (_) {}
-        return true;
-      }
-    }
     return passRes.status === 302 || passRes.status === 200;
   } catch (_) {
     return false;
@@ -154,12 +131,14 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
     if (electron && electron.net && typeof electron.net.fetch === 'function') {
       const headers = new Headers(init?.headers || {});
 
-      // Only attach session cookies when not explicitly skipped
+      // Only attach session cookies when not explicitly skipped (and never attach toxic anubis auth cookies that crash upstream Express)
       if (!init?.skipCookies && !forceSkipCookies && electron.session?.defaultSession?.cookies) {
         try {
           const cookies = await electron.session.defaultSession.cookies.get({ url: urlStr });
           if (cookies && cookies.length > 0) {
-            const validCookies = cookies.filter((c: any) => c.value && c.value.length > 0);
+            const validCookies = cookies.filter(
+              (c: any) => c.value && c.value.length > 0 && !c.name.toLowerCase().includes('anubis')
+            );
             if (validCookies.length > 0) {
               const cookieHeader = validCookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
               headers.set('Cookie', cookieHeader);
@@ -217,7 +196,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.31';
+  public version = '0.0.32';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -318,20 +297,51 @@ export class RezkaProvider implements IProvider {
 
       const t0 = Date.now();
       try {
-        const res = await appFetch(cleanUrl, {
+        // 1. Fast live ping via search API endpoint: checks real database & streaming connectivity without bot interstitial
+        const searchCheckUrl = `${cleanUrl}/engine/ajax/search.php?q=spider`;
+        const res = await appFetch(searchCheckUrl, {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          signal: AbortSignal.timeout(4000),
+          skipAutoSolve: true,
+          skipCookies: true,
+        });
+
+        if (res.ok) {
+          const latency = Date.now() - t0;
+          const text = await res.text();
+          const isFakeLogin = text.includes('Вход на HDrezka') || text.includes('card-face');
+          if (!isFakeLogin && (text.includes('b-search__section_list') || text.includes('b-search') || text.includes('spider'))) {
+            results.push({
+              url: cleanUrl,
+              isAvailable: true,
+              latencyMs: latency,
+              lastChecked: Date.now(),
+              needsVerification: false,
+            });
+            continue;
+          }
+        }
+
+        // 2. Fallback root check
+        const rootT0 = Date.now();
+        const rootRes = await appFetch(cleanUrl, {
           headers: this.getHeaders(cleanUrl),
           signal: AbortSignal.timeout(5000),
           skipAutoSolve: true,
           skipCookies: true,
         });
-        const latency = Date.now() - t0;
-        const text = await res.text();
+        const latency = Date.now() - rootT0;
+        const text = await rootRes.text();
         const isBlocked = this.isAntiBot(text);
         const hasRezkaContent = text.includes('b-content') || text.includes('b-post') || text.includes('b-top');
         const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
         const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
         const isLiveSite = isLiveRezka && text.length > 200;
-        const isAvail = (res.ok || res.status === 403) && isLiveSite;
+        const isAvail = (rootRes.ok || rootRes.status === 403) && isLiveSite;
         results.push({
           url: cleanUrl,
           isAvailable: isAvail,

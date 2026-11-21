@@ -18,7 +18,6 @@ import {
   RefreshCw,
   Sliders,
   Tv,
-  ShieldCheck,
   Pin,
   EyeOff,
   Move,
@@ -68,7 +67,6 @@ export const VideoPlayer: React.FC = () => {
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
-  const [isVerifying, setIsVerifying] = useState(false);
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
   const [isUiLocked, setIsUiLocked] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
@@ -603,29 +601,6 @@ export const VideoPlayer: React.FC = () => {
             </div>
           )}
           <div className="flex flex-wrap items-center justify-center gap-3">
-            {window.api?.verifyMirror && Boolean(error && (error.includes('не бот') || error.includes('сесси') || error.includes('проверку'))) && (
-              <button
-                disabled={isVerifying}
-                onClick={async () => {
-                  setIsVerifying(true);
-                  try {
-                    await window.api.verifyMirror(mediaDetails?.url || (mediaDetails?.id ? `https://hdrezka-home.tv/${mediaDetails.id}.html` : undefined));
-                    await retryPlayback();
-                  } catch (_) {
-                  } finally {
-                    setIsVerifying(false);
-                  }
-                }}
-                className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-bold transition-all shadow-glow cursor-pointer ${
-                  isVerifying
-                    ? 'bg-amber-500/50 text-black/60 cursor-not-allowed'
-                    : 'bg-amber-500 text-black hover:bg-amber-400 active:scale-95'
-                }`}
-              >
-                <ShieldCheck className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} />
-                <span>{isVerifying ? 'Идет проверка...' : 'Пройти проверку'}</span>
-              </button>
-            )}
             <button
               onClick={retryPlayback}
               className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-brand-red text-white font-bold hover:bg-brand-redHover shadow-glow transition-all cursor-pointer"

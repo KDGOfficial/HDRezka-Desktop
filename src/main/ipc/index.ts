@@ -116,8 +116,11 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.CHECK_MIRRORS, async () => {
     const provider = providerManager.getProvider();
     const curSettings = db.getSettings();
-    const mirrors = (curSettings.app?.mirrors || DEFAULT_MIRRORS).filter((m) => !isBadMirrorUrl(m));
-    return await provider.checkMirrors(mirrors);
+    const cleanedMirrors = (curSettings.app?.mirrors || DEFAULT_MIRRORS).filter((m) => !isBadMirrorUrl(m));
+    if (curSettings.app?.mirrors && cleanedMirrors.length !== curSettings.app.mirrors.length) {
+      db.saveSettings({ app: { ...curSettings.app, mirrors: cleanedMirrors } });
+    }
+    return await provider.checkMirrors(cleanedMirrors);
   });
 
   ipcMain.handle(IPC_CHANNELS.FIND_ONLINE_MIRRORS, async () => {
@@ -550,7 +553,14 @@ export function registerIpcHandlers(): void {
 
   // --- User Settings ---
   ipcMain.handle(IPC_CHANNELS.GET_SETTINGS, () => {
-    return db.getSettings();
+    const s = db.getSettings();
+    if (s.app?.mirrors) {
+      const cleaned = s.app.mirrors.filter((m) => !isBadMirrorUrl(m));
+      if (cleaned.length !== s.app.mirrors.length) {
+        return db.saveSettings({ app: { ...s.app, mirrors: cleaned } });
+      }
+    }
+    return s;
   });
 
   ipcMain.handle(IPC_CHANNELS.SAVE_SETTINGS, (_, settings: Partial<UserSettings>) => {
