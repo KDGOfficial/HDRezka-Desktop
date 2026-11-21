@@ -286,7 +286,7 @@ export function pickBetterQualityStream(
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.46';
+  public version = '0.0.47';
 
   private activeMirror: string;
   private mirrors: string[];

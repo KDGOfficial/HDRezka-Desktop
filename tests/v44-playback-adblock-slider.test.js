@@ -29,10 +29,10 @@ const {
   pickBetterQualityStream,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('v0.0.46 version synchronization across constants and provider', () => {
+test('v0.0.47 version synchronization across constants and provider', () => {
   const provider = new RezkaProvider();
-  assert.equal(APP_VERSION, '0.0.46');
-  assert.equal(provider.version, '0.0.46');
+  assert.equal(APP_VERSION, '0.0.47');
+  assert.equal(provider.version, '0.0.47');
 });
 
 test('parseHlsMasterVariants handles cinema 1920x800 1080p, picks highest bitrate per quality, and never invents fake 1080p', () => {
@@ -272,7 +272,8 @@ test('VideoPlayer, usePlayerStore, HorizontalSlider & main.ts enforce lag-free V
   assert.match(videoPlayerTsx, /autoStartLoad:\s*false/);
   assert.match(videoPlayerTsx, /startFragPrefetch:\s*true/);
   assert.match(videoPlayerTsx, /startPosition:\s*startSec/);
-  assert.match(videoPlayerTsx, /hls\.startLoad\(startSec\)/);
+  assert.match(videoPlayerTsx, /let resumeStartPos = startSec/);
+  assert.match(videoPlayerTsx, /hls\.startLoad\(resumeStartPos\)/);
   assert.match(videoPlayerTsx, /abrEwmaDefaultEstimate:\s*10_000_000/);
   assert.match(videoPlayerTsx, /findBestHlsLevelIndex/);
   assert.match(videoPlayerTsx, /announcedStreamRef/);
@@ -293,22 +294,27 @@ test('VideoPlayer, usePlayerStore, HorizontalSlider & main.ts enforce lag-free V
   assert.match(sliderTsx, /type="range"/);
   assert.match(sliderTsx, /passive:\s*false/);
   assert.match(sliderTsx, /MutationObserver/);
+  assert.match(sliderTsx, /getBoundingClientRect/);
+  assert.doesNotMatch(sliderTsx, /Math\.max\(8,\s*progressPercent\)/);
   assert.match(globalsCss, /overscroll-behavior-x:\s*contain/);
   assert.doesNotMatch(globalsCss, /\.slider-track\s*\{[^}]*scroll-behavior:\s*smooth/s);
 
-  // Issue 6 & 4: post-buffer intro guard (FRAG_BUFFERED + loadeddata) and stable streamAnnounceKey
+  // Issue 6 & 4: post-buffer intro guard (FRAG_BUFFERED + loadeddata + playing) and stable streamAnnounceKey
   assert.match(videoPlayerTsx, /Hls\.Events\.FRAG_BUFFERED/);
   assert.match(videoPlayerTsx, /addEventListener\('loadeddata',\s*onHlsLoadedData/);
+  assert.match(videoPlayerTsx, /addEventListener\('playing',\s*onHlsPlaying/);
   assert.match(videoPlayerTsx, /streamAnnounceKey/);
 
-  // Issue 5: main.ts blocks will-redirect, cross-origin popups, and injects cross-origin subframe AdBlock + cosmetic CSS; BrowserPage removes allowpopups
+  // Issue 5: main.ts blocks will-redirect, cross-origin popups, propagates AdBlock toggle to loaded subframes, and protects <video> in BrowserPage CSS
   assert.match(mainTs, /will-redirect/);
   assert.match(mainTs, /did-frame-finish-load/);
   assert.match(mainTs, /webFrameMain/);
+  assert.match(mainTs, /framesInSubtree/);
   assert.match(mainTs, /hdrezka-adblock-css/);
   assert.match(mainTs, /isCrossOriginPopupAd/);
   assert.doesNotMatch(browserTsx, /allowpopups:\s*'true'/);
   assert.match(browserTsx, /ADBLOCK_RUNTIME_SCRIPT/);
+  assert.match(browserTsx, /z-index: 2147483647"\]:not\(:has\(video\)\)/);
 });
 
 test('Cold-cache getStream fallback after HDRezka mirror failure forwards effective title, year, and translatorName', async () => {
@@ -389,4 +395,116 @@ test('Skip Ad regex in main.ts and BrowserPage.tsx matches trailing arrows/symbo
     assert.equal(mainRe.test(label), false, `main.ts regex must NOT match "${label}"`);
     assert.equal(browserRe.test(label), false, `BrowserPage.tsx regex must NOT match "${label}"`);
   }
+});
+
+test('SUBFRAME_ADBLOCK_SCRIPT and ADBLOCK_RUNTIME_SCRIPT skip fake external ad links, hidden nodes, duplicate wrappers, and re-inject CSS on re-enable', () => {
+  const vm = require('node:vm');
+  const mainTs = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
+  const browserTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/BrowserPage.tsx'), 'utf8');
+
+  const extractScript = (src, constName) => {
+    const m = src.match(new RegExp(`const ${constName} = \`([\\s\\S]*?)\`;`));
+    assert.ok(m, `${constName} template literal must exist`);
+    // Evaluate template literal escapes (\s, \., etc.) identically to JS runtime
+    return new Function('return `' + m[1] + '`')();
+  };
+
+  const subframeScript = extractScript(mainTs, 'SUBFRAME_ADBLOCK_SCRIPT');
+  const disableScript = extractScript(mainTs, 'SUBFRAME_ADBLOCK_DISABLE_SCRIPT');
+  const runtimeScript = extractScript(browserTsx, 'ADBLOCK_RUNTIME_SCRIPT');
+
+  const runInMockDom = (script, extraRuns = []) => {
+    const clicked = [];
+    const styles = new Map();
+
+    const makeEl = (tag, text, opts = {}) => ({
+      tagName: tag,
+      textContent: text,
+      offsetParent: opts.hidden ? null : {},
+      _children: opts.children || [],
+      _attrs: opts.attrs || {},
+      _style: opts.style || { display: 'block', visibility: 'visible', position: 'static', zIndex: '1', opacity: '1', backgroundColor: 'rgb(0,0,0)' },
+      getAttribute(k) { return this._attrs[k] ?? null; },
+      contains(other) { return this === other || this._children.some((c) => c === other || c.contains(other)); },
+      closest() { return null; },
+      querySelector() { return null; },
+      getBoundingClientRect() { return { width: 100, height: 30 }; },
+      remove() {},
+      click() { clicked.push(opts.id); },
+    });
+
+    const realInnerBtn = makeEl('BUTTON', 'Пропустить рекламу »', { id: 'real-btn' });
+    const wrapperDiv = makeEl('DIV', 'Пропустить рекламу »', { id: 'wrapper-div', children: [realInnerBtn] });
+    const fakeExternalLink = makeEl('A', 'Пропустить рекламу »', { id: 'fake-ad-link', attrs: { href: 'https://1xbet-promo.xyz/go' } });
+    const sameOriginLink = makeEl('A', 'Skip Ad →', { id: 'same-origin-link', attrs: { href: '#' } });
+    const hiddenBtn = makeEl('BUTTON', 'Skip Ad →', { id: 'hidden-btn', hidden: true, style: { display: 'none', visibility: 'visible', position: 'static' } });
+    const skipElements = [wrapperDiv, realInnerBtn, fakeExternalLink, sameOriginLink, hiddenBtn];
+
+    const sandbox = {
+      URL,
+      setTimeout,
+      clearTimeout,
+      location: { href: 'https://player.example.org/embed/1', hostname: 'player.example.org' },
+      innerWidth: 1280,
+      innerHeight: 720,
+      MutationObserver: class { observe() {} },
+      getComputedStyle: (el) => el._style,
+      document: {
+        head: {
+          appendChild(node) {
+            if (node.id) styles.set(node.id, node);
+            node.remove = () => styles.delete(node.id);
+          },
+        },
+        documentElement: {},
+        createElement(tag) { return { tagName: tag.toUpperCase(), id: '', textContent: '' }; },
+        getElementById(id) { return styles.get(id) || null; },
+        querySelectorAll(sel) { return sel.includes('button') ? skipElements : []; },
+      },
+    };
+    sandbox.window = sandbox;
+    sandbox.window.open = () => 'opened';
+
+    vm.runInNewContext(script, sandbox);
+    for (const s of extraRuns) vm.runInNewContext(s, sandbox);
+    return { clicked, styles, sandbox };
+  };
+
+  for (const script of [subframeScript, runtimeScript]) {
+    const { clicked } = runInMockDom(script);
+    assert.deepEqual(clicked.sort(), ['real-btn', 'same-origin-link']);
+  }
+
+  // Subframe disable removes CSS & sets flag; re-enabling re-injects CSS cleanly
+  const toggled = runInMockDom(subframeScript, [disableScript]);
+  assert.equal(toggled.sandbox.__hdrezkaAdBlockEnabled, false);
+  assert.equal(toggled.styles.has('hdrezka-adblock-css'), false);
+
+  const reEnabled = runInMockDom(subframeScript, [disableScript, subframeScript]);
+  assert.equal(reEnabled.sandbox.__hdrezkaAdBlockEnabled, true);
+  assert.equal(reEnabled.styles.has('hdrezka-adblock-css'), true);
+});
+
+test('usePlayerStore.setQuality resets stale initialTime when switching quality at 0:00', () => {
+  const { usePlayerStore } = loadTsModule('../src/renderer/stores/usePlayerStore.ts');
+  usePlayerStore.setState({
+    streamData: {
+      streams: [
+        { quality: '1080p', hls: 'https://cdn.example/1080.m3u8', mp4: '' },
+        { quality: '720p', hls: 'https://cdn.example/720.m3u8', mp4: '' },
+      ],
+      subtitles: [],
+    },
+    currentQuality: '1080p',
+    currentStreamUrl: 'https://cdn.example/1080.m3u8',
+    initialTime: 0,
+  });
+
+  usePlayerStore.getState().setQuality('720p', 120);
+  assert.equal(usePlayerStore.getState().initialTime, 120);
+
+  // User seeks back to 0:00 and switches back to 1080p: initialTime MUST reset to 0, not stay 120!
+  usePlayerStore.getState().setQuality('1080p', 0);
+  assert.equal(usePlayerStore.getState().initialTime, 0);
+  assert.equal(usePlayerStore.getState().currentQuality, '1080p');
 });

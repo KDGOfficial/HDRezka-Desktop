@@ -1,4 +1,4 @@
-import { app, BrowserWindow, net, session, webFrameMain } from 'electron';
+import { app, BrowserWindow, net, session, webContents, webFrameMain } from 'electron';
 import { createMainWindow, getMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
@@ -8,8 +8,6 @@ import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, IPC_CHANNELS, isBadMirrorUrl, BROWS
 const SUBFRAME_ADBLOCK_SCRIPT = `
   (() => {
     window.__hdrezkaAdBlockEnabled = true;
-    if (window.__hdrezkaSubframeAdBlock) return;
-    window.__hdrezkaSubframeAdBlock = true;
     if (!document.getElementById('hdrezka-adblock-css')) {
       const style = document.createElement('style');
       style.id = 'hdrezka-adblock-css';
@@ -22,11 +20,14 @@ const SUBFRAME_ADBLOCK_SCRIPT = `
         'a[href*="1xbet"],a[href*="1win"],a[href*="mostbet"],a[href*="pinup"],a[href*="vulcan"],' +
         'a[href*="vulkan"],a[href*="azino"],a[href*="vavada"],a[href*="melbet"],a[href*="fonbet"],' +
         'a[href*="winline"],a[href*="betboom"],a[href*="betcity"],a[href*="parimatch"],' +
-        'div[style*="z-index: 2147483647"]:not(:has(video)),div[style*="z-index: 9999999"]:not(:has(video)),' +
-        'a[style*="z-index: 2147483647"],a[style*="z-index: 9999999"]' +
+        'div[style*="z-index: 2147483647"]:not(:has(video)):not(:has(iframe)),div[style*="z-index:2147483647"]:not(:has(video)):not(:has(iframe)),' +
+        'div[style*="z-index: 9999999"]:not(:has(video)):not(:has(iframe)),div[style*="z-index:9999999"]:not(:has(video)):not(:has(iframe)),' +
+        'a[style*="z-index: 2147483647"],a[style*="z-index:2147483647"],a[style*="z-index: 9999999"],a[style*="z-index:9999999"]' +
         '{display:none!important;visibility:hidden!important;pointer-events:none!important;}';
       (document.head || document.documentElement)?.appendChild(style);
     }
+    if (window.__hdrezkaSubframeAdBlock) return;
+    window.__hdrezkaSubframeAdBlock = true;
     const baseDom = (h) => h.replace(/^www\\./i, '').split('.').slice(-2).join('.').toLowerCase();
     const origOpen = window.open;
     window.open = function(url, target, features) {
@@ -42,6 +43,20 @@ const SUBFRAME_ADBLOCK_SCRIPT = `
       return origOpen ? origOpen.call(window, url, target, features) : null;
     };
     const skipAdRe = /^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)(?:[\\s»›>→➜▶✕×!.]*)$/i;
+    const isSafeSkipEl = (el) => {
+      if (el.tagName === 'A') {
+        const href = (el.getAttribute('href') || '').trim();
+        if (href && /^https?:/i.test(href)) {
+          try {
+            if (baseDom(new URL(href, location.href).hostname) !== baseDom(location.hostname)) return false;
+          } catch {
+            return false;
+          }
+        }
+      }
+      const st = getComputedStyle(el);
+      return st.display !== 'none' && st.visibility !== 'hidden' && (el.offsetParent !== null || st.position === 'fixed');
+    };
     const clean = () => {
       if (!window.__hdrezkaAdBlockEnabled) return;
       document.querySelectorAll('a[target="_blank"], div[onclick], div[style*="fixed"], div[style*="absolute"]').forEach((el) => {
@@ -57,9 +72,11 @@ const SUBFRAME_ADBLOCK_SCRIPT = `
           }
         }
       });
-      document.querySelectorAll('button, div, span, a').forEach((btn) => {
-        const txt = (btn.textContent || '').trim();
-        if (skipAdRe.test(txt)) {
+      const skipMatches = Array.from(document.querySelectorAll('button, div, span, a')).filter((btn) =>
+        skipAdRe.test((btn.textContent || '').trim()) && isSafeSkipEl(btn)
+      );
+      skipMatches.forEach((btn) => {
+        if (!skipMatches.some((other) => other !== btn && btn.contains(other))) {
           btn.click();
         }
       });
@@ -74,11 +91,30 @@ const SUBFRAME_ADBLOCK_SCRIPT = `
   })();
 `;
 
+const SUBFRAME_ADBLOCK_DISABLE_SCRIPT = `
+  (() => {
+    window.__hdrezkaAdBlockEnabled = false;
+    document.getElementById('hdrezka-adblock-css')?.remove();
+  })();
+`;
+
 let browserAdBlockEnabled = true;
 let browserAdBlockedCount = 0;
 
 export function setBrowserAdBlockEnabled(enabled: boolean): { enabled: boolean; blockedCount: number } {
   browserAdBlockEnabled = Boolean(enabled);
+  try {
+    for (const wc of webContents.getAllWebContents()) {
+      if (wc.getType() !== 'webview' || wc.isDestroyed()) continue;
+      const frames = wc.mainFrame?.framesInSubtree || [];
+      for (const frame of frames) {
+        if (frame === wc.mainFrame || !/^https?:/i.test(frame.url || '')) continue;
+        frame
+          .executeJavaScript(browserAdBlockEnabled ? SUBFRAME_ADBLOCK_SCRIPT : SUBFRAME_ADBLOCK_DISABLE_SCRIPT)
+          .catch(() => {});
+      }
+    }
+  } catch {}
   return { enabled: browserAdBlockEnabled, blockedCount: browserAdBlockedCount };
 }
 

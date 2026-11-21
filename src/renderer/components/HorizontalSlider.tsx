@@ -50,7 +50,9 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
     // Bring active pressed item into view without hijacking vertical page scroll
     const activeEl = el.querySelector<HTMLElement>('[aria-pressed="true"], [data-active="true"]');
     if (activeEl && el.scrollWidth > el.clientWidth) {
-      const targetLeft = activeEl.offsetLeft - el.clientWidth / 2 + activeEl.clientWidth / 2;
+      const elRect = el.getBoundingClientRect();
+      const activeRect = activeEl.getBoundingClientRect();
+      const targetLeft = el.scrollLeft + (activeRect.left - elRect.left) - el.clientWidth / 2 + activeRect.width / 2;
       el.scrollLeft = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, targetLeft));
       measure();
     }
@@ -170,7 +172,7 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
               <div
                 className="absolute top-0 left-0 bottom-0 rounded-full"
                 style={{
-                  width: `${Math.max(8, progressPercent)}%`,
+                  width: `${progressPercent}%`,
                   background: 'linear-gradient(90deg, #FF124F 0%, #FF4D1A 55%, #FF7A00 100%)',
                 }}
               />

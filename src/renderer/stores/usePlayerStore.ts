@@ -186,7 +186,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         currentQuality: quality,
         currentStreamUrl: nextUrl,
         isHls: useHls,
-        ...(nextUrl !== currentStreamUrl && typeof resumeAt === 'number' && resumeAt > 0
+        ...(nextUrl !== currentStreamUrl && typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt >= 0
           ? { initialTime: resumeAt }
           : {}),
       });

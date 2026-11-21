@@ -422,11 +422,13 @@ export const VideoPlayer: React.FC = () => {
     let cleanedUp = false;
     let onNativeLoadedMetadata: (() => void) | null = null;
     let onHlsLoadedData: (() => void) | null = null;
+    let onHlsPlaying: (() => void) | null = null;
 
     if (isHls && Hls.isSupported()) {
       let networkRetries = 0;
       let mediaRetries = 0;
       let firstFragStart = 0;
+      let resumeStartPos = startSec;
       let introGuardDone = startSec !== 0;
       let triedAltHls = false;
 
@@ -493,12 +495,12 @@ export const VideoPlayer: React.FC = () => {
           }
         }
 
-        // Start loading explicitly from startSec (0:00 for fresh playback) so intro is never cut off
-        hls.startLoad(startSec);
+        // Start loading explicitly from resumeStartPos (0:00 on fresh playback, current time on CDN failover)
+        hls.startLoad(resumeStartPos);
         video.play().catch(() => setIsPlaying(false));
       });
 
-      // Record fragment 0 start on playlist load; run one-shot intro guard once first media actually buffers/decodes
+      // Record fragment 0 start on playlist load; run one-shot intro guard once first media actually buffers/plays
       const checkIntroGuard = (markDone: boolean) => {
         if (cleanedUp || introGuardDone) return;
         if (startSec !== 0 || userSeekedRef.current) {
@@ -530,8 +532,10 @@ export const VideoPlayer: React.FC = () => {
         }
       });
 
-      onHlsLoadedData = () => checkIntroGuard(true);
+      onHlsLoadedData = () => checkIntroGuard(false);
+      onHlsPlaying = () => checkIntroGuard(true);
       video.addEventListener('loadeddata', onHlsLoadedData, { once: true });
+      video.addEventListener('playing', onHlsPlaying, { once: true });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (cleanedUp) return;
@@ -550,9 +554,10 @@ export const VideoPlayer: React.FC = () => {
                 .replace(/https?:\/\/[a-z0-9.-]+\.ukrtelcdn\.net/i, 'https://vdbmate.org');
               if (unblocked !== currentStreamUrl) {
                 networkRetries += 1;
+                resumeStartPos = video.currentTime || startSec;
+                if (resumeStartPos > 0) introGuardDone = true;
                 showToast('Переключение на резервный CDN...');
                 hls.loadSource(unblocked);
-                hls.startLoad(video.currentTime || startSec);
                 return;
               }
             }
@@ -569,9 +574,10 @@ export const VideoPlayer: React.FC = () => {
               if (altHls) {
                 triedAltHls = true;
                 networkRetries = 1;
+                resumeStartPos = video.currentTime || startSec;
+                if (resumeStartPos > 0) introGuardDone = true;
                 showToast('Переключение на резервный поток...');
                 hls.loadSource(altHls);
-                hls.startLoad(video.currentTime || startSec);
                 return;
               }
             }
@@ -638,6 +644,9 @@ export const VideoPlayer: React.FC = () => {
       }
       if (onHlsLoadedData) {
         video.removeEventListener('loadeddata', onHlsLoadedData);
+      }
+      if (onHlsPlaying) {
+        video.removeEventListener('playing', onHlsPlaying);
       }
       if (hlsRef.current) {
         hlsRef.current.destroy();

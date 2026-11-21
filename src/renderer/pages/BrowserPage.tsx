@@ -59,8 +59,12 @@ const COSMETIC_ADBLOCK_CSS = `
   a[href*="1xbet"], a[href*="1win"], a[href*="mostbet"], a[href*="pinup"], a[href*="vulcan"],
   a[href*="vulkan"], a[href*="azino"], a[href*="vavada"], a[href*="melbet"], a[href*="fonbet"],
   a[href*="winline"], a[href*="betboom"], a[href*="betcity"], a[href*="parimatch"],
-  div[style*="z-index: 2147483647"], div[style*="z-index: 9999999"],
-  a[style*="z-index: 2147483647"], a[style*="z-index: 9999999"] {
+  div[style*="z-index: 2147483647"]:not(:has(video)):not(:has(iframe)),
+  div[style*="z-index:2147483647"]:not(:has(video)):not(:has(iframe)),
+  div[style*="z-index: 9999999"]:not(:has(video)):not(:has(iframe)),
+  div[style*="z-index:9999999"]:not(:has(video)):not(:has(iframe)),
+  a[style*="z-index: 2147483647"], a[style*="z-index:2147483647"],
+  a[style*="z-index: 9999999"], a[style*="z-index:9999999"] {
     display: none !important;
     visibility: hidden !important;
     pointer-events: none !important;
@@ -108,10 +112,25 @@ const ADBLOCK_RUNTIME_SCRIPT = `
           }
         }
       });
-      // Auto-skip video pre-roll ads if an explicit Skip Ad button appears
-      document.querySelectorAll('button, div, span, a').forEach((btn) => {
-        const txt = (btn.textContent || '').trim();
-        if (/^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)(?:[\\s»›>→➜▶✕×!.]*)$/i.test(txt)) {
+      // Auto-skip video pre-roll ads if an explicit visible Skip Ad button appears (skip fake external ad links)
+      const skipAdRe = /^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)(?:[\\s»›>→➜▶✕×!.]*)$/i;
+      const skipMatches = Array.from(document.querySelectorAll('button, div, span, a')).filter((btn) => {
+        if (!skipAdRe.test((btn.textContent || '').trim())) return false;
+        if (btn.tagName === 'A') {
+          const href = (btn.getAttribute('href') || '').trim();
+          if (href && /^https?:/i.test(href)) {
+            try {
+              if (baseDom(new URL(href, location.href).hostname) !== baseDom(location.hostname)) return false;
+            } catch {
+              return false;
+            }
+          }
+        }
+        const st = getComputedStyle(btn);
+        return st.display !== 'none' && st.visibility !== 'hidden' && (btn.offsetParent !== null || st.position === 'fixed');
+      });
+      skipMatches.forEach((btn) => {
+        if (!skipMatches.some((other) => other !== btn && btn.contains(other))) {
           btn.click();
         }
       });
