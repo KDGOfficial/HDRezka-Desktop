@@ -1,3 +1,4 @@
+const fs = require('node:fs');
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('node:path');
@@ -21,8 +22,8 @@ const { fixKeyboardLayout, getT9Correction, sortMediaItems, formatCompactNumber 
 const { isAdUrl, APP_VERSION, ANIME_MIRROR_SEEDS } = loadTsModule('../src/shared/constants/index.ts');
 const { RezkaProvider } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('Version constants and anime mirror seeds are configured for 0.0.41', () => {
-  assert.equal(APP_VERSION, '0.0.41');
+test('Version constants and anime mirror seeds are configured for 0.0.42', () => {
+  assert.equal(APP_VERSION, '0.0.42');
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('yani.tv')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('animego')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('uakino')));
@@ -210,4 +211,27 @@ test('Kinogo parser extracts Kinopoisk audience views and dedupeMediaItems enric
   assert.equal(merged.length, 1);
   assert.equal(merged[0].views, 1026649);
   assert.equal(merged[0].rating, 8.7);
+});
+
+test('Light Mode CSS guards preserve .cinema-player-surface isolation and contrast', () => {
+  const css = fs.readFileSync(path.resolve(__dirname, '../src/renderer/styles/globals.css'), 'utf8');
+  const detailsTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/DetailsPage.tsx'), 'utf8');
+  const historyTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/HistoryPage.tsx'), 'utf8');
+  const mediaCardTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/MediaCard.tsx'), 'utf8');
+
+  // Light Mode must never override .bg-dark-void, .bg-dark-surface, .cinema-panel, or .cinema-glass on/inside .cinema-player-surface
+  assert.doesNotMatch(css, /html\[data-theme="light"\]\s+\.bg-dark-void\s*[{,]/);
+  assert.doesNotMatch(css, /html\[data-theme="light"\]\s+\.cinema-panel\s*[{,]/);
+  assert.doesNotMatch(css, /html\[data-theme="light"\]\s+\.cinema-glass\s*[{,]/);
+  assert.match(css, /html\[data-theme="light"\]\s+\.bg-dark-void:not\(\.cinema-player-surface\):not\(\.cinema-player-surface \*\)/);
+  assert.match(css, /html\[data-theme="light"\]\s+\.bg-dark-surface:not\(\.cinema-player-surface\):not\(\.cinema-player-surface \*\)/);
+  assert.match(css, /html\[data-theme="light"\]\s+\.cinema-glass:not\(\.cinema-player-surface\):not\(\.cinema-player-surface \*\)/);
+  assert.match(css, /html\[data-theme="light"\]\s+\.cinema-player-surface\s*\{[^}]*color-scheme:\s*only dark/);
+
+  // DetailsPage hero stage must not mix cinema-player-surface with bg-dark-void
+  assert.doesNotMatch(detailsTsx, /cinema-player-surface[^>]*bg-dark-void/);
+  // HistoryPage poster thumbnail must isolate its dark hover scrim via cinema-player-surface
+  assert.match(historyTsx, /cinema-player-surface[^>]*w-16 h-24/);
+  // MediaCard must not set color-scheme (.cinema-player-surface) on a transparent overlay
+  assert.doesNotMatch(mediaCardTsx, /cinema-player-surface\s+!bg-transparent/);
 });

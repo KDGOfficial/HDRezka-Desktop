@@ -108,7 +108,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
         )}
 
         {/* Cinematic Hover Overlay */}
-        <div className="cinema-player-surface !bg-transparent absolute inset-0 bg-gradient-to-t from-[#070507]/95 via-[#0B070A]/35 to-[#070507]/40 opacity-0 group-hover:opacity-100 transition-opacity duration-250 flex flex-col justify-between p-3">
+        <div className="absolute inset-0 bg-gradient-to-t from-[#070507]/95 via-[#0B070A]/35 to-[#070507]/40 opacity-0 group-hover:opacity-100 transition-opacity duration-250 flex flex-col justify-between p-3">
           {/* Top Actions Row */}
           <div className={`flex justify-between items-start gap-1 ${onRemove ? 'pr-8' : ''}`}>
             {item.rating ? (

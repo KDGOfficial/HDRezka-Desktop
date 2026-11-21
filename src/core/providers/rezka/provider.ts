@@ -108,7 +108,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.41';
+  public version = '0.0.42';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -3322,7 +3322,7 @@ export class RezkaProvider implements IProvider {
     if (!cleanTitle) return null;
 
     const wikiHeaders = {
-      'User-Agent': 'HDRezkaDesktop/0.0.41 (https://github.com/KDGOfficial/HDRezka-Desktop)',
+      'User-Agent': `HDRezkaDesktop/${this.version} (https://github.com/KDGOfficial/HDRezka-Desktop)`,
       'Accept': 'application/json',
     };
     const queries = Array.from(
@@ -3409,7 +3409,7 @@ export class RezkaProvider implements IProvider {
     if (cleanTitle) {
       try {
         const wikiHeaders = {
-          'User-Agent': 'HDRezkaDesktop/0.0.41 (https://github.com/KDGOfficial/HDRezka-Desktop)',
+          'User-Agent': `HDRezkaDesktop/${this.version} (https://github.com/KDGOfficial/HDRezka-Desktop)`,
           'Accept': 'application/json',
         };
         const searchQuery = year ? `${cleanTitle} ${year} фильм` : `${cleanTitle} фильм`;

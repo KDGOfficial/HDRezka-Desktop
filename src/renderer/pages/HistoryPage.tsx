@@ -94,7 +94,7 @@ export const HistoryPage: React.FC = () => {
                 className="flex items-center gap-4 cursor-pointer flex-1 min-w-0"
                 onClick={() => openDetails(item.url || item.mediaId, item)}
               >
-                <div className="relative w-16 h-24 rounded-2xl overflow-hidden bg-dark-void flex-shrink-0 shadow-md border border-white/[0.08]">
+                <div className="cinema-player-surface relative w-16 h-24 rounded-2xl overflow-hidden flex-shrink-0 shadow-md border border-white/[0.08]">
                   <img src={item.poster} alt={item.title} className="w-full h-full object-cover" />
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="w-8 h-8 rounded-xl play-squircle flex items-center justify-center">

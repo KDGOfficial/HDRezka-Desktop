@@ -150,7 +150,7 @@ export const DetailsPage: React.FC = () => {
   return (
     <div className="w-full pb-20 text-left select-none animate-fadeIn">
       {/* Full-Bleed Theater Backdrop Stage */}
-      <section className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 overflow-hidden border-b border-white/[0.06] bg-dark-void">
+      <section className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 overflow-hidden border-b border-white/[0.06]">
         {(details.backdrop || details.poster) && (
           <img
             src={details.backdrop || details.poster}

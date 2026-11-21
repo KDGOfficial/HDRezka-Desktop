@@ -492,7 +492,7 @@ export const BrowserPage: React.FC = () => {
     >
       {/* 1:1 On-screen Toast Notification */}
       {toastMessage && (
-        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full logo-pill backdrop-blur-xl text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 pointer-events-none animate-fade-in">
+        <div className="cinema-player-surface absolute top-12 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full logo-pill backdrop-blur-xl text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 pointer-events-none animate-fade-in">
           <span>{toastMessage}</span>
         </div>
       )}
