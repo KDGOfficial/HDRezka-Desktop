@@ -22,6 +22,7 @@ import {
   EyeOff,
   Move,
   Scaling,
+  Globe,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
@@ -228,13 +229,47 @@ export const VideoPlayer: React.FC = () => {
     };
   }, [isPlaying, activeMenu, isUiLocked]);
 
+  // Clear video element canvas on close or when there is no active stream
+  useEffect(() => {
+    if (!isOpen || !currentStreamUrl) {
+      if (videoRef.current) {
+        videoRef.current.pause();
+        videoRef.current.removeAttribute('src');
+        videoRef.current.load();
+      }
+    }
+  }, [isOpen, currentStreamUrl]);
+
+  // Loading watchdog: abort infinite freeze if loading exceeds 14 seconds
+  useEffect(() => {
+    if (!isLoading) return;
+    const stallTimer = setTimeout(() => {
+      usePlayerStore.setState({
+        isLoading: false,
+        error: 'Подключение к видеопотоку превысило лимит ожидания. Попробуйте выбрать другое зеркало или озвучку.',
+      });
+    }, 14000);
+    return () => clearTimeout(stallTimer);
+  }, [isLoading]);
+
   // HLS & Video Stream initialization
   useEffect(() => {
-    if (!isOpen || !currentStreamUrl || !videoRef.current) return;
+    if (!isOpen || !videoRef.current) return;
+
+    if (!currentStreamUrl) {
+      videoRef.current.pause();
+      videoRef.current.removeAttribute('src');
+      videoRef.current.load();
+      return;
+    }
 
     const video = videoRef.current;
     video.volume = volume;
     video.defaultPlaybackRate = playbackSpeed; // survives source changes, unlike playbackRate
+
+    if (streamData?.isAlternative) {
+      showToast('Воспроизведение через альтернативный онлайн-источник');
+    }
 
     if (hlsRef.current) {
       hlsRef.current.destroy();
@@ -260,7 +295,19 @@ export const VideoPlayer: React.FC = () => {
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
+            case Hls.ErrorTypes.NETWORK_ERROR: {
+              // Try unblocked CDN mirror rewrite if Voidboost is blocked
+              if (currentStreamUrl.includes('voidboost') || currentStreamUrl.includes('ukrtelcdn')) {
+                const unblocked = currentStreamUrl
+                  .replace(/https?:\/\/stream\.voidboost\.(?:cc|top|club|link)/i, 'https://femeretes.org')
+                  .replace(/https?:\/\/[a-z0-9.-]+\.ukrtelcdn\.net/i, 'https://vdbmate.org');
+                if (unblocked !== currentStreamUrl) {
+                  showToast('Переключение на резервный CDN...');
+                  hls.loadSource(unblocked);
+                  hls.startLoad();
+                  return;
+                }
+              }
               // Try MP4 fallback if HLS network fails
               const altMp4 = streamData?.streams?.find((s) => s.mp4 && s.mp4 !== currentStreamUrl)?.mp4;
               if (altMp4 && videoRef.current) {
@@ -273,6 +320,7 @@ export const VideoPlayer: React.FC = () => {
               }
               hls.startLoad();
               break;
+            }
             case Hls.ErrorTypes.MEDIA_ERROR:
               hls.recoverMediaError();
               break;
@@ -573,18 +621,35 @@ export const VideoPlayer: React.FC = () => {
 
       {/* Loading Spinner */}
       {isLoading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/60 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-20 pointer-events-none">
           <div className="w-12 h-12 border-4 border-brand-red border-t-transparent rounded-full animate-spin mb-4" />
           <span className="text-white text-sm font-semibold tracking-wide">{t.player.loading}</span>
+          <span className="text-zinc-500 text-xs mt-2">Поиск доступного потока в сети...</span>
         </div>
       )}
 
       {/* Error State */}
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 p-6 z-30">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 p-6 z-30">
           <AlertCircle className="w-16 h-16 text-brand-red mb-4" />
           <h3 className="text-xl font-bold text-white mb-2">Не удалось воспроизвести видео</h3>
           <p className="text-sm text-zinc-400 max-w-md text-center mb-6">{error}</p>
+          {(streamData?.trailerUrl || usePlayerStore.getState().trailerUrl) && (
+            <div className="mb-6">
+              <button
+                onClick={() => {
+                  const tr = streamData?.trailerUrl || usePlayerStore.getState().trailerUrl;
+                  if (tr && window.api?.openExternalUrl) {
+                    window.api.openExternalUrl(tr);
+                  }
+                }}
+                className="flex items-center space-x-2 px-6 py-3 rounded-xl bg-brand-red text-white font-bold hover:bg-brand-redHover shadow-glow transition-all cursor-pointer"
+              >
+                <Play className="w-5 h-5 fill-current" />
+                <span>🎬 Смотреть официальный трейлер онлайн</span>
+              </button>
+            </div>
+          )}
           {mediaDetails?.translators && mediaDetails.translators.length > 1 && (
             <div className="flex flex-wrap justify-center gap-2 max-w-2xl mb-5" aria-label="Выбор озвучки">
               <span className="w-full text-center text-sm text-zinc-400">Попробовать другую озвучку</span>
@@ -607,6 +672,19 @@ export const VideoPlayer: React.FC = () => {
             >
               <RefreshCw className="w-4 h-4" />
               <span>Повторить</span>
+            </button>
+            <button
+              onClick={async () => {
+                showToast('Поиск рабочих зеркал в сети...');
+                if (window.api?.findOnlineMirrors) {
+                  await window.api.findOnlineMirrors();
+                }
+                retryPlayback();
+              }}
+              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white/10 text-white font-medium hover:bg-white/20 transition-all cursor-pointer"
+            >
+              <Globe className="w-4 h-4" />
+              <span>Зеркала в сети</span>
             </button>
             <button
               onClick={handleOpenSettings}

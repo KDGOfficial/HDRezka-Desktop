@@ -185,3 +185,30 @@ test('getStream reports clear message when future title is unreleased', async ()
     globalThis.fetch = origFetch;
   }
 });
+
+test('getStream falls back to alternative stream online when HDRezka has no streams', async () => {
+  const provider = new RezkaProvider('https://hdrezka-home.tv', ['https://hdrezka-home.tv']);
+  provider['mediaCache'].set('12345', { id: '12345', title: 'Интерстеллар', origTitle: 'Interstellar', year: 2014, type: 'films' });
+
+  // Mock findAlternativeStream to return working Collaps HLS stream
+  provider.findAlternativeStream = async () => ({
+    streams: [
+      { quality: '1080p', hls: 'https://interkh.com/master.m3u8', mp4: 'https://interkh.com/master.m3u8' }
+    ],
+    subtitles: [],
+    isAlternative: true,
+    sourceName: 'Collaps / Delivembed'
+  });
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ success: false }), { status: 200 });
+
+  try {
+    const stream = await provider.getStream({ mediaId: '12345', translatorId: 56 });
+    assert.ok(stream.isAlternative, 'Stream should be marked as alternative');
+    assert.equal(stream.streams[0].quality, '1080p');
+    assert.equal(stream.streams[0].hls, 'https://interkh.com/master.m3u8');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

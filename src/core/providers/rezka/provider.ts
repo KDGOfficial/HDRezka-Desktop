@@ -196,7 +196,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.32';
+  public version = '0.0.33';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -1321,6 +1321,77 @@ export class RezkaProvider implements IProvider {
     return [];
   }
 
+  public async findAlternativeStream(params: {
+    mediaId: string;
+    title?: string;
+    origTitle?: string;
+    year?: number;
+  }): Promise<StreamData | null> {
+    const rawTitle = params.title || '';
+    const cleanTitle = rawTitle.split('/')[0].replace(/[^\p{L}\p{N}\s]/gu, ' ').trim();
+    const queries = [cleanTitle, params.origTitle].filter((q): q is string => Boolean(q && q.length > 1));
+    if (queries.length === 0) return null;
+
+    for (const q of queries) {
+      try {
+        const sRes = await appFetch(`https://kinobase.org/search?query=${encodeURIComponent(q)}`, {
+          signal: AbortSignal.timeout(3500),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          },
+        });
+        if (!sRes.ok) continue;
+        const sHtml = await sRes.text();
+        const matches = sHtml.match(/href="(\/film\/\d+[^"]*)"/g) || [];
+        if (matches.length === 0) continue;
+
+        const filmPath = matches[0].replace('href="', '').replace('"', '');
+        const filmRes = await appFetch(`https://kinobase.org${filmPath}`, {
+          signal: AbortSignal.timeout(3500),
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+          },
+        });
+        if (!filmRes.ok) continue;
+        const filmHtml = await filmRes.text();
+
+        const trailerMatch = filmHtml.match(/MOVIE_TRAILER\s*=\s*["']([^"']+)["']/i);
+        const trailerUrl = trailerMatch ? trailerMatch[1] : undefined;
+
+        const kpMatch = filmHtml.match(/kinopoisk\.ru\/film\/(\d+)/i);
+        const kpId = kpMatch ? kpMatch[1] : null;
+
+        if (kpId) {
+          const embedRes = await appFetch(`https://api.delivembed.cc/embed/kp/${kpId}`, {
+            signal: AbortSignal.timeout(4000),
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            },
+          });
+          if (embedRes.ok) {
+            const embedHtml = await embedRes.text();
+            const m3u8Match = embedHtml.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/);
+            if (m3u8Match) {
+              const streamUrl = m3u8Match[0];
+              return {
+                streams: [
+                  { quality: '1080p', hls: streamUrl, mp4: streamUrl },
+                  { quality: '720p', hls: streamUrl, mp4: streamUrl },
+                  { quality: '480p', hls: streamUrl, mp4: streamUrl },
+                ],
+                subtitles: [],
+                isAlternative: true,
+                sourceName: 'Collaps / Delivembed',
+                trailerUrl,
+              };
+            }
+          }
+        }
+      } catch (_) {}
+    }
+    return null;
+  }
+
   public async getStream(params: {
     mediaId: string;
     translatorId: number;
@@ -1330,32 +1401,58 @@ export class RezkaProvider implements IProvider {
     isAds?: boolean;
     isDirector?: boolean;
   }): Promise<StreamData> {
-    const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
+    const normId = params.mediaId ? String(params.mediaId).replace(/[^0-9]/g, '') : '';
+    let cachedItem = this.mediaCache.get(params.mediaId) || this.mediaCache.get(normId);
+    if (!cachedItem && normId) {
+      for (const item of this.mediaCache.values()) {
+        if (item.id === normId || (item.url && item.url.includes(`/${normId}-`))) {
+          cachedItem = item;
+          break;
+        }
+      }
+    }
+
+    const currentYear = new Date().getFullYear();
+    const isUnreleasedMovie = !!(
+      cachedItem?.year &&
+      cachedItem.year >= currentYear &&
+      (!cachedItem.type || cachedItem.type === 'films')
+    );
+
+    // Fast path for unreleased future titles: don't loop 120 times through doomed mirrors
+    const mirrorsToTry = isUnreleasedMovie
+      ? [this.activeMirror]
+      : [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
+
     const translatorsToTry: number[] = [];
 
     if (params.translatorId !== undefined && params.translatorId !== null) {
       translatorsToTry.push(params.translatorId);
     }
 
-    // If primary translator fails, try known popular fallbacks
-    const cachedTranslators = this.mediaCache.get(params.mediaId)?.translators;
-    if (cachedTranslators) {
-      for (const t of cachedTranslators) {
-        if (!translatorsToTry.includes(t.id)) translatorsToTry.push(t.id);
+    if (!isUnreleasedMovie) {
+      // If primary translator fails, try known popular fallbacks
+      const cachedTranslators = (cachedItem?.translators || this.mediaCache.get(params.mediaId)?.translators);
+      if (cachedTranslators) {
+        for (const t of cachedTranslators) {
+          if (!translatorsToTry.includes(t.id)) translatorsToTry.push(t.id);
+        }
       }
-    }
-    // Also include 0 for original/Russian tracks and standard popular IDs
-    for (const popId of [0, 56, 1, 238, 430]) {
-      if (!translatorsToTry.includes(popId)) translatorsToTry.push(popId);
+      // Also include 0 for original/Russian tracks and standard popular IDs
+      for (const popId of [0, 56, 1, 238, 430]) {
+        if (!translatorsToTry.includes(popId)) translatorsToTry.push(popId);
+      }
+    } else if (!translatorsToTry.includes(0)) {
+      translatorsToTry.push(0);
     }
 
     const actionsToTry: Array<{ action: 'get_stream' | 'get_movie'; season?: number; episode?: number }> = [];
     if (params.season !== undefined && params.episode !== undefined && params.season > 0 && params.episode > 0) {
       actionsToTry.push({ action: 'get_stream', season: params.season, episode: params.episode });
-      actionsToTry.push({ action: 'get_movie' });
+      if (!isUnreleasedMovie) actionsToTry.push({ action: 'get_movie' });
     } else {
       actionsToTry.push({ action: 'get_movie' });
-      actionsToTry.push({ action: 'get_stream', season: 1, episode: 1 });
+      if (!isUnreleasedMovie) actionsToTry.push({ action: 'get_stream', season: 1, episode: 1 });
     }
 
     let hadAntiBotOrSession = false;
@@ -1405,7 +1502,7 @@ export class RezkaProvider implements IProvider {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
               },
               body: formData.toString(),
-              signal: AbortSignal.timeout(this.timeoutMs),
+              signal: AbortSignal.timeout(isUnreleasedMovie ? 2500 : this.timeoutMs),
             });
 
             if (!res.ok) continue;
@@ -1443,6 +1540,25 @@ export class RezkaProvider implements IProvider {
       }
     }
 
+    // Try finding alternative stream online across web balancers (Collaps / Kinobase)
+    try {
+      const altStream = await this.findAlternativeStream({
+        mediaId: params.mediaId,
+        title: cachedItem?.title,
+        origTitle: cachedItem?.origTitle,
+        year: cachedItem?.year,
+      });
+      if (altStream && altStream.streams && altStream.streams.length > 0) {
+        return altStream;
+      }
+    } catch (_) {}
+
+    if (isUnreleasedMovie) {
+      throw new Error(
+        `Фильм «${cachedItem?.title || 'Диггер'}» (${cachedItem?.year || currentYear}) ещё не вышел в прокат или цифровой релиз. Доступен официальный трейлер.`
+      );
+    }
+
     if (hadAntiBotOrSession) {
       throw new Error(
         'HDRezka требует пройти проверку «Я не бот» или обновить сессию. Нажмите «Пройти проверку» для запуска видео.'
@@ -1451,15 +1567,6 @@ export class RezkaProvider implements IProvider {
 
     if (lastActiveMirrorMessage) {
       throw new Error(lastActiveMirrorMessage);
-    }
-
-    const cachedItem = this.mediaCache.get(params.mediaId);
-
-    const currentYear = new Date().getFullYear();
-    if (cachedItem && cachedItem.year && cachedItem.year >= currentYear && (!cachedItem.type || cachedItem.type === 'films')) {
-      throw new Error(
-        `Фильм «${cachedItem.title || 'Диггер'}» (${cachedItem.year}) ещё не вышел в прокат или временно отсутствует в каталоге HDRezka.`
-      );
     }
 
     throw new Error(

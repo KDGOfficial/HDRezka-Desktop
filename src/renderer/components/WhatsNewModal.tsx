@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, Globe, Search, Check, Trash2, X, ExternalLink, Database, Send } from 'lucide-react';
+import { ShieldCheck, Globe, Search, Check, Play, Zap, X, ExternalLink, Database, Send } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 
@@ -15,27 +15,27 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
 
   const features = [
     {
-      icon: <Globe className="w-4 h-4 text-emerald-400" />,
+      icon: <Globe className="w-4 h-4 text-cyan-400" />,
       title: t.whatsNew.f1_title,
       desc: t.whatsNew.f1_desc,
     },
     {
-      icon: <Search className="w-4 h-4 text-cyan-400" />,
+      icon: <Zap className="w-4 h-4 text-amber-400" />,
       title: t.whatsNew.f2_title,
       desc: t.whatsNew.f2_desc,
     },
     {
-      icon: <Check className="w-4 h-4 text-emerald-400" />,
+      icon: <Play className="w-4 h-4 text-emerald-400 fill-current" />,
       title: t.whatsNew.f3_title,
       desc: t.whatsNew.f3_desc,
     },
     {
-      icon: <Trash2 className="w-4 h-4 text-purple-400" />,
+      icon: <ShieldCheck className="w-4 h-4 text-purple-400" />,
       title: t.whatsNew.f4_title,
       desc: t.whatsNew.f4_desc,
     },
     {
-      icon: <ShieldCheck className="w-4 h-4 text-amber-400" />,
+      icon: <Check className="w-4 h-4 text-emerald-400" />,
       title: t.whatsNew.f5_title,
       desc: t.whatsNew.f5_desc,
     },

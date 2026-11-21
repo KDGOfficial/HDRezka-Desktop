@@ -54,6 +54,9 @@ export interface StreamData {
   streams: VideoQualityStream[];
   subtitles: SubtitleTrack[];
   thumbnails?: string;
+  isAlternative?: boolean;
+  sourceName?: string;
+  trailerUrl?: string;
 }
 
 export interface MediaDetails {

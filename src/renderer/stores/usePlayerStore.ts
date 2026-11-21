@@ -17,6 +17,7 @@ interface PlayerState {
   initialTime: number;
   isLoading: boolean;
   error: string | null;
+  trailerUrl?: string;
 
   openPlayer: (params: {
     details: MediaDetails;
@@ -51,6 +52,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   initialTime: 0,
   isLoading: false,
   error: null,
+  trailerUrl: undefined,
 
   openPlayer: async ({ details, translatorId, seasonId, episodeId, startTime = 0 }) => {
     set({
@@ -61,6 +63,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       episodeId,
       isLoading: true,
       error: null,
+      streamData: null,
+      currentStreamUrl: '',
+      trailerUrl: undefined,
       initialTime: startTime,
     });
 
@@ -109,6 +114,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         currentQuality: targetQuality.quality,
         currentStreamUrl: streamUrl,
         isHls: useHls,
+        trailerUrl: stream.trailerUrl,
         isLoading: false,
       });
     } catch (err: any) {
@@ -121,9 +127,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       } else if (message.includes('<!doctype') || message.includes('Unexpected token') || message.includes('is not valid JSON')) {
         message = 'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте сменить зеркало в Настройках.';
       }
+
+      let trailerUrl = get().streamData?.trailerUrl;
+      const tMatch = message.match(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s"']+/);
+      if (tMatch) {
+        trailerUrl = tMatch[0];
+      }
+
       set({
         isLoading: false,
         error: message,
+        trailerUrl,
       });
     }
   },
@@ -133,6 +147,9 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       isOpen: false,
       mediaDetails: null,
       streamData: null,
+      currentStreamUrl: '',
+      trailerUrl: undefined,
+      isLoading: false,
       error: null,
     });
   },

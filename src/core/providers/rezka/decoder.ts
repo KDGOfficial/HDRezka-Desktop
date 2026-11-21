@@ -127,6 +127,16 @@ export function parseSubtitles(subtitlesRaw?: string): SubtitleTrack[] {
   return tracks;
 }
 
+/**
+ * Rewrites ISP-blocked Voidboost/Ukrtelcdn CDN domains to working public mirrors
+ */
+export function getUnblockedCdnUrl(url: string): string {
+  if (!url) return '';
+  return url
+    .replace(/https?:\/\/stream\.voidboost\.(?:cc|top|club|link)/i, 'https://femeretes.org')
+    .replace(/https?:\/\/[a-z0-9.-]+\.ukrtelcdn\.net/i, 'https://vdbmate.org');
+}
+
 export function parseStreamData(rawUrl: string, rawSubtitles?: string, thumbnails?: string): StreamData {
   const decoded = decodeStreamUrl(rawUrl);
   const streams = parseQualityStreams(decoded);
