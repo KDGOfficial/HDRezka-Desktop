@@ -17,7 +17,6 @@ import { BROWSER_USER_AGENT } from '../../shared/constants';
 const PORTALS = [
   { id: 'kinobase', label: 'Kinobase', base: 'https://kinobase.org/', search: (q: string) => `https://kinobase.org/search?query=${encodeURIComponent(q)}` },
   { id: 'kinogo', label: 'Kinogo', base: 'https://kinogo.film/', search: (q: string) => `https://kinogo.film/?do=search&subaction=search&story=${encodeURIComponent(q)}` },
-  { id: 'yandex', label: 'Яндекс Кино', base: 'https://yandex.ru/', search: (q: string) => `https://yandex.ru/search/?text=${encodeURIComponent(q + ' смотреть онлайн в хорошем качестве HD')}` },
   { id: 'google', label: 'Google Кино', base: 'https://www.google.com/', search: (q: string) => `https://www.google.com/search?q=${encodeURIComponent(q + ' смотреть онлайн в хорошем качестве')}` },
   { id: 'vk', label: 'VK Видео', base: 'https://vkvideo.ru/', search: (q: string) => `https://vkvideo.ru/?q=${encodeURIComponent(q)}` },
   { id: 'rutube', label: 'Rutube', base: 'https://rutube.ru/', search: (q: string) => `https://rutube.ru/search/?query=${encodeURIComponent(q)}` },
@@ -39,7 +38,7 @@ function normalizeUrlOrSearch(input: string): string {
   if (!/\s/.test(clean) && /^[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(clean)) {
     return `https://${clean}`;
   }
-  return `https://yandex.ru/search/?text=${encodeURIComponent(`${clean} смотреть онлайн в хорошем качестве HD`)}`;
+  return `https://www.google.com/search?q=${encodeURIComponent(`${clean} смотреть онлайн в хорошем качестве HD`)}`;
 }
 
 export const BrowserPage: React.FC = () => {

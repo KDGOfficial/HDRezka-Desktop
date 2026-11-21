@@ -63,7 +63,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
       set({ browserUrl: raw, currentPage: 'browser' });
       return;
     }
-    const targetUrl = `https://yandex.ru/search/?text=${encodeURIComponent(`${raw} смотреть онлайн бесплатно в хорошем качестве HD`)}`;
+    const targetUrl = `https://www.google.com/search?q=${encodeURIComponent(`${raw} смотреть онлайн бесплатно в хорошем качестве HD`)}`;
     set({ browserQuery: raw, browserUrl: targetUrl, currentPage: 'browser' });
   },
 
