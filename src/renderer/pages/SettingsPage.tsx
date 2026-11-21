@@ -85,10 +85,14 @@ export const SettingsPage: React.FC = () => {
     }
   };
 
-  const handleVerifyMirror = async () => {
+  const handleVerifyMirror = async (targetMirror?: string) => {
     if (window.api) {
       try {
-        await window.api.verifyMirror();
+        const mirrorToVerify = targetMirror || settings.app.activeMirror;
+        if (targetMirror && targetMirror !== settings.app.activeMirror) {
+          await setActiveMirror(targetMirror);
+        }
+        await window.api.verifyMirror(mirrorToVerify);
       } catch (err) {
         console.warn('[Settings] verifyMirror error:', err);
       } finally {
@@ -360,7 +364,7 @@ export const SettingsPage: React.FC = () => {
                 <span>{isFindingMirrors ? t.settings.findingOnlineMirrors : t.settings.findOnlineMirrors}</span>
               </button>
               <button
-                onClick={handleVerifyMirror}
+                onClick={() => handleVerifyMirror(settings.app.activeMirror)}
                 className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-zinc-300 transition-colors cursor-pointer"
                 title={t.settings.verifyBtn}
               >
@@ -402,7 +406,7 @@ export const SettingsPage: React.FC = () => {
                   <span className="leading-snug">{t.settings.needsVerificationHint}</span>
                 </div>
                 <button
-                  onClick={handleVerifyMirror}
+                  onClick={() => handleVerifyMirror(settings.app.activeMirror)}
                   className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
                 >
                   {t.details.passVerification}
@@ -445,6 +449,18 @@ export const SettingsPage: React.FC = () => {
                           ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
                           : t.settings.error}
                       </span>
+                    )}
+                    {status?.needsVerification && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleVerifyMirror(mirror);
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                        title={t.details.passVerification}
+                      >
+                        {t.details.passVerification}
+                      </button>
                     )}
                     {isActive && (
                       <span className="px-1.5 py-0.5 rounded-md bg-brand-red text-white text-[9px] font-black uppercase">

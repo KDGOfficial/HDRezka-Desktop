@@ -239,10 +239,10 @@ export function registerIpcHandlers(): void {
 
     return new Promise<boolean>((resolve) => {
       const win = new BrowserWindow({
-        width: 960,
-        height: 720,
+        width: 1040,
+        height: 760,
         center: true,
-        title: 'Проверка HDRezka — Пройдите проверку (окно закроется автоматически)',
+        title: `Проверка HDRezka — ${mirror}`,
         backgroundColor: '#090a0f',
         autoHideMenuBar: true,
         show: true,
@@ -255,12 +255,63 @@ export function registerIpcHandlers(): void {
       win.focus();
 
       let isClosed = false;
-      const checkPassed = async () => {
+      let stableContentTicks = 0;
+
+      // Injects the interactive top control bar into the verification page
+      const injectVerifyBar = async () => {
         if (isClosed || win.isDestroyed()) return;
         try {
-          // 1. Inspect DOM state in verification window
-          const domState = await win.webContents.executeJavaScript(`
+          await win.webContents.executeJavaScript(`
             (() => {
+              if (document.getElementById('hdrezka-verify-banner')) return;
+              const banner = document.createElement('div');
+              banner.id = 'hdrezka-verify-banner';
+              banner.style.cssText = 'position:fixed;top:0;left:0;right:0;height:48px;background:#12131a;color:#fff;z-index:2147483647;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:2px solid #e50914;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.6);user-select:none;box-sizing:border-box;';
+              banner.innerHTML = \`
+                <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+                  <span style="font-weight:900;color:#e50914;font-size:14px;letter-spacing:0.5px;flex-shrink:0;">HDREZKA</span>
+                  <span id="hdrezka-verify-status" style="font-size:12px;color:#d1d5db;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+                    Пройдите проверку на странице ниже (если требуется). Когда появится сайт, нажмите «Готово».
+                  </span>
+                </div>
+                <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+                  <button id="hdrezka-verify-reload" style="background:rgba(255,255,255,0.08);color:#d1d5db;border:1px solid rgba(255,255,255,0.2);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;">⟳ Обновить</button>
+                  <button id="hdrezka-verify-done" style="background:#e50914;color:#fff;border:none;border-radius:8px;padding:7px 18px;font-size:12px;font-weight:bold;cursor:pointer;box-shadow:0 0 12px rgba(229,9,20,0.4);">✓ Я прошёл проверку</button>
+                </div>
+              \`;
+              document.documentElement.appendChild(banner);
+              if (document.body) {
+                document.body.style.paddingTop = '52px';
+              }
+              const reloadBtn = document.getElementById('hdrezka-verify-reload');
+              if (reloadBtn) reloadBtn.onclick = () => window.location.reload();
+              const doneBtn = document.getElementById('hdrezka-verify-done');
+              if (doneBtn) doneBtn.onclick = () => { window.__hdrezka_verify_done = true; };
+            })()
+          `);
+        } catch (_) {}
+      };
+
+      const closeAndResolve = () => {
+        if (isClosed) return;
+        isClosed = true;
+        clearInterval(timer);
+        providerManager.getProvider().setActiveMirror(mirror);
+        db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
+        if (!win.isDestroyed()) {
+          win.close();
+        }
+        resolve(true);
+      };
+
+      const checkState = async () => {
+        if (isClosed || win.isDestroyed()) return;
+        try {
+          await injectVerifyBar();
+
+          const result = await win.webContents.executeJavaScript(`
+            (() => {
+              const isDoneClicked = !!window.__hdrezka_verify_done;
               const hasRezkaContent = !!(
                 document.querySelector('.b-content') ||
                 document.querySelector('.b-post') ||
@@ -281,58 +332,65 @@ export function registerIpcHandlers(): void {
                   document.title.includes('Attention Required')
                 ))
               );
-              return { hasRezkaContent, isChallengeActive };
-            })()
-          `).catch(() => ({ hasRezkaContent: false, isChallengeActive: true }));
 
-          // NEVER close while challenge is actively running on page
-          if (domState.isChallengeActive) {
+              const statusEl = document.getElementById('hdrezka-verify-status');
+              const doneBtn = document.getElementById('hdrezka-verify-done');
+              if (statusEl && doneBtn) {
+                if (hasRezkaContent) {
+                  statusEl.textContent = '✓ Проверка успешно пройдена! Сайт загружен. Нажмите «Готово» или окно закроется автоматически.';
+                  statusEl.style.color = '#34d399';
+                  doneBtn.style.background = '#10b981';
+                  doneBtn.style.boxShadow = '0 0 12px rgba(16,185,129,0.5)';
+                  doneBtn.textContent = '✓ Готово (Закрыть)';
+                } else if (isChallengeActive) {
+                  statusEl.textContent = '⏳ Выполняется проверка защиты... Решите капчу на странице, если требуется.';
+                  statusEl.style.color = '#fbbf24';
+                }
+              }
+
+              return { isDoneClicked, hasRezkaContent, isChallengeActive };
+            })()
+          `).catch(() => ({ isDoneClicked: false, hasRezkaContent: false, isChallengeActive: false }));
+
+          // 1. User explicitly clicked "Я прошёл проверку"
+          if (result.isDoneClicked) {
+            closeAndResolve();
             return;
           }
 
-          // 2. Check if valid Anubis / Cloudflare verification auth cookies are present
-          const sessionCookies = await session.defaultSession.cookies.get({ url: mirror }).catch(() => []);
-          const hasValidAuthCookie = sessionCookies.some(
-            (c) =>
-              (c.name.toLowerCase().includes('anubis-auth') && c.value && c.value.length > 10) ||
-              (c.name.toLowerCase().includes('cf_clearance') && c.value && c.value.length > 10)
-          );
+          // 2. If a challenge is active, NEVER auto-close. Reset stability ticks.
+          if (result.isChallengeActive) {
+            stableContentTicks = 0;
+            return;
+          }
 
-          // Verification is passed when real content loaded or valid auth cookie present without active challenge
-          if (domState.hasRezkaContent || hasValidAuthCookie) {
-            isClosed = true;
-            clearInterval(timer);
-            cleanupCookieListener();
-            providerManager.getProvider().setActiveMirror(mirror);
-            db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
-            setTimeout(() => {
-              if (!win.isDestroyed()) win.close();
-            }, 600);
+          // 3. Real Rezka content is verified loaded and stable for 4 continuous checks (3.2 seconds)
+          if (result.hasRezkaContent) {
+            stableContentTicks++;
+            if (stableContentTicks >= 4) {
+              closeAndResolve();
+              return;
+            }
+          } else {
+            stableContentTicks = 0;
           }
         } catch (_) {}
       };
 
-      // Instantly react when Anubis sets a newly solved auth cookie in session
-      const onCookieChanged = (_: any, cookie: any, __: any, removed: boolean) => {
-        if (!removed && cookie?.name && cookie.name.toLowerCase().includes('anubis-auth') && cookie.value && cookie.value.length > 10) {
-          setTimeout(checkPassed, 400);
-        }
-      };
-      session.defaultSession.cookies.on('changed', onCookieChanged);
-      const cleanupCookieListener = () => {
-        try {
-          session.defaultSession.cookies.removeListener('changed', onCookieChanged);
-        } catch (_) {}
-      };
-
-      const timer = setInterval(checkPassed, 800);
-      win.webContents.on('did-finish-load', () => setTimeout(checkPassed, 400));
+      const timer = setInterval(checkState, 800);
+      win.webContents.on('did-finish-load', () => {
+        injectVerifyBar();
+        setTimeout(checkState, 500);
+      });
 
       win.on('closed', () => {
-        isClosed = true;
-        clearInterval(timer);
-        cleanupCookieListener();
-        resolve(true);
+        if (!isClosed) {
+          isClosed = true;
+          clearInterval(timer);
+          providerManager.getProvider().setActiveMirror(mirror);
+          db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
+          resolve(true);
+        }
       });
 
       win.loadURL(loadUrl).catch(() => {});
