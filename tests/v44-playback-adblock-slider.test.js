@@ -25,13 +25,14 @@ const {
   getMaxQualityScore,
   classifyResolutionLabel,
   parseHlsMasterVariants,
+  matchTranslatorByName,
   pickBetterQualityStream,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('v0.0.44 version synchronization across constants and provider', () => {
+test('v0.0.45 version synchronization across constants and provider', () => {
   const provider = new RezkaProvider();
-  assert.equal(APP_VERSION, '0.0.44');
-  assert.equal(provider.version, '0.0.44');
+  assert.equal(APP_VERSION, '0.0.45');
+  assert.equal(provider.version, '0.0.45');
 });
 
 test('parseHlsMasterVariants handles cinema 1920x800 1080p, picks highest bitrate per quality, and never invents fake 1080p', () => {
@@ -75,6 +76,20 @@ test('parseHlsMasterVariants handles cinema 1920x800 1080p, picks highest bitrat
   assert.equal(classifyResolutionLabel(3840, 1608), '2160p');
   assert.equal(classifyResolutionLabel(1920, 804), '1080p');
   assert.equal(classifyResolutionLabel(1280, 536), '720p');
+
+  // Master playlist with external #EXT-X-MEDIA:TYPE=AUDIO must keep masterUrl so hls.js preserves audio tracks
+  const separatedAudioMaster = [
+    '#EXTM3U',
+    '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a1",NAME="Russian",DEFAULT=YES,URI="audio_ru.m3u8"',
+    '#EXT-X-STREAM-INF:BANDWIDTH=5500000,RESOLUTION=1920x1080,AUDIO="a1"',
+    'video_1080.m3u8',
+    '#EXT-X-STREAM-INF:BANDWIDTH=2200000,RESOLUTION=1280x720,AUDIO="a1"',
+    'video_720.m3u8',
+  ].join('\n');
+  const sepVariants = parseHlsMasterVariants(separatedAudioMaster, 'https://cdn.example.org/hls/master.m3u8');
+  assert.deepEqual(sepVariants.map((v) => v.quality), ['1080p', '720p']);
+  assert.equal(sepVariants[0].hls, 'https://cdn.example.org/hls/master.m3u8');
+  assert.equal(sepVariants[1].hls, 'https://cdn.example.org/hls/master.m3u8');
 });
 
 test('pickBetterQualityStream auto-upgrades 720p mirror stream to 1080p/4K mirror and preserves subtitles', () => {
@@ -179,7 +194,68 @@ test('Strengthened AdBlock catches CIS ad networks, VAST/preroll video ads, and 
   assert.equal(isCrossOriginPopupAd('https://random-clickunder.xyz/go?id=99', 'https://kinogo.film/104-movie.html'), true);
   assert.equal(isCrossOriginPopupAd('https://kinogo.film/105-other.html', 'https://kinogo.film/104-movie.html'), false);
   assert.equal(isCrossOriginPopupAd('https://kinobase.org/film/123', 'https://www.google.com/search?q=test'), false);
+  // Non-ad movie search results opened via target="_blank" from Google must NOT be blocked
+  assert.equal(isCrossOriginPopupAd('https://lordfilm.lu/film/12345-inception.html', 'https://www.google.com/search?q=inception'), false);
+  // Ad results even from Google must STILL be blocked
+  assert.equal(isCrossOriginPopupAd('https://1xbet-official.xyz/promo', 'https://www.google.com/search?q=inception'), true);
   assert.equal(isCrossOriginPopupAd('javascript:void(0)', 'https://kinobase.org/'), true);
+
+  // Extended video ad & CIS ad patterns
+  assert.equal(isAdUrl('https://cdn.randomhost.com/ads/spot_01.mp4'), true);
+  assert.equal(isAdUrl('https://cdn.randomhost.com/adv/intro.m3u8'), true);
+  assert.equal(isAdUrl('https://cdn.randomhost.com/vmap.xml'), true);
+  assert.equal(isAdUrl('https://cdn.admixer.net/script.js'), true);
+});
+
+test('matchTranslatorByName and cold-cache getStream auto-upgrade preserve dubbing without mediaCache', async () => {
+  const kinogoTranslators = [
+    { id: 1, name: 'Дубляж' },
+    { id: 2, name: 'Украинский' },
+    { id: 3, name: 'LostFilm (Kinogo)' },
+    { id: 4, name: 'HDRezka Studio' },
+  ];
+  assert.equal(matchTranslatorByName(kinogoTranslators, 'LostFilm')?.id, 3);
+  assert.equal(matchTranslatorByName(kinogoTranslators, 'HDRezka Studio (Kinobase)')?.id, 4);
+  assert.equal(matchTranslatorByName(kinogoTranslators, 'UnknownDub'), undefined);
+
+  // Cold mediaCache (e.g. opened from Favorites/History/BrowserPage): params.title + translatorName must still auto-upgrade
+  const provider = new RezkaProvider('https://hdrezka-home.tv', ['https://hdrezka-home.tv']);
+  let receivedArgs = null;
+  provider.findAlternativeStream = async (args) => {
+    receivedArgs = args;
+    return {
+      streams: [{ quality: '1080p', hls: 'https://cdn.cinemar.cc/interstellar_1080.m3u8', mp4: 'https://cdn.cinemar.cc/interstellar_1080.m3u8' }],
+      subtitles: [],
+      isAlternative: true,
+      sourceName: 'Kinogo Cinemar',
+    };
+  };
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        success: true,
+        url: '[720p]https://stream.voidboost.cc/interstellar_720.mp4:hls:manifest.m3u8',
+      }),
+      { status: 200 }
+    );
+  try {
+    const result = await provider.getStream({
+      mediaId: '99999',
+      translatorId: 56,
+      title: 'Интерстеллар',
+      origTitle: 'Interstellar',
+      year: 2014,
+      translatorName: 'LostFilm',
+    });
+    assert.equal(result.upgradedMirror, true);
+    assert.equal(result.upgradedFromQuality, '720p');
+    assert.equal(receivedArgs?.title, 'Интерстеллар');
+    assert.equal(receivedArgs?.translatorName, 'LostFilm');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
 });
 
 test('VideoPlayer, usePlayerStore, HorizontalSlider & main.ts enforce lag-free VOD HLS, 0:00 intro preservation, sliders & AdBlock hooks', () => {
@@ -191,26 +267,37 @@ test('VideoPlayer, usePlayerStore, HorizontalSlider & main.ts enforce lag-free V
   const mainTs = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
   const browserTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/BrowserPage.tsx'), 'utf8');
 
-  // Issue 2 & 3 & 6: VOD HLS config, level lock, explicit startPosition, no periodic-save thrashing
+  // Issue 2 & 3 & 6: VOD HLS config, autoStartLoad=false + prefetch, level lock before startLoad, one-shot intro guard, no .m3u8 into video.src
   assert.match(videoPlayerTsx, /lowLatencyMode:\s*false/);
+  assert.match(videoPlayerTsx, /autoStartLoad:\s*false/);
+  assert.match(videoPlayerTsx, /startFragPrefetch:\s*true/);
   assert.match(videoPlayerTsx, /startPosition:\s*startSec/);
+  assert.match(videoPlayerTsx, /hls\.startLoad\(startSec\)/);
   assert.match(videoPlayerTsx, /abrEwmaDefaultEstimate:\s*10_000_000/);
   assert.match(videoPlayerTsx, /findBestHlsLevelIndex/);
+  assert.match(videoPlayerTsx, /announcedStreamRef/);
+  assert.match(videoPlayerTsx, /!\/\\\.m3u8/);
   assert.match(videoPlayerTsx, /opacity-0 invisible/);
   assert.doesNotMatch(videoPlayerTsx, /\[isOpen,\s*mediaDetails,\s*seasonId,\s*episodeId,\s*currentTime,\s*duration\]/);
 
-  // Issue 6: opening a film defaults to 0:00 and offers resumeOfferTime pill instead of silent intro cut
+  // Issue 6 & 4: opening a film defaults to 0:00, offers resumeOfferTime pill, forwards title/translatorName
   assert.match(playerStoreTs, /resumeOfferTime/);
+  assert.match(playerStoreTs, /translatorName:\s*tr\?\.name/);
   assert.match(videoPlayerTsx, /Продолжить с/);
 
-  // Issue 1: HorizontalSlider wired into DetailsPage & VideoPlayer with overscroll-behavior-x: contain
+  // Issue 1: HorizontalSlider wired into DetailsPage, VideoPlayer episodes & translator popups, non-passive wheel, MutationObserver
   assert.match(detailsTsx, /HorizontalSlider/);
   assert.match(videoPlayerTsx, /HorizontalSlider/);
+  assert.match(videoPlayerTsx, /mediaDetails\.translators\.length > 8/);
   assert.match(sliderTsx, /type="range"/);
+  assert.match(sliderTsx, /passive:\s*false/);
+  assert.match(sliderTsx, /MutationObserver/);
   assert.match(globalsCss, /overscroll-behavior-x:\s*contain/);
 
-  // Issue 5: main.ts blocks will-redirect & cross-origin popups; BrowserPage removes allowpopups and injects runtime AdBlock
+  // Issue 5: main.ts blocks will-redirect, cross-origin popups, and injects cross-origin subframe AdBlock; BrowserPage removes allowpopups
   assert.match(mainTs, /will-redirect/);
+  assert.match(mainTs, /did-frame-finish-load/);
+  assert.match(mainTs, /webFrameMain/);
   assert.match(mainTs, /isCrossOriginPopupAd/);
   assert.doesNotMatch(browserTsx, /allowpopups:\s*'true'/);
   assert.match(browserTsx, /ADBLOCK_RUNTIME_SCRIPT/);

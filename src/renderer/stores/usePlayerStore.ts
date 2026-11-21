@@ -103,6 +103,10 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         isCamRip: tr?.camrip,
         isAds: tr?.ads,
         isDirector: tr?.director,
+        title: details.title,
+        origTitle: details.origTitle,
+        year: details.year,
+        translatorName: tr?.name,
       });
       if (seq !== playRequestSeq) return;
 

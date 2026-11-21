@@ -156,6 +156,8 @@ export function classifyResolutionLabel(width: number, height: number): string {
 
 export function parseHlsMasterVariants(playlistText: string, masterUrl: string): VideoQualityStream[] {
   if (!playlistText || !playlistText.includes('#EXT-X-STREAM-INF')) return [];
+  // When master playlist declares external #EXT-X-MEDIA:TYPE=AUDIO with URI=, keep masterUrl so hls.js preserves audio tracks
+  const hasExternalAudio = /#EXT-X-MEDIA:[^\r\n]*TYPE=AUDIO[^\r\n]*URI=/i.test(playlistText);
   const lines = playlistText.split(/\r?\n/);
   const byLabel = new Map<string, { label: string; score: number; bandwidth: number; url: string }>();
 
@@ -204,7 +206,7 @@ export function parseHlsMasterVariants(playlistText: string, masterUrl: string):
     const existing = byLabel.get(label);
     // Keep the highest-bitrate variant per resolution so 1080p is never a pixelated low-bitrate track
     if (!existing || bandwidth > existing.bandwidth) {
-      byLabel.set(label, { label, score, bandwidth, url: absUrl });
+      byLabel.set(label, { label, score, bandwidth, url: hasExternalAudio ? masterUrl : absUrl });
     }
   }
 
@@ -213,13 +215,51 @@ export function parseHlsMasterVariants(playlistText: string, masterUrl: string):
     .map((v) => ({ quality: v.label, hls: v.url, mp4: v.url }));
 }
 
+export function matchTranslatorByName<T extends { id: number; name: string }>(
+  translators: T[] | undefined,
+  targetName?: string
+): T | undefined {
+  if (!targetName || !translators || translators.length === 0) return undefined;
+  const normalize = (s: string) =>
+    s
+      .toLowerCase()
+      .replace(/\s*\((?:kinogo|kinobase|hdrezka|озвучка)[^)]*\)/gi, '')
+      .replace(/[^\p{L}\p{N}]+/gu, ' ')
+      .trim();
+  const target = normalize(targetName);
+  if (target.length < 2) return undefined;
+
+  const exact = translators.find((t) => normalize(t.name) === target);
+  if (exact) return exact;
+
+  const contains = translators.find((t) => {
+    const n = normalize(t.name);
+    return n.length >= 3 && (n.includes(target) || target.includes(n));
+  });
+  if (contains) return contains;
+
+  const targetTokens = target.split(' ').filter((w) => w.length >= 3);
+  if (targetTokens.length === 0) return undefined;
+  let best: T | undefined;
+  let bestOverlap = 0;
+  for (const t of translators) {
+    const tokens = normalize(t.name).split(' ').filter((w) => w.length >= 3);
+    const overlap = targetTokens.filter((w) => tokens.includes(w)).length;
+    if (overlap > bestOverlap) {
+      bestOverlap = overlap;
+      best = t;
+    }
+  }
+  return bestOverlap > 0 ? best : undefined;
+}
+
 export function pickBetterQualityStream(
   primary: StreamData | null,
   candidates: Array<StreamData | null | undefined>
 ): StreamData | null {
   let best = primary && primary.streams?.length > 0 ? primary : null;
   let bestScore = best ? getMaxQualityScore(best.streams) : 0;
-  const origLabel = best ? getMaxQualityLabel(best.streams) : '';
+  const origLabel = best?.upgradedFromQuality || (best ? getMaxQualityLabel(best.streams) : '');
 
   for (const cand of candidates) {
     if (!cand || !cand.streams || cand.streams.length === 0) continue;
@@ -246,7 +286,7 @@ export function pickBetterQualityStream(
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.44';
+  public version = '0.0.45';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -1437,7 +1477,7 @@ export class RezkaProvider implements IProvider {
   ): {
     translators: Translator[];
     seasons?: Season[];
-    getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number) => VideoQualityStream[];
+    getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number, translatorName?: string) => VideoQualityStream[];
     subtitles: SubtitleTrack[];
   } {
     const subtitles = this.parseKinobaseSubtitles(rawSubtitle);
@@ -1459,7 +1499,13 @@ export class RezkaProvider implements IProvider {
         translators: movieParsed.translators,
         seasons: undefined,
         subtitles,
-        getEpisodeStreams: (translatorId?: number) => {
+        getEpisodeStreams: (translatorId?: number, _seasonId?: number, _episodeId?: number, translatorName?: string) => {
+          if (translatorName) {
+            const byName = matchTranslatorByName(movieParsed.translators, translatorName);
+            if (byName && movieParsed.streamsByTranslator.has(byName.id)) {
+              return movieParsed.streamsByTranslator.get(byName.id)!;
+            }
+          }
           if (translatorId && movieParsed.streamsByTranslator.has(translatorId)) {
             return movieParsed.streamsByTranslator.get(translatorId)!;
           }
@@ -1533,16 +1579,14 @@ export class RezkaProvider implements IProvider {
       translators: unifiedTranslators,
       seasons: seasons.length > 0 ? seasons : undefined,
       subtitles,
-      getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number) => {
+      getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number, translatorName?: string) => {
         const targetKey = `${seasonId || seasons[0]?.id || 1}_${episodeId || 1}`;
         const epFile = episodeFiles.get(targetKey) || sampleFile;
         if (!epFile) return [];
         const parsedEp = this.parseKinobaseFileString(epFile);
-        const requestedName = translatorId ? translatorNameById.get(translatorId) : undefined;
+        const requestedName = translatorName || (translatorId ? translatorNameById.get(translatorId) : undefined);
         if (requestedName) {
-          const matchedTr = parsedEp.translators.find(
-            (t) => t.name.toLowerCase() === requestedName.toLowerCase()
-          );
+          const matchedTr = matchTranslatorByName(parsedEp.translators, requestedName);
           if (matchedTr && parsedEp.streamsByTranslator.has(matchedTr.id)) {
             return parsedEp.streamsByTranslator.get(matchedTr.id)!;
           }
@@ -1760,7 +1804,12 @@ export class RezkaProvider implements IProvider {
     return [{ quality: inferredLabel, hls: masterUrl, mp4: masterUrl }];
   }
 
-  private async extractBalancerStream(balancerSrc: string, episode?: number): Promise<StreamData | null> {
+  private async extractBalancerStream(
+    balancerSrc: string,
+    episode?: number,
+    season?: number,
+    translatorName?: string
+  ): Promise<StreamData | null> {
     try {
       const movieId = new URL(balancerSrc).searchParams.get('movie_id');
       if (!movieId) return null;
@@ -1791,8 +1840,19 @@ export class RezkaProvider implements IProvider {
       const eJson: any[] = await er.json();
       if (!Array.isArray(eJson) || eJson.length === 0) return null;
 
-      const epIdx = episode && episode > 0 && eJson[episode - 1] ? episode - 1 : 0;
-      const variants: any[] = Array.isArray(eJson[epIdx]?.episodeVariants) ? eJson[epIdx].episodeVariants : [];
+      let targetEp =
+        season && episode
+          ? eJson.find(
+              (item) =>
+                Number(item?.seasonNumber ?? item?.season) === season &&
+                Number(item?.episodeNumber ?? item?.episode ?? item?.order) === episode
+            )
+          : undefined;
+      if (!targetEp) {
+        const epIdx = episode && episode > 0 && eJson[episode - 1] ? episode - 1 : 0;
+        targetEp = eJson[epIdx];
+      }
+      const variants: any[] = Array.isArray(targetEp?.episodeVariants) ? targetEp.episodeVariants : [];
       const nonCamVariants = variants.filter(
         (v) =>
           v?.filepath &&
@@ -1808,9 +1868,17 @@ export class RezkaProvider implements IProvider {
         if (up.includes('HDRIP')) return 2;
         return 1;
       };
+      const normTr = translatorName ? translatorName.toLowerCase().trim() : '';
       pool.sort((a, b) => {
         if (Boolean(a.hasAdv) !== Boolean(b.hasAdv)) return a.hasAdv ? 1 : -1;
-        return qRank(b.streamQuality) - qRank(a.streamQuality);
+        const qrDiff = qRank(b.streamQuality) - qRank(a.streamQuality);
+        if (qrDiff !== 0) return qrDiff;
+        if (normTr) {
+          const aMatch = String(a.title || '').toLowerCase().includes(normTr) ? 1 : 0;
+          const bMatch = String(b.title || '').toLowerCase().includes(normTr) ? 1 : 0;
+          if (aMatch !== bMatch) return bMatch - aMatch;
+        }
+        return 0;
       });
       const filepath = pool[0]?.filepath;
       if (!filepath) return null;
@@ -2462,7 +2530,7 @@ export class RezkaProvider implements IProvider {
 
   private async getKinogoStream(
     filmUrl: string,
-    params: { translatorId?: number; season?: number; episode?: number }
+    params: { translatorId?: number; translatorName?: string; season?: number; episode?: number }
   ): Promise<StreamData | null> {
     try {
       const tree = await this.extractKinogoPlayerTree(filmUrl);
@@ -2470,7 +2538,8 @@ export class RezkaProvider implements IProvider {
 
       const sId = params.season || tree.seasons?.[0]?.id || 1;
       const eId = params.episode || tree.seasons?.[0]?.episodes?.[0]?.id || 1;
-      const trId = params.translatorId || tree.translators[0]?.id || 1;
+      const matchedByName = matchTranslatorByName(tree.translators, params.translatorName);
+      const trId = matchedByName?.id || params.translatorId || tree.translators[0]?.id || 1;
 
       const targetData =
         tree.itemDataMap.get(`${trId}:${sId}:${eId}`) ||
@@ -3641,6 +3710,7 @@ export class RezkaProvider implements IProvider {
     season?: number;
     episode?: number;
     translatorId?: number;
+    translatorName?: string;
   }): Promise<StreamData | null> {
     const cachedItem = this.mediaCache.get(params.mediaId);
     const metaForResolve = {
@@ -3670,7 +3740,11 @@ export class RezkaProvider implements IProvider {
       triedKinogo = true;
       const kinogoUrl = await this.resolveKinogoUrl(params.mediaId, metaForResolve);
       if (kinogoUrl) {
-        const gStream = await this.getKinogoStream(kinogoUrl, { ...params, translatorId: normalizedTrId });
+        const gStream = await this.getKinogoStream(kinogoUrl, {
+          ...params,
+          translatorId: normalizedTrId,
+          translatorName: params.translatorName,
+        });
         if (considerStream(gStream)) return state.best;
       }
     }
@@ -3686,7 +3760,12 @@ export class RezkaProvider implements IProvider {
 
     if (pd?.file) {
       const parsed = this.parseKinobaseSeriesAndTranslators(pd.file, pd.subtitle);
-      const streams = parsed.getEpisodeStreams(forceKinobaseByOffset ? normalizedTrId : params.translatorId, params.season, params.episode);
+      const streams = parsed.getEpisodeStreams(
+        forceKinobaseByOffset ? normalizedTrId : params.translatorId,
+        params.season,
+        params.episode,
+        params.translatorName
+      );
       if (streams.length > 0) {
         const kinobaseStream: StreamData = {
           streams,
@@ -3701,7 +3780,7 @@ export class RezkaProvider implements IProvider {
 
     // If current mirror only has <= 720p (or no stream), check balancer & sibling mirrors for 1080p+
     if (pd?.balancerSrc) {
-      const bStream = await this.extractBalancerStream(pd.balancerSrc, params.episode);
+      const bStream = await this.extractBalancerStream(pd.balancerSrc, params.episode, params.season, params.translatorName);
       if (bStream && considerStream({ ...bStream, trailerUrl: pd.trailerUrl })) {
         return state.best;
       }
@@ -3716,7 +3795,11 @@ export class RezkaProvider implements IProvider {
         }
       }
       if (kinogoFallbackUrl) {
-        const gStream = await this.getKinogoStream(kinogoFallbackUrl, { ...params, translatorId: normalizedTrId });
+        const gStream = await this.getKinogoStream(kinogoFallbackUrl, {
+          ...params,
+          translatorId: normalizedTrId,
+          translatorName: params.translatorName,
+        });
         if (considerStream(gStream)) return state.best;
       }
     }
@@ -3759,6 +3842,10 @@ export class RezkaProvider implements IProvider {
     isCamRip?: boolean;
     isAds?: boolean;
     isDirector?: boolean;
+    title?: string;
+    origTitle?: string;
+    year?: number;
+    translatorName?: string;
   }): Promise<StreamData> {
     const normId = params.mediaId ? String(params.mediaId).replace(/[^0-9]/g, '') : '';
     let cachedItem = this.mediaCache.get(params.mediaId) || this.mediaCache.get(normId);
@@ -3771,11 +3858,15 @@ export class RezkaProvider implements IProvider {
       }
     }
 
+    const effectiveTitle = params.title || cachedItem?.title;
+    const effectiveOrigTitle = params.origTitle || cachedItem?.origTitle;
+    const effectiveYear = params.year || cachedItem?.year;
+
     const currentYear = new Date().getFullYear();
     const isUnreleasedMovie = !!(
-      cachedItem?.year &&
-      cachedItem.year >= currentYear &&
-      (!cachedItem.type || cachedItem.type === 'films')
+      effectiveYear &&
+      effectiveYear >= currentYear &&
+      (!cachedItem?.type || cachedItem.type === 'films')
     );
 
     if (
@@ -3794,19 +3885,20 @@ export class RezkaProvider implements IProvider {
     ) {
       const altStream = await this.findAlternativeStream({
         mediaId: params.mediaId,
-        title: cachedItem?.title,
-        origTitle: cachedItem?.origTitle,
-        year: cachedItem?.year,
+        title: effectiveTitle,
+        origTitle: effectiveOrigTitle,
+        year: effectiveYear,
         season: params.season,
         episode: params.episode,
         translatorId: params.translatorId,
+        translatorName: params.translatorName,
       });
       if (altStream && altStream.streams.length > 0) {
         return altStream;
       }
       throw new Error(
         isUnreleasedMovie
-          ? `Фильм «${cachedItem?.title || 'Фильм'}» (${cachedItem?.year || currentYear}) ещё не вышел в цифровой релиз.`
+          ? `Фильм «${effectiveTitle || 'Фильм'}» (${effectiveYear || currentYear}) ещё не вышел в цифровой релиз.`
           : 'Видеопоток временно недоступен. Попробуйте выбрать другую озвучку или зеркало в Настройках.'
       );
     }
@@ -3937,17 +4029,18 @@ export class RezkaProvider implements IProvider {
               if (
                 !isUnreleasedMovie &&
                 getMaxQualityScore(rezkaStream.streams) < 1080 &&
-                (cachedItem?.title || cachedItem?.origTitle)
+                (effectiveTitle || effectiveOrigTitle)
               ) {
                 try {
                   const altCandidate = await this.findAlternativeStream({
                     mediaId: params.mediaId,
-                    title: cachedItem?.title,
-                    origTitle: cachedItem?.origTitle,
-                    year: cachedItem?.year,
+                    title: effectiveTitle,
+                    origTitle: effectiveOrigTitle,
+                    year: effectiveYear,
                     season: params.season,
                     episode: params.episode,
                     translatorId: params.translatorId,
+                    translatorName: params.translatorName,
                   });
                   const upgraded = pickBetterQualityStream(rezkaStream, [altCandidate]);
                   if (upgraded) return upgraded;

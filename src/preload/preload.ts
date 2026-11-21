@@ -39,6 +39,10 @@ export const api = {
     isCamRip?: boolean;
     isAds?: boolean;
     isDirector?: boolean;
+    title?: string;
+    origTitle?: string;
+    year?: number;
+    translatorName?: string;
   }) => ipcRenderer.invoke(IPC_CHANNELS.GET_STREAM, params),
   searchFast: (query: string) => ipcRenderer.invoke(IPC_CHANNELS.SEARCH_FAST, query),
   searchAdvanced: (query: string, page = 1) =>

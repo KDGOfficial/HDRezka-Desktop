@@ -50,6 +50,10 @@ export interface IProvider {
     isCamRip?: boolean;
     isAds?: boolean;
     isDirector?: boolean;
+    title?: string;
+    origTitle?: string;
+    year?: number;
+    translatorName?: string;
   }): Promise<StreamData>;
 
   // Search

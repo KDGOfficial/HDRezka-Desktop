@@ -1,9 +1,60 @@
-import { app, BrowserWindow, net, session } from 'electron';
+import { app, BrowserWindow, net, session, webFrameMain } from 'electron';
 import { createMainWindow, getMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
 import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, IPC_CHANNELS, isBadMirrorUrl, BROWSER_USER_AGENT, isAdUrl, isCrossOriginPopupAd } from '../shared/constants';
+
+const SUBFRAME_ADBLOCK_SCRIPT = `
+  (() => {
+    window.__hdrezkaAdBlockEnabled = true;
+    if (window.__hdrezkaSubframeAdBlock) return;
+    window.__hdrezkaSubframeAdBlock = true;
+    const baseDom = (h) => h.replace(/^www\\./i, '').split('.').slice(-2).join('.').toLowerCase();
+    const origOpen = window.open;
+    window.open = function(url, target, features) {
+      if (window.__hdrezkaAdBlockEnabled) {
+        try {
+          if (!url) return null;
+          const u = new URL(String(url), location.href);
+          if (baseDom(u.hostname) !== baseDom(location.hostname)) return null;
+        } catch {
+          return null;
+        }
+      }
+      return origOpen ? origOpen.call(window, url, target, features) : null;
+    };
+    const clean = () => {
+      if (!window.__hdrezkaAdBlockEnabled) return;
+      document.querySelectorAll('a[target="_blank"], div[onclick], div[style*="fixed"], div[style*="absolute"]').forEach((el) => {
+        if (el.closest('video') || el.querySelector('video')) return;
+        const st = getComputedStyle(el);
+        const z = parseInt(st.zIndex, 10) || 0;
+        if ((st.position === 'fixed' || st.position === 'absolute') && z >= 999) {
+          const r = el.getBoundingClientRect();
+          const covers = r.width >= window.innerWidth * 0.55 && r.height >= window.innerHeight * 0.45;
+          const transparent = parseFloat(st.opacity) < 0.15 || st.backgroundColor === 'rgba(0, 0, 0, 0)';
+          if (covers && transparent && (el.tagName === 'A' || !(el.textContent || '').trim())) {
+            el.remove();
+          }
+        }
+      });
+      document.querySelectorAll('button, div, span, a').forEach((btn) => {
+        const txt = (btn.textContent || '').trim();
+        if (/^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)$/i.test(txt)) {
+          btn.click();
+        }
+      });
+    };
+    clean();
+    let timer = null;
+    const obs = new MutationObserver(() => {
+      if (timer || !window.__hdrezkaAdBlockEnabled) return;
+      timer = setTimeout(() => { timer = null; clean(); }, 250);
+    });
+    if (document.documentElement) obs.observe(document.documentElement, { childList: true, subtree: true });
+  })();
+`;
 
 let browserAdBlockEnabled = true;
 let browserAdBlockedCount = 0;
@@ -146,6 +197,16 @@ if (!gotTheLock) {
             event.preventDefault();
             browserAdBlockedCount += 1;
           }
+        });
+        // Protect cross-origin embedded player iframes from clickunder overlays & skippable pre-roll ads
+        contents.on('did-frame-finish-load', (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+          if (isMainFrame || !browserAdBlockEnabled) return;
+          try {
+            const frame = webFrameMain.fromId(frameProcessId, frameRoutingId);
+            if (frame && /^https?:/i.test(frame.url || '')) {
+              frame.executeJavaScript(SUBFRAME_ADBLOCK_SCRIPT).catch(() => {});
+            }
+          } catch {}
         });
         contents.on('before-input-event', (_event, input) => {
           if (

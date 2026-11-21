@@ -37,12 +37,50 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
 
   useEffect(() => {
     measure();
+    const rafId = requestAnimationFrame(measure);
     const el = trackRef.current;
-    if (!el) return;
+    if (!el) return () => cancelAnimationFrame(rafId);
+
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    const mo = new MutationObserver(measure);
+    mo.observe(el, { childList: true, subtree: true });
+    document.fonts?.ready?.then(measure).catch(() => {});
+
+    // Bring active pressed item into view without hijacking vertical page scroll
+    const activeEl = el.querySelector<HTMLElement>('[aria-pressed="true"], [data-active="true"]');
+    if (activeEl && el.scrollWidth > el.clientWidth) {
+      const targetLeft = activeEl.offsetLeft - el.clientWidth / 2 + activeEl.clientWidth / 2;
+      el.scrollLeft = Math.max(0, Math.min(el.scrollWidth - el.clientWidth, targetLeft));
+      measure();
+    }
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      ro.disconnect();
+      mo.disconnect();
+    };
   }, [measure, itemCount]);
+
+  // Attach non-passive wheel listener so preventDefault() actually blocks vertical page scroll
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const onNativeWheel = (e: WheelEvent) => {
+      const currentMax = Math.max(0, Math.round(el.scrollWidth - el.clientWidth));
+      if (currentMax <= 4) return;
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && e.deltaY !== 0) {
+        const hittingStart = e.deltaY < 0 && el.scrollLeft <= 0;
+        const hittingEnd = e.deltaY > 0 && el.scrollLeft >= currentMax - 1;
+        if (!hittingStart && !hittingEnd) {
+          e.preventDefault();
+          el.scrollLeft += e.deltaY;
+        }
+      }
+    };
+    el.addEventListener('wheel', onNativeWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onNativeWheel);
+  }, []);
 
   const canScroll = maxScroll > 4;
   const atStart = scrollLeft <= 2;
@@ -77,21 +115,6 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
     }
   };
 
-  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    const el = trackRef.current;
-    if (!el || !canScroll) return;
-    // Allow horizontal wheel natively; convert vertical wheel only when user scrolls over a single-axis strip
-    if (Math.abs(e.deltaY) > Math.abs(e.deltaX) && e.deltaY !== 0) {
-      const nextPos = el.scrollLeft + e.deltaY;
-      const hittingStart = e.deltaY < 0 && el.scrollLeft <= 0;
-      const hittingEnd = e.deltaY > 0 && el.scrollLeft >= maxScroll - 1;
-      if (!hittingStart && !hittingEnd) {
-        e.preventDefault();
-        el.scrollLeft = nextPos;
-      }
-    }
-  };
-
   return (
     <div
       role="region"
@@ -118,7 +141,6 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
         <div
           ref={trackRef}
           onScroll={measure}
-          onWheel={handleWheel}
           className={`slider-track flex-1 min-w-0 overflow-x-auto scrollbar-none py-0.5 ${trackClassName}`}
         >
           {children}
@@ -140,33 +162,33 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
         )}
       </div>
 
-      {/* Interactive Ember Scrub Slider when items overflow */}
+      {/* Interactive Ember Scrub Slider when items overflow — thumb & range share exact inner width */}
       {canScroll && (
-        <div className={`relative flex items-center ${compact ? 'mt-2 px-8' : 'mt-3 px-10'} group`}>
-          <div className="relative w-full h-1.5 bg-white/[0.1] rounded-full overflow-hidden">
+        <div className={`${compact ? 'mt-2 px-8' : 'mt-3 px-10'} group`}>
+          <div className="relative flex items-center w-full h-4">
+            <div className="relative w-full h-1.5 bg-white/[0.1] rounded-full overflow-hidden">
+              <div
+                className="absolute top-0 left-0 bottom-0 rounded-full"
+                style={{
+                  width: `${Math.max(8, progressPercent)}%`,
+                  background: 'linear-gradient(90deg, #FF124F 0%, #FF4D1A 55%, #FF7A00 100%)',
+                }}
+              />
+            </div>
             <div
-              className="absolute top-0 left-0 bottom-0 rounded-full"
-              style={{
-                width: `${Math.max(8, progressPercent)}%`,
-                background: 'linear-gradient(90deg, #FF124F 0%, #FF4D1A 55%, #FF7A00 100%)',
-              }}
+              className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_10px_rgba(255,122,0,0.85)] border-2 border-brand-orange pointer-events-none transform -translate-x-1/2"
+              style={{ left: `${progressPercent}%` }}
+            />
+            <input
+              type="range"
+              min={0}
+              max={maxScroll}
+              value={scrollLeft}
+              onChange={handleRangeChange}
+              aria-label={`Прокрутка: ${ariaLabel}`}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
           </div>
-          <div
-            className="absolute w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_10px_rgba(255,122,0,0.85)] border border-brand-orange/60 pointer-events-none transform -translate-x-1/2"
-            style={{
-              left: `calc(${compact ? '2rem' : '2.5rem'} + (100% - ${compact ? '4rem' : '5rem'}) * ${progressPercent / 100})`,
-            }}
-          />
-          <input
-            type="range"
-            min={0}
-            max={maxScroll}
-            value={scrollLeft}
-            onChange={handleRangeChange}
-            aria-label={`Прокрутка: ${ariaLabel}`}
-            className="absolute inset-0 w-full h-6 -top-2 opacity-0 cursor-pointer"
-          />
         </div>
       )}
     </div>

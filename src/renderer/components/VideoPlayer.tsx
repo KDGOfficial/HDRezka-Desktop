@@ -172,6 +172,7 @@ export const VideoPlayer: React.FC = () => {
   const lastUiSyncRef = useRef(0);
   const showControlsRef = useRef(showControls);
   const currentQualityRef = useRef(currentQuality);
+  const announcedStreamRef = useRef<any>(null);
 
   showControlsRef.current = showControls;
   currentQualityRef.current = currentQuality;
@@ -396,12 +397,15 @@ export const VideoPlayer: React.FC = () => {
     video.volume = volume;
     video.defaultPlaybackRate = playbackSpeed;
 
-    if (streamData?.upgradedMirror && streamData?.upgradedFromQuality) {
-      showToast(
-        `Автопереключение на ${currentQualityRef.current} (${streamData.sourceName || 'зеркало HD'}) вместо ${streamData.upgradedFromQuality}`
-      );
-    } else if (streamData?.isAlternative) {
-      showToast(`Источник: ${streamData.sourceName || 'альтернативный поток'}`);
+    if (streamData && announcedStreamRef.current !== streamData) {
+      announcedStreamRef.current = streamData;
+      if (streamData.upgradedMirror && streamData.upgradedFromQuality) {
+        showToast(
+          `Автопереключение на ${currentQualityRef.current} (${streamData.sourceName || 'зеркало HD'}) вместо ${streamData.upgradedFromQuality}`
+        );
+      } else if (streamData.isAlternative) {
+        showToast(`Источник: ${streamData.sourceName || 'альтернативный поток'}`);
+      }
     }
 
     if (hlsRef.current) {
@@ -415,10 +419,15 @@ export const VideoPlayer: React.FC = () => {
     if (isHls && Hls.isSupported()) {
       let networkRetries = 0;
       let mediaRetries = 0;
-      let introGuardApplied = false;
+      let introGuardChecked = false;
+      let triedAltHls = false;
 
       const hls = new Hls({
         enableWorker: true,
+        // Wait for MANIFEST_PARSED to lock exact 1080p level before fetching fragment 0 (no pixelated intro!)
+        autoStartLoad: false,
+        // Prefetch next VOD fragment to eliminate micro-stutters between segments
+        startFragPrefetch: true,
         // VOD movies must NOT use LL-HLS lowLatencyMode (it starves buffer and skips intro segments)
         lowLatencyMode: false,
         startPosition: startSec,
@@ -445,7 +454,7 @@ export const VideoPlayer: React.FC = () => {
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
         if (cleanedUp) return;
 
-        // Lock HLS level to requested resolution (highest bitrate variant) so 1080p is never pixelated
+        // Lock HLS level to requested resolution (highest bitrate variant) BEFORE loading fragment 0
         if (hls.levels && hls.levels.length > 1) {
           const targetIdx = findBestHlsLevelIndex(hls.levels, currentQualityRef.current);
           if (targetIdx >= 0) {
@@ -476,16 +485,24 @@ export const VideoPlayer: React.FC = () => {
           }
         }
 
-        // Explicitly anchor playback at startSec (0:00 for fresh playback) so intro is never cut off
-        video.currentTime = startSec;
+        // Start loading explicitly from startSec (0:00 for fresh playback) so intro is never cut off
+        hls.startLoad(startSec);
         video.play().catch(() => setIsPlaying(false));
       });
 
-      hls.on(Hls.Events.LEVEL_LOADED, () => {
-        if (cleanedUp || introGuardApplied) return;
-        if (startSec === 0 && !userSeekedRef.current && video.currentTime > 1.2 && video.currentTime < 45) {
-          introGuardApplied = true;
-          video.currentTime = 0;
+      // One-shot initial intro guard (never re-fires on later quality switches or playlist reloads)
+      hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+        if (cleanedUp || introGuardChecked) return;
+        introGuardChecked = true;
+        const firstFragStart = data?.details?.fragments?.[0]?.start ?? 0;
+        if (
+          startSec === 0 &&
+          !userSeekedRef.current &&
+          video.played.length === 0 &&
+          video.currentTime > firstFragStart + 2.0 &&
+          video.currentTime < 45
+        ) {
+          video.currentTime = firstFragStart;
         }
       });
 
@@ -517,7 +534,24 @@ export const VideoPlayer: React.FC = () => {
               hls.startLoad(video.currentTime || startSec);
               return;
             }
-            const altMp4 = streamData?.streams?.find((s) => s.mp4 && s.mp4 !== currentStreamUrl)?.mp4;
+            // Try an alternate HLS stream before falling back to direct MP4
+            if (!triedAltHls) {
+              const altHls = streamData?.streams?.find(
+                (s) => s.hls && s.hls !== currentStreamUrl && /\.m3u8(?:$|\?)/i.test(s.hls)
+              )?.hls;
+              if (altHls) {
+                triedAltHls = true;
+                networkRetries = 1;
+                showToast('Переключение на резервный поток...');
+                hls.loadSource(altHls);
+                hls.startLoad(video.currentTime || startSec);
+                return;
+              }
+            }
+            // Only assign genuine non-HLS MP4 URLs to native <video src> (Chromium cannot play .m3u8 natively)
+            const altMp4 = streamData?.streams?.find(
+              (s) => s.mp4 && s.mp4 !== currentStreamUrl && !/\.m3u8(?:$|\?)/i.test(s.mp4)
+            )?.mp4;
             if (altMp4 && videoRef.current) {
               hls.destroy();
               hlsRef.current = null;
@@ -832,7 +866,7 @@ export const VideoPlayer: React.FC = () => {
     >
       {/* On-screen Toast Notification */}
       {toastMessage && (
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full logo-pill backdrop-blur-xl text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 pointer-events-none animate-fade-in">
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full bg-[#140E12]/92 border border-white/20 text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 pointer-events-none animate-fade-in">
           <span>{toastMessage}</span>
         </div>
       )}
@@ -1092,7 +1126,7 @@ export const VideoPlayer: React.FC = () => {
               type="button"
               onClick={handleClose}
               aria-label={t.player.back}
-              className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-white backdrop-blur-xl cursor-pointer active:scale-95"
+              className="p-2.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] border border-white/10 text-white cursor-pointer active:scale-95"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
@@ -1132,7 +1166,7 @@ export const VideoPlayer: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setShowScaleMenu((prev) => !prev)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-zinc-200 hover:text-white backdrop-blur-xl text-[11px] font-bold border border-white/15 cursor-pointer"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] text-zinc-200 hover:text-white text-[11px] font-bold border border-white/15 cursor-pointer"
                     title={t.player.pinnedPresets}
                   >
                     <Scaling className="w-3.5 h-3.5 text-brand-orange" />
@@ -1172,7 +1206,7 @@ export const VideoPlayer: React.FC = () => {
               type="button"
               onClick={toggleUiLock}
               aria-label={t.player.hideUi}
-              className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white backdrop-blur-xl cursor-pointer"
+              className="p-2.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white cursor-pointer"
               title={t.player.hideUi}
             >
               <EyeOff className="w-4 h-4" />
@@ -1183,10 +1217,10 @@ export const VideoPlayer: React.FC = () => {
               onClick={handleTogglePin}
               aria-label={isPinned ? t.player.unpinWindow : t.player.pinWindow}
               aria-pressed={isPinned}
-              className={`p-2.5 rounded-full backdrop-blur-xl border cursor-pointer ${
+              className={`p-2.5 rounded-full border cursor-pointer ${
                 isPinned
                   ? 'btn-ember border-white/25 text-white'
-                  : 'bg-white/[0.1] hover:bg-white/[0.2] border-white/10 text-zinc-200 hover:text-white'
+                  : 'bg-[#140E12]/85 hover:bg-white/[0.2] border-white/10 text-zinc-200 hover:text-white'
               }`}
               title={isPinned ? t.player.unpinWindow : t.player.pinWindow}
             >
@@ -1520,32 +1554,68 @@ export const VideoPlayer: React.FC = () => {
           </div>
         )}
 
-        {/* Translator Menu Popup */}
+        {/* Translator Menu Popup (uses HorizontalSlider when many voiceovers) */}
         {activeMenu === 'translator' && mediaDetails?.translators && (
-          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[260px] max-w-[340px] max-h-72 overflow-y-auto space-y-1">
-            <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
-              <span>Выбор озвучки</span>
-              <span className="font-mono text-zinc-500">{mediaDetails.translators.length}</span>
-            </div>
-            {mediaDetails.translators.map((tr) => (
-              <button
-                key={tr.id}
-                type="button"
-                onClick={() => {
-                  switchTranslator(tr.id, videoRef.current?.currentTime || 0);
-                  setActiveMenu('none');
-                }}
-                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
-                  translatorId === tr.id
-                    ? 'btn-ember text-white'
-                    : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
-                }`}
+          mediaDetails.translators.length > 8 ? (
+            <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[420px] max-w-[92vw] space-y-2.5">
+              <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-1">
+                <span>Выбор озвучки</span>
+                <span className="font-mono text-zinc-400 tabular-nums">{mediaDetails.translators.length}</span>
+              </div>
+              <HorizontalSlider
+                ariaLabel="Выбор озвучки"
+                compact
+                itemCount={mediaDetails.translators.length}
+                trackClassName="grid grid-rows-3 grid-flow-col auto-cols-[185px] gap-1.5"
               >
-                <span className="truncate pr-2">{tr.name}</span>
-                {tr.premium && <span className="text-[9px] bg-brand-gold/20 text-brand-gold px-1.5 py-0.5 rounded-full">PRO</span>}
-              </button>
-            ))}
-          </div>
+                {mediaDetails.translators.map((tr) => (
+                  <button
+                    key={tr.id}
+                    type="button"
+                    aria-pressed={translatorId === tr.id}
+                    onClick={() => {
+                      switchTranslator(tr.id, videoRef.current?.currentTime || 0);
+                      setActiveMenu('none');
+                    }}
+                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
+                      translatorId === tr.id
+                        ? 'btn-ember text-white'
+                        : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.14] hover:text-white'
+                    }`}
+                  >
+                    <span className="truncate pr-1.5">{tr.name}</span>
+                    {tr.premium && <span className="text-[9px] bg-brand-gold/20 text-brand-gold px-1.5 py-0.5 rounded-full flex-shrink-0">PRO</span>}
+                  </button>
+                ))}
+              </HorizontalSlider>
+            </div>
+          ) : (
+            <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[260px] max-w-[340px] max-h-72 overflow-y-auto space-y-1">
+              <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
+                <span>Выбор озвучки</span>
+                <span className="font-mono text-zinc-500">{mediaDetails.translators.length}</span>
+              </div>
+              {mediaDetails.translators.map((tr) => (
+                <button
+                  key={tr.id}
+                  type="button"
+                  aria-pressed={translatorId === tr.id}
+                  onClick={() => {
+                    switchTranslator(tr.id, videoRef.current?.currentTime || 0);
+                    setActiveMenu('none');
+                  }}
+                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
+                    translatorId === tr.id
+                      ? 'btn-ember text-white'
+                      : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
+                  }`}
+                >
+                  <span className="truncate pr-2">{tr.name}</span>
+                  {tr.premium && <span className="text-[9px] bg-brand-gold/20 text-brand-gold px-1.5 py-0.5 rounded-full">PRO</span>}
+                </button>
+              ))}
+            </div>
+          )
         )}
 
         {/* Episodes Menu Popup (with Season & Episode Sliders) */}
@@ -1575,6 +1645,7 @@ export const VideoPlayer: React.FC = () => {
                     <button
                       key={s.id}
                       type="button"
+                      aria-pressed={menuSeason.id === s.id}
                       onClick={() => setEpisodeMenuSeasonId(s.id)}
                       className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap cursor-pointer ${
                         menuSeason.id === s.id
@@ -1599,6 +1670,7 @@ export const VideoPlayer: React.FC = () => {
                     <button
                       key={ep.episodeId}
                       type="button"
+                      aria-pressed={seasonId === menuSeason.id && episodeId === ep.episodeId}
                       onClick={() => {
                         switchEpisode(menuSeason.id, ep.episodeId);
                         setActiveMenu('none');

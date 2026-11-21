@@ -73,13 +73,18 @@ const ADBLOCK_RUNTIME_SCRIPT = `
     if (window.__hdrezkaAdBlockInstalled) return;
     window.__hdrezkaAdBlockInstalled = true;
 
+    const baseDom = (h) => h.replace(/^www\\./i, '').split('.').slice(-2).join('.').toLowerCase();
+    const isGoogleHost = (h) => /(?:^|\\.)google\\.[a-z]{2,}(?:\\.[a-z]{2})?$/i.test(h);
+
     const origOpen = window.open;
     window.open = function(url, target, features) {
       if (window.__hdrezkaAdBlockEnabled) {
         try {
           if (!url) return null;
           const u = new URL(String(url), location.href);
-          if (u.hostname !== location.hostname) return null;
+          if (!isGoogleHost(location.hostname) && baseDom(u.hostname) !== baseDom(location.hostname)) {
+            return null;
+          }
         } catch {
           return null;
         }
@@ -294,7 +299,14 @@ export const BrowserPage: React.FC = () => {
           ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 99px; }
           ::-webkit-scrollbar-thumb:hover { background: #FF4D1A; }
         `);
-        if (adBlockEnabledRef.current) {
+        const liveStats = await window.api?.getAdBlockStats?.().catch(() => null);
+        const shouldBlock = liveStats ? liveStats.enabled : adBlockEnabledRef.current;
+        if (liveStats) {
+          adBlockEnabledRef.current = liveStats.enabled;
+          setAdBlockEnabled(liveStats.enabled);
+          setBlockedCount(liveStats.blockedCount);
+        }
+        if (shouldBlock) {
           adBlockCssKeyRef.current = await wv.insertCSS?.(COSMETIC_ADBLOCK_CSS);
           await wv.executeJavaScript?.(ADBLOCK_RUNTIME_SCRIPT).catch(() => {});
         }

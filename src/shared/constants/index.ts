@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.44';
+export const APP_VERSION = '0.0.45';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
@@ -39,16 +39,18 @@ export const ANIME_MIRROR_SEEDS = [
 ];
 
 const AD_HOST_RE =
-  /(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.|imasdk\.googleapis\.com|securepubads\.g\.doubleclick\.net|adtrafficquality\.google|adnxs\.com|adfox\.ru|an\.yandex\.ru|bs\.yandex\.ru|awaps\.yandex\.ru|mc\.yandex\.ru|metrika\.yandex\.|direct\.yandex\.|mgid\.com|marketgid\.com|lentainform\.com|exoclick\.com|exosrv\.com|exdynsrv\.com|realsrv\.com|tsyndicate\.com|propellerads\.com|popads\.net|popcash\.net|clickadu\.com|clickadilla\.com|adsterra\.com|hilltopads\.net|juicyads\.com|trafficjunky\.net|trafficfactory\.biz|trafmag\.com|adriver\.ru|adskeeper\.co\.uk|outbrain\.com|taboola\.com|criteo\.com|rtbhouse\.com|betweendigital\.com|videoroll\.net|viqeo\.tv|mixmarket\.biz|directadvert\.ru|recreativ\.ru|smi2\.ru|teasernet\.com|bodyclick\.net|gnezdo\.ru|advmaker\.net|octoclick\.net|kadam\.net|adspyglass\.com|admaven\.com|ad-maven\.com|monetag\.com|richads\.com|evadav\.com|pushhouse\.net|rollerads\.com|galaksion\.com|acint\.net|nativeroll\.tv|videonow\.ru|buzzoola\.com|pladform\.ru|rutarget\.ru|target\.my\.com|ad\.mail\.ru|r\.mail\.ru|top-fwz1\.mail\.ru|yadro\.ru|tns-counter\.ru|relap\.io|teads\.tv|pubmatic\.com|rubiconproject\.com|openx\.net|casalemedia\.com|smartadserver\.com|connatix\.com|springserve\.com|spotxchange\.com|onclkds\.com|popunder\.net|clickunder\.ru|zeroredirect\.com|bidvertiser\.com|revcontent\.com|mellowads\.com|luxup\.ru|scorecardresearch\.com|quantserve\.com|clarity\.ms|hotjar\.com|1xbet|1win|1xslots|mostbet|pinup|pin-up|vulcan|vulkan|azino|melbet|fonbet|vavada|joycasino|parimatch|betwinner|betboom|olimpbet|leonbets|pokerdom|ggbet|winline|betcity|ligastavok|liga-stavok|marathonbet|zenitbet|tennisi|catcasino|freshcasino|solcasino|jetcasino|dripcasino|starda|r7casino|dragonmoney|linebet|megapari|betandyou|888starz|spinbetter|bc\.game|stake\.com)/i;
+  /(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.|imasdk\.googleapis\.com|securepubads\.g\.doubleclick\.net|adtrafficquality\.google|adnxs\.com|adfox\.ru|an\.yandex\.ru|bs\.yandex\.ru|awaps\.yandex\.ru|mc\.yandex\.ru|metrika\.yandex\.|direct\.yandex\.|mgid\.com|mgid\.ru|marketgid\.com|lentainform\.com|exoclick\.com|exosrv\.com|exdynsrv\.com|realsrv\.com|tsyndicate\.com|propellerads\.com|popads\.net|popcash\.net|clickadu\.com|clickadilla\.com|adsterra\.com|hilltopads\.net|juicyads\.com|trafficjunky\.net|trafficfactory\.biz|trafmag\.com|traffichunt\.com|traforet\.com|traffcore\.com|uniontraff\.com|adriver\.ru|adskeeper\.co\.uk|adskeeper\.com|admixer\.net|adrtx\.net|adhigh\.net|adtelligent\.com|adsrvr\.org|aniview\.com|bidswitch\.net|bidgear\.com|lkqd\.net|vidoomy\.com|a-ads\.com|outbrain\.com|taboola\.com|criteo\.com|rtbhouse\.com|betweendigital\.com|videoroll\.net|vidroll\.ru|viqeo\.tv|mixmarket\.biz|market-place\.su|directadvert\.ru|recreativ\.ru|smi2\.ru|teasernet\.com|tizerlady\.net|pay-click\.ru|mclick\.ru|bodyclick\.net|gnezdo\.ru|advmaker\.net|octoclick\.net|kadam\.net|adspyglass\.com|admaven\.com|ad-maven\.com|monetag\.com|richads\.com|evadav\.com|pushhouse\.net|pushame\.com|pushprofit\.ru|rollerads\.com|galaksion\.com|acint\.net|nativeroll\.tv|videonow\.ru|buzzoola\.com|pladform\.ru|rutarget\.ru|target\.my\.com|ad\.mail\.ru|r\.mail\.ru|top\.mail\.ru|top-fwz1\.mail\.ru|yadro\.ru|tns-counter\.ru|relap\.io|teads\.tv|pubmatic\.com|rubiconproject\.com|openx\.net|casalemedia\.com|smartadserver\.com|connatix\.com|springserve\.com|spotxchange\.com|onclkds\.com|popunder\.net|clickunder\.ru|zeroredirect\.com|bidvertiser\.com|revcontent\.com|mellowads\.com|luxup\.ru|scorecardresearch\.com|quantserve\.com|clarity\.ms|hotjar\.com|1xbet|1x-bet|1win|1xslots|mostbet|most-bet|pinup|pin-up|vulcan|vulkan|azino|melbet|mel-bet|fonbet|fon-bet|vavada|joycasino|parimatch|betwinner|betboom|olimpbet|leonbets|pokerdom|ggbet|winline|betcity|ligastavok|liga-stavok|marathonbet|zenitbet|tennisi|catcasino|freshcasino|solcasino|jetcasino|dripcasino|starda|r7casino|dragonmoney|linebet|megapari|betandyou|888starz|spinbetter|bc\.game|stake\.com)/i;
 
 const AD_VIDEO_PATH_RE =
-  /(?:\/(?:vast|vpaid|preroll|midroll|reklama|ad_video|adv_video|video_ad|commercials?)\b|[?&](?:vast|vpaid|ad_tag|ad_url|preroll|midroll)=)/i;
+  /(?:\/(?:vast|vpaid|vmap|preroll|midroll|reklama|ad_video|adv_video|ad-video|advideo|video_ad|commercials?|outstream|instream|ads|adv)\/(?:[^?#]*)|[?&](?:vast|vpaid|vmap|ad_tag|ad_url|preroll|midroll|adv)=)/i;
 
 const AD_PATH_RE =
-  /(?:\/(?:vast|vpaid|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|reklama|doubleclick|pcode\/adfox|pagead\/)\b|[?&](?:vast|ad_tag|ad_url|preroll|popunder|clickunder)=)/i;
+  /(?:\/(?:vast|vpaid|vmap|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|branding\/|reklama|doubleclick|pcode\/adfox|pagead\/|ads\/|adv\/)|\/(?:pop|popunder|clickunder|vast|vmap)\.(?:js|xml|json)(?:$|\?)|[?&](?:vast|vpaid|vmap|ad_tag|ad_url|preroll|popunder|clickunder)=)/i;
 
 const TRUSTED_MEDIA_PORTAL_RE =
   /(?:^|\.)(?:kinobase\.org|kinogo\.[a-z]+|yummyanime\.[a-z]+|yummyani\.[a-z]+|yani\.tv|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
+
+const GOOGLE_SEARCH_HOST_RE = /(?:^|\.)google\.[a-z]{2,}(?:\.[a-z]{2})?$/i;
 
 export function isAdUrl(url: string): boolean {
   if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) return false;
@@ -74,6 +76,8 @@ export function isCrossOriginPopupAd(popupUrl: string, sourceUrl?: string): bool
     if (TRUSTED_MEDIA_PORTAL_RE.test(target.hostname)) return false;
     if (!sourceUrl || (!sourceUrl.startsWith('http://') && !sourceUrl.startsWith('https://'))) return true;
     const source = new URL(sourceUrl);
+    // Allow clicking non-ad search results that open in a new tab from Google Search
+    if (GOOGLE_SEARCH_HOST_RE.test(source.hostname)) return false;
     const baseDomain = (h: string) => h.replace(/^www\./i, '').split('.').slice(-2).join('.').toLowerCase();
     // Cross-origin window.open() on streaming sites is overwhelmingly popunder/clickunder ad traffic
     return baseDomain(target.hostname) !== baseDomain(source.hostname);
