@@ -286,7 +286,7 @@ export function pickBetterQualityStream(
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.45';
+  public version = '0.0.46';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -4061,12 +4061,13 @@ export class RezkaProvider implements IProvider {
       try {
         const altStream = await this.findAlternativeStream({
           mediaId: params.mediaId,
-          title: cachedItem?.title,
-          origTitle: cachedItem?.origTitle,
-          year: cachedItem?.year,
+          title: effectiveTitle,
+          origTitle: effectiveOrigTitle,
+          year: effectiveYear,
           season: params.season,
           episode: params.episode,
           translatorId: params.translatorId,
+          translatorName: params.translatorName,
         });
         if (altStream && altStream.streams && altStream.streams.length > 0) {
           return altStream;
@@ -4076,7 +4077,7 @@ export class RezkaProvider implements IProvider {
 
     if (isUnreleasedMovie) {
       throw new Error(
-        `Фильм «${cachedItem?.title || 'Диггер'}» (${cachedItem?.year || currentYear}) ещё не вышел в прокат или цифровой релиз. Доступен официальный трейлер.`
+        `Фильм «${effectiveTitle || 'Диггер'}» (${effectiveYear || currentYear}) ещё не вышел в прокат или цифровой релиз. Доступен официальный трейлер.`
       );
     }
 

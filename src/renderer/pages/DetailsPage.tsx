@@ -400,8 +400,8 @@ export const DetailsPage: React.FC = () => {
       {/* Seasons & Episodes Grid / Slider */}
       {isSeriesLike && seasons.length > 0 && (
         <section className="mb-8 p-6 rounded-3xl cinema-panel">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-white/[0.06]">
-            <h2 className="font-display text-sm font-black text-white uppercase tracking-wider flex items-center gap-2.5 flex-shrink-0">
+          <div className="mb-5 pb-4 border-b border-white/[0.06] space-y-3.5">
+            <h2 className="font-display text-sm font-black text-white uppercase tracking-wider flex items-center gap-2.5">
               <span
                 className="w-1.5 h-4 rounded-full"
                 style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
@@ -419,7 +419,7 @@ export const DetailsPage: React.FC = () => {
               ariaLabel={t.details.season}
               compact
               itemCount={seasons.length}
-              className="sm:max-w-[65%]"
+              className="w-full"
               trackClassName="flex items-center gap-1.5"
             >
               {seasons.map((s) => (

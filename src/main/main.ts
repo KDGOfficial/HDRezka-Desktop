@@ -10,6 +10,23 @@ const SUBFRAME_ADBLOCK_SCRIPT = `
     window.__hdrezkaAdBlockEnabled = true;
     if (window.__hdrezkaSubframeAdBlock) return;
     window.__hdrezkaSubframeAdBlock = true;
+    if (!document.getElementById('hdrezka-adblock-css')) {
+      const style = document.createElement('style');
+      style.id = 'hdrezka-adblock-css';
+      style.textContent =
+        '[id*="adfox"],[class*="adfox"],[class*="ad-overlay"],[class*="ad_overlay"],[class*="vast-"],' +
+        '[class*="branding-"],.brand-link,a.branding,.teasers,.teaser-block,' +
+        'iframe[src*="adfox"],iframe[src*="doubleclick"],iframe[src*="googlesyndication"],' +
+        'iframe[src*="exoclick"],iframe[src*="adsterra"],iframe[src*="mgid"],' +
+        'iframe[src*="1xbet"],iframe[src*="mostbet"],iframe[src*="pinup"],iframe[src*="vavada"],iframe[src*="melbet"],' +
+        'a[href*="1xbet"],a[href*="1win"],a[href*="mostbet"],a[href*="pinup"],a[href*="vulcan"],' +
+        'a[href*="vulkan"],a[href*="azino"],a[href*="vavada"],a[href*="melbet"],a[href*="fonbet"],' +
+        'a[href*="winline"],a[href*="betboom"],a[href*="betcity"],a[href*="parimatch"],' +
+        'div[style*="z-index: 2147483647"]:not(:has(video)),div[style*="z-index: 9999999"]:not(:has(video)),' +
+        'a[style*="z-index: 2147483647"],a[style*="z-index: 9999999"]' +
+        '{display:none!important;visibility:hidden!important;pointer-events:none!important;}';
+      (document.head || document.documentElement)?.appendChild(style);
+    }
     const baseDom = (h) => h.replace(/^www\\./i, '').split('.').slice(-2).join('.').toLowerCase();
     const origOpen = window.open;
     window.open = function(url, target, features) {
@@ -24,6 +41,7 @@ const SUBFRAME_ADBLOCK_SCRIPT = `
       }
       return origOpen ? origOpen.call(window, url, target, features) : null;
     };
+    const skipAdRe = /^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)(?:[\\s»›>→➜▶✕×!.]*)$/i;
     const clean = () => {
       if (!window.__hdrezkaAdBlockEnabled) return;
       document.querySelectorAll('a[target="_blank"], div[onclick], div[style*="fixed"], div[style*="absolute"]').forEach((el) => {
@@ -41,7 +59,7 @@ const SUBFRAME_ADBLOCK_SCRIPT = `
       });
       document.querySelectorAll('button, div, span, a').forEach((btn) => {
         const txt = (btn.textContent || '').trim();
-        if (/^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)$/i.test(txt)) {
+        if (skipAdRe.test(txt)) {
           btn.click();
         }
       });

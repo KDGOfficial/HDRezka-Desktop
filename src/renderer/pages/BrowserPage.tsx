@@ -109,9 +109,9 @@ const ADBLOCK_RUNTIME_SCRIPT = `
         }
       });
       // Auto-skip video pre-roll ads if an explicit Skip Ad button appears
-      document.querySelectorAll('button, div, span').forEach((btn) => {
+      document.querySelectorAll('button, div, span, a').forEach((btn) => {
         const txt = (btn.textContent || '').trim();
-        if (/^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)$/i.test(txt)) {
+        if (/^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)(?:[\\s»›>→➜▶✕×!.]*)$/i.test(txt)) {
           btn.click();
         }
       });

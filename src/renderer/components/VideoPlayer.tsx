@@ -172,7 +172,7 @@ export const VideoPlayer: React.FC = () => {
   const lastUiSyncRef = useRef(0);
   const showControlsRef = useRef(showControls);
   const currentQualityRef = useRef(currentQuality);
-  const announcedStreamRef = useRef<any>(null);
+  const announcedStreamRef = useRef<string | null>(null);
 
   showControlsRef.current = showControls;
   currentQualityRef.current = currentQuality;
@@ -357,6 +357,9 @@ export const VideoPlayer: React.FC = () => {
   }, [isPlaying, activeMenu, isUiLocked]);
 
   useEffect(() => {
+    if (!isOpen) {
+      announcedStreamRef.current = null;
+    }
     if (!isOpen || !currentStreamUrl) {
       if (videoRef.current) {
         videoRef.current.pause();
@@ -397,8 +400,11 @@ export const VideoPlayer: React.FC = () => {
     video.volume = volume;
     video.defaultPlaybackRate = playbackSpeed;
 
-    if (streamData && announcedStreamRef.current !== streamData) {
-      announcedStreamRef.current = streamData;
+    const streamAnnounceKey = streamData
+      ? `${mediaDetails?.id || ''}|${seasonId || 0}|${episodeId || 0}|${translatorId}|${streamData.sourceName || ''}|${streamData.upgradedMirror ? 'up' : 'base'}`
+      : null;
+    if (streamData && streamAnnounceKey && announcedStreamRef.current !== streamAnnounceKey) {
+      announcedStreamRef.current = streamAnnounceKey;
       if (streamData.upgradedMirror && streamData.upgradedFromQuality) {
         showToast(
           `Автопереключение на ${currentQualityRef.current} (${streamData.sourceName || 'зеркало HD'}) вместо ${streamData.upgradedFromQuality}`
@@ -415,11 +421,13 @@ export const VideoPlayer: React.FC = () => {
 
     let cleanedUp = false;
     let onNativeLoadedMetadata: (() => void) | null = null;
+    let onHlsLoadedData: (() => void) | null = null;
 
     if (isHls && Hls.isSupported()) {
       let networkRetries = 0;
       let mediaRetries = 0;
-      let introGuardChecked = false;
+      let firstFragStart = 0;
+      let introGuardDone = startSec !== 0;
       let triedAltHls = false;
 
       const hls = new Hls({
@@ -490,21 +498,40 @@ export const VideoPlayer: React.FC = () => {
         video.play().catch(() => setIsPlaying(false));
       });
 
-      // One-shot initial intro guard (never re-fires on later quality switches or playlist reloads)
-      hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
-        if (cleanedUp || introGuardChecked) return;
-        introGuardChecked = true;
-        const firstFragStart = data?.details?.fragments?.[0]?.start ?? 0;
-        if (
-          startSec === 0 &&
-          !userSeekedRef.current &&
-          video.played.length === 0 &&
-          video.currentTime > firstFragStart + 2.0 &&
-          video.currentTime < 45
-        ) {
+      // Record fragment 0 start on playlist load; run one-shot intro guard once first media actually buffers/decodes
+      const checkIntroGuard = (markDone: boolean) => {
+        if (cleanedUp || introGuardDone) return;
+        if (startSec !== 0 || userSeekedRef.current) {
+          introGuardDone = true;
+          return;
+        }
+        if (video.currentTime > firstFragStart + 1.5 && video.currentTime < 45) {
           video.currentTime = firstFragStart;
+          introGuardDone = true;
+          return;
+        }
+        if (markDone) {
+          introGuardDone = true;
+        }
+      };
+
+      hls.on(Hls.Events.LEVEL_LOADED, (_, data) => {
+        if (cleanedUp || introGuardDone) return;
+        const start = data?.details?.fragments?.[0]?.start;
+        if (typeof start === 'number' && Number.isFinite(start)) {
+          firstFragStart = start;
         }
       });
+
+      hls.on(Hls.Events.FRAG_BUFFERED, (_, data) => {
+        if (cleanedUp || introGuardDone) return;
+        if (data?.frag?.type === 'main') {
+          checkIntroGuard(false);
+        }
+      });
+
+      onHlsLoadedData = () => checkIntroGuard(true);
+      video.addEventListener('loadeddata', onHlsLoadedData, { once: true });
 
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (cleanedUp) return;
@@ -608,6 +635,9 @@ export const VideoPlayer: React.FC = () => {
       cleanedUp = true;
       if (onNativeLoadedMetadata) {
         video.removeEventListener('loadedmetadata', onNativeLoadedMetadata);
+      }
+      if (onHlsLoadedData) {
+        video.removeEventListener('loadeddata', onHlsLoadedData);
       }
       if (hlsRef.current) {
         hlsRef.current.destroy();

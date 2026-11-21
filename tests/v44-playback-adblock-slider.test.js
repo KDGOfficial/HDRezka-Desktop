@@ -29,10 +29,10 @@ const {
   pickBetterQualityStream,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('v0.0.45 version synchronization across constants and provider', () => {
+test('v0.0.46 version synchronization across constants and provider', () => {
   const provider = new RezkaProvider();
-  assert.equal(APP_VERSION, '0.0.45');
-  assert.equal(provider.version, '0.0.45');
+  assert.equal(APP_VERSION, '0.0.46');
+  assert.equal(provider.version, '0.0.46');
 });
 
 test('parseHlsMasterVariants handles cinema 1920x800 1080p, picks highest bitrate per quality, and never invents fake 1080p', () => {
@@ -287,18 +287,106 @@ test('VideoPlayer, usePlayerStore, HorizontalSlider & main.ts enforce lag-free V
 
   // Issue 1: HorizontalSlider wired into DetailsPage, VideoPlayer episodes & translator popups, non-passive wheel, MutationObserver
   assert.match(detailsTsx, /HorizontalSlider/);
+  assert.doesNotMatch(detailsTsx, /sm:max-w-\[65%\]/);
   assert.match(videoPlayerTsx, /HorizontalSlider/);
   assert.match(videoPlayerTsx, /mediaDetails\.translators\.length > 8/);
   assert.match(sliderTsx, /type="range"/);
   assert.match(sliderTsx, /passive:\s*false/);
   assert.match(sliderTsx, /MutationObserver/);
   assert.match(globalsCss, /overscroll-behavior-x:\s*contain/);
+  assert.doesNotMatch(globalsCss, /\.slider-track\s*\{[^}]*scroll-behavior:\s*smooth/s);
 
-  // Issue 5: main.ts blocks will-redirect, cross-origin popups, and injects cross-origin subframe AdBlock; BrowserPage removes allowpopups
+  // Issue 6 & 4: post-buffer intro guard (FRAG_BUFFERED + loadeddata) and stable streamAnnounceKey
+  assert.match(videoPlayerTsx, /Hls\.Events\.FRAG_BUFFERED/);
+  assert.match(videoPlayerTsx, /addEventListener\('loadeddata',\s*onHlsLoadedData/);
+  assert.match(videoPlayerTsx, /streamAnnounceKey/);
+
+  // Issue 5: main.ts blocks will-redirect, cross-origin popups, and injects cross-origin subframe AdBlock + cosmetic CSS; BrowserPage removes allowpopups
   assert.match(mainTs, /will-redirect/);
   assert.match(mainTs, /did-frame-finish-load/);
   assert.match(mainTs, /webFrameMain/);
+  assert.match(mainTs, /hdrezka-adblock-css/);
   assert.match(mainTs, /isCrossOriginPopupAd/);
   assert.doesNotMatch(browserTsx, /allowpopups:\s*'true'/);
   assert.match(browserTsx, /ADBLOCK_RUNTIME_SCRIPT/);
+});
+
+test('Cold-cache getStream fallback after HDRezka mirror failure forwards effective title, year, and translatorName', async () => {
+  const provider = new RezkaProvider('https://hdrezka-home.tv', ['https://hdrezka-home.tv']);
+  let fallbackArgs = null;
+  provider.findAlternativeStream = async (args) => {
+    fallbackArgs = args;
+    return {
+      streams: [{ quality: '1080p', hls: 'https://cdn.cinemar.cc/matrix_1080.m3u8', mp4: 'https://cdn.cinemar.cc/matrix_1080.m3u8' }],
+      subtitles: [],
+      isAlternative: true,
+      sourceName: 'Kinogo Cinemar',
+    };
+  };
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response('<html>503 Service Unavailable</html>', { status: 503 });
+  try {
+    const result = await provider.getStream({
+      mediaId: '88888',
+      translatorId: 111,
+      title: 'Матрица',
+      origTitle: 'The Matrix',
+      year: 1999,
+      translatorName: 'Дубляж',
+    });
+    assert.equal(result.sourceName, 'Kinogo Cinemar');
+    assert.equal(fallbackArgs?.title, 'Матрица');
+    assert.equal(fallbackArgs?.origTitle, 'The Matrix');
+    assert.equal(fallbackArgs?.year, 1999);
+    assert.equal(fallbackArgs?.translatorName, 'Дубляж');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('Skip Ad regex in main.ts and BrowserPage.tsx matches trailing arrows/symbols without false positives', () => {
+  const mainTs = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
+  const browserTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/BrowserPage.tsx'), 'utf8');
+
+  const extractRegex = (source) => {
+    const m = source.match(/(\/\^\(\?:пропустить[^/]+\/i)/);
+    assert.ok(m, 'Skip Ad regex must exist');
+    // Unescape double backslashes because regex lives inside a template literal script string
+    const raw = m[1].slice(1, -2).replace(/\\\\/g, '\\');
+    return new RegExp(raw, 'i');
+  };
+
+  const mainRe = extractRegex(mainTs);
+  const browserRe = extractRegex(browserTsx);
+
+  const shouldMatch = [
+    'Пропустить',
+    'Пропустить рекламу',
+    'Пропустить »',
+    'Пропустить рекламу →',
+    'Skip Ad',
+    'Skip Ads',
+    'Skip Ad →',
+    'Skip Ad >',
+    'Skip Ad ✕',
+    'Пропустить...',
+  ];
+  const shouldNotMatch = [
+    '',
+    'Пропустить вступление',
+    'Skip Intro',
+    'Пропустить (5)',
+    'Skip Ad in 3s',
+    'Смотреть дальше',
+  ];
+
+  for (const label of shouldMatch) {
+    assert.equal(mainRe.test(label), true, `main.ts regex should match "${label}"`);
+    assert.equal(browserRe.test(label), true, `BrowserPage.tsx regex should match "${label}"`);
+  }
+  for (const label of shouldNotMatch) {
+    assert.equal(mainRe.test(label), false, `main.ts regex must NOT match "${label}"`);
+    assert.equal(browserRe.test(label), false, `BrowserPage.tsx regex must NOT match "${label}"`);
+  }
 });
