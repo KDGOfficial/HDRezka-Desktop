@@ -4,7 +4,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { spawn } from 'child_process';
-import { IPC_CHANNELS, APP_VERSION } from '../../shared/constants';
+import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, isBadMirrorUrl } from '../../shared/constants';
 import { getMainWindow } from '../window';
 import { ProviderManager } from '../../core/providers/manager';
 import { AppDatabase } from '../database';
@@ -115,7 +115,9 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CHECK_MIRRORS, async () => {
     const provider = providerManager.getProvider();
-    return await provider.checkMirrors();
+    const curSettings = db.getSettings();
+    const mirrors = (curSettings.app?.mirrors || DEFAULT_MIRRORS).filter((m) => !isBadMirrorUrl(m));
+    return await provider.checkMirrors(mirrors);
   });
 
   ipcMain.handle(IPC_CHANNELS.FIND_ONLINE_MIRRORS, async () => {
@@ -123,9 +125,10 @@ export function registerIpcHandlers(): void {
     const result = await provider.findOnlineMirrors();
     if (result.added.length > 0) {
       const curSettings = db.getSettings();
-      // Combine newly found mirrors with existing settings, never removing any existing mirrors
-      const existing = curSettings.app?.mirrors || [];
-      const merged = Array.from(new Set([...existing, ...result.added]));
+      // Combine newly found mirrors with existing settings, filtering out bad domains
+      const existing = (curSettings.app?.mirrors || []).filter((m) => !isBadMirrorUrl(m));
+      const validAdded = result.added.filter((m) => !isBadMirrorUrl(m));
+      const merged = Array.from(new Set([...existing, ...validAdded]));
       db.saveSettings({
         app: {
           ...curSettings.app,
@@ -223,14 +226,16 @@ export function registerIpcHandlers(): void {
       }
     }
 
-    // Normalize known dead/broken/kinogo mirrors to active stable HDRezka mirror
-    const isBadMirror = !mirror || mirror.includes('hdrezka.ag') || mirror.includes('rezka-ua.tv') || mirror.includes('rezka.fi') || mirror.includes('kinogo');
-    if (isBadMirror) {
-      mirror = 'https://hdrezka.kim';
-      loadUrl = 'https://hdrezka.kim';
+    // Normalize known dead/broken/phishing mirrors to active stable HDRezka mirror
+    if (isBadMirrorUrl(mirror)) {
+      mirror = DEFAULT_MIRRORS[0];
+      loadUrl = DEFAULT_MIRRORS[0];
       providerManager.getProvider().setActiveMirror(mirror);
       db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
     }
+
+    // Proactively clear stale verification cookies to avoid HTTP 500
+    await clearStaleVerificationCookies(mirror);
 
     return new Promise<boolean>((resolve) => {
       const win = new BrowserWindow({

@@ -1,8 +1,10 @@
-import { app, BrowserWindow, net } from 'electron';
+import { app, BrowserWindow, net, session } from 'electron';
 import { createMainWindow, getMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
+import { DEFAULT_MIRRORS, isBadMirrorUrl } from '../shared/constants';
+import { clearStaleAnubisCookies } from '../core/providers/rezka/provider';
 
 // Ensure consistent app name and userData path across versions and packaging
 app.name = 'hdrezka-desktop';
@@ -12,7 +14,7 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 
 // Same UA as provider requests, so the site's bot-check cookie matches between the check window and fetches
-app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
 
 // Acquire single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -30,12 +32,14 @@ if (!gotTheLock) {
 
   app.whenReady().then(async () => {
     // Ensure defaultSession userAgent matches exactly
-    const { session } = require('electron');
     if (session?.defaultSession) {
       session.defaultSession.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
       );
     }
+
+    // Proactively clear any stale/corrupted Anubis bot verification tokens to avoid HTTP 500 blank screen
+    await clearStaleAnubisCookies();
 
     // Chromium network stack shares session cookies with app windows (needed for HDRezka session / anti-bot check)
     globalThis.fetch = net.fetch as typeof fetch;
@@ -44,12 +48,26 @@ if (!gotTheLock) {
     const db = AppDatabase.getInstance();
     const settings = db.getSettings();
     const provider = ProviderManager.getInstance().getProvider();
+
+    // Clean user settings from dead or phishing mirrors (hdrezka.is, rezka.fi, rezkify.com, etc.)
+    const userMirrors = settings.app?.mirrors || [];
+    const cleanedMirrors = userMirrors.filter((m) => !isBadMirrorUrl(m));
+    const finalMirrors = cleanedMirrors.length > 0 ? cleanedMirrors : DEFAULT_MIRRORS;
+    provider.setMirrors(finalMirrors);
+
     const currentMirror = settings.app?.activeMirror;
-    const isBadMirror = !currentMirror || currentMirror.includes('hdrezka.ag') || currentMirror.includes('rezka-ua.tv') || currentMirror.includes('rezka.fi') || currentMirror.includes('hdrezka.is');
-    const workingMirror = isBadMirror ? 'https://hdrezka.kim' : currentMirror;
+    const isBad = isBadMirrorUrl(currentMirror || '');
+    const workingMirror = isBad ? (finalMirrors[0] || 'https://rezka.ag') : currentMirror;
     provider.setActiveMirror(workingMirror);
-    if (workingMirror !== currentMirror) {
-      db.saveSettings({ app: { ...settings.app, activeMirror: workingMirror } });
+
+    if (workingMirror !== currentMirror || cleanedMirrors.length !== userMirrors.length) {
+      db.saveSettings({
+        app: {
+          ...settings.app,
+          activeMirror: workingMirror,
+          mirrors: finalMirrors,
+        },
+      });
     }
 
     // Automatically discover fresh mirrors online and select best reachable mirror in background

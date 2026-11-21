@@ -13,7 +13,7 @@ import {
   ContentType,
   Translator,
 } from '../../../shared/types';
-import { DEFAULT_MIRRORS } from '../../../shared/constants';
+import { DEFAULT_MIRRORS, isBadMirrorUrl } from '../../../shared/constants';
 import { parseStreamData } from './decoder';
 import {
   FALLBACK_HERO,
@@ -118,19 +118,44 @@ async function solveAnubisChallenge(mirrorOrUrl: string, html: string): Promise<
   }
 }
 
-async function appFetch(input: string | URL | Request, init?: RequestInit & { skipAutoSolve?: boolean }): Promise<Response> {
+export async function clearStaleAnubisCookies(targetUrlOrHost?: string): Promise<void> {
+  let electron: any;
+  try { electron = require('electron'); } catch (_) {}
+  if (!electron?.session?.defaultSession?.cookies) return;
+
+  try {
+    const allCookies = await electron.session.defaultSession.cookies.get({}).catch(() => []);
+    for (const c of allCookies) {
+      const name = c.name.toLowerCase();
+      if (
+        name.includes('anubis') ||
+        name.includes('cookie-verification') ||
+        name.includes('cf_clearance') ||
+        name.includes('_vc_id') ||
+        name.includes('challenge')
+      ) {
+        const domain = c.domain?.startsWith('.') ? c.domain.slice(1) : (c.domain || 'rezka.ag');
+        for (const u of [`https://${domain}${c.path || '/'}`, `http://${domain}${c.path || '/'}`]) {
+          await electron.session.defaultSession.cookies.remove(u, c.name).catch(() => {});
+        }
+      }
+    }
+  } catch (_) {}
+}
+
+async function appFetch(input: string | URL | Request, init?: RequestInit & { skipAutoSolve?: boolean; skipCookies?: boolean }): Promise<Response> {
   const urlStr = typeof input === 'string' ? input : (input as any).url || input.toString();
   let electron: any;
   try {
     electron = require('electron');
   } catch (_) {}
 
-  const makeReq = async () => {
+  const makeReq = async (forceSkipCookies = false) => {
     if (electron && electron.net && typeof electron.net.fetch === 'function') {
       const headers = new Headers(init?.headers || {});
 
-      // Explicitly extract session cookies to ensure bot verification tokens are never lost
-      if (electron.session?.defaultSession?.cookies) {
+      // Only attach session cookies when not explicitly skipped
+      if (!init?.skipCookies && !forceSkipCookies && electron.session?.defaultSession?.cookies) {
         try {
           const cookies = await electron.session.defaultSession.cookies.get({ url: urlStr });
           if (cookies && cookies.length > 0) {
@@ -146,16 +171,28 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
       if (!headers.has('User-Agent')) {
         headers.set(
           'User-Agent',
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
         );
       }
 
-      return await electron.net.fetch(input as any, { ...init, headers, credentials: 'include' });
+      const credentialsMode = (init?.skipCookies || forceSkipCookies) ? 'omit' : 'include';
+      return await electron.net.fetch(input as any, { ...init, headers, credentials: credentialsMode });
     }
     return await globalThis.fetch(input, init);
   };
 
   const res = await makeReq();
+
+  // If server returns HTTP 500 (stale / poisoned auth cookie crash), immediately purge stale cookies and retry clean
+  if (res.status === 500 && !init?.skipCookies) {
+    await clearStaleAnubisCookies(urlStr);
+    try {
+      const cleanRes = await makeReq(true);
+      if (cleanRes.ok || cleanRes.status === 403) {
+        return cleanRes;
+      }
+    } catch (_) {}
+  }
 
   // If Anubis PoW challenge page was encountered, automatically solve it and retry once
   if (!init?.skipAutoSolve && res.status === 200 && res.clone) {
@@ -180,7 +217,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.28';
+  public version = '0.0.29';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -188,12 +225,12 @@ export class RezkaProvider implements IProvider {
   private mediaCache: Map<string, Partial<MediaItem>> = new Map();
   private mediaUrlCache: Map<string, string> = new Map();
 
-  constructor(activeMirror = 'https://hdrezka.kim', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
-    if (!activeMirror || activeMirror.includes('hdrezka.ag') || activeMirror.includes('rezka-ua.tv') || activeMirror.includes('rezka.fi')) {
-      activeMirror = 'https://hdrezka.kim';
+  constructor(activeMirror = 'https://rezka.ag', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
+    this.mirrors = [...mirrors].filter((m) => !isBadMirrorUrl(m));
+    if (!activeMirror || isBadMirrorUrl(activeMirror)) {
+      activeMirror = this.mirrors[0] || 'https://rezka.ag';
     }
     this.activeMirror = activeMirror;
-    this.mirrors = [...mirrors].filter((m) => !m.includes('hdrezka.ag') && !m.includes('rezka-ua.tv') && !m.includes('rezka.fi') && !m.includes('hdrezka.is'));
     this.timeoutMs = timeoutMs;
   }
 
@@ -262,12 +299,13 @@ export class RezkaProvider implements IProvider {
     throw new Error(`Failed to fetch ${url}: ${lastError?.message}`);
   }
 
-  public async checkMirrors(): Promise<MirrorStatus[]> {
+  public async checkMirrors(mirrorsToCheck?: string[]): Promise<MirrorStatus[]> {
+    const list = mirrorsToCheck && mirrorsToCheck.length > 0 ? mirrorsToCheck : this.mirrors;
     const results: MirrorStatus[] = [];
 
-    for (const mirror of this.mirrors) {
+    for (const mirror of list) {
       const cleanUrl = mirror.replace(/\/$/, '');
-      if (cleanUrl.includes('rezka-ua.tv') || cleanUrl.includes('hdrezka.ag')) {
+      if (isBadMirrorUrl(cleanUrl)) {
         results.push({
           url: cleanUrl,
           isAvailable: false,
@@ -281,9 +319,10 @@ export class RezkaProvider implements IProvider {
       const t0 = Date.now();
       try {
         const res = await appFetch(cleanUrl, {
-          headers: this.getHeaders(),
+          headers: this.getHeaders(cleanUrl),
           signal: AbortSignal.timeout(5000),
           skipAutoSolve: true,
+          skipCookies: true,
         });
         const latency = Date.now() - t0;
         const text = await res.text();
@@ -315,8 +354,8 @@ export class RezkaProvider implements IProvider {
   }
 
   public async selectBestMirror(): Promise<string> {
-    if (this.activeMirror.includes('rezka-ua.tv') || this.activeMirror.includes('hdrezka.ag') || this.activeMirror.includes('rezka.fi')) {
-      this.activeMirror = 'https://hdrezka.kim';
+    if (isBadMirrorUrl(this.activeMirror)) {
+      this.activeMirror = this.mirrors[0] || 'https://rezka.ag';
     }
 
     const statuses = await this.checkMirrors();
@@ -351,22 +390,19 @@ export class RezkaProvider implements IProvider {
 
     // Seed list of known mirror candidates (excluding dead/hangup domains)
     const seeds = [
-      'https://hdrezka-home.tv',
-      'https://rezka.fi',
-      'https://rezka-tv.org',
-      'https://hdrezka.me',
       'https://rezka.ag',
-      'https://rezkify.com',
-      'https://hdrezka.kim',
-      'https://rezka.pub',
-      'https://hdrezka.sh',
-      'https://rezka-ua.org',
+      'https://hdrezka.me',
       'https://hdrezka.club',
-      'https://hdrezka.is',
-      'https://hdrezka.top',
-      'https://rezka.lat',
+      'https://rezka-tv.org',
+      'https://hdrezka.sh',
+      'https://rezka.pub',
+      'https://hdrezka.kim',
+      'https://hdrezka-home.tv',
+      'https://rezka-ua.org',
     ];
-    for (const s of seeds) candidateUrls.add(s);
+    for (const s of seeds) {
+      if (!isBadMirrorUrl(s)) candidateUrls.add(s);
+    }
 
     // Online sources
     const sources = [
@@ -402,7 +438,7 @@ export class RezkaProvider implements IProvider {
     const verifiedNewMirrors: string[] = [];
     const currentSet = new Set(this.mirrors.map(m => m.toLowerCase().replace(/\/$/, '')));
 
-    const candidatesList = Array.from(candidateUrls).filter(c => !currentSet.has(c.toLowerCase()));
+    const candidatesList = Array.from(candidateUrls).filter(c => !isBadMirrorUrl(c) && !currentSet.has(c.toLowerCase()));
 
     await Promise.allSettled(
       candidatesList.map(async (url) => {

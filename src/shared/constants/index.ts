@@ -1,19 +1,32 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.28';
+export const APP_VERSION = '0.0.29';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 
+export const BAD_MIRROR_PATTERNS = [
+  'hdrezka.ag',
+  'rezka-ua.tv',
+  'rezka.fi',
+  'hdrezka.is',
+  'rezkify.com',
+];
+
+export function isBadMirrorUrl(url: string): boolean {
+  if (!url) return true;
+  const lower = url.toLowerCase();
+  return BAD_MIRROR_PATTERNS.some((p) => lower.includes(p));
+}
+
 export const DEFAULT_MIRRORS = [
-  'https://hdrezka.kim',
-  'https://hdrezka.club',
-  'https://hdrezka-home.tv',
-  'https://rezka-tv.org',
-  'https://hdrezka.me',
   'https://rezka.ag',
-  'https://rezkify.com',
+  'https://hdrezka.me',
+  'https://hdrezka.club',
+  'https://rezka-tv.org',
   'https://hdrezka.sh',
   'https://rezka.pub',
+  'https://hdrezka.kim',
+  'https://hdrezka-home.tv',
   'https://rezka-ua.org',
 ];
 
@@ -42,7 +55,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   app: {
     autoLaunch: false,
     checkUpdatesOnStart: true,
-    activeMirror: 'https://hdrezka-home.tv',
+    activeMirror: 'https://rezka.ag',
     mirrors: DEFAULT_MIRRORS,
     requestTimeoutMs: 8000,
   },
