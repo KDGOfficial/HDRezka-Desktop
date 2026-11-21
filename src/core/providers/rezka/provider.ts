@@ -105,10 +105,148 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
   return res;
 }
 
+export function getQualityScore(quality?: string): number {
+  if (!quality) return 0;
+  const q = quality.trim().toLowerCase();
+  if (q.includes('2160') || q.includes('4k') || q.includes('uhd')) return 2160;
+  if (q.includes('1440') || q.includes('2k')) return 1440;
+  if (q.includes('1080') && q.includes('ultra')) return 1085;
+  if (q.includes('1080') || q.includes('fullhd') || q.includes('fhd')) return 1080;
+  if (q.includes('720')) return 720;
+  if (q.includes('480')) return 480;
+  if (q.includes('360')) return 360;
+  const num = parseInt(q.replace(/[^\d]/g, ''), 10);
+  return Number.isFinite(num) ? num : 0;
+}
+
+export function getMaxQualityScore(streams?: VideoQualityStream[]): number {
+  if (!Array.isArray(streams) || streams.length === 0) return 0;
+  let best = 0;
+  for (const s of streams) {
+    if (isCamRipText(s.quality)) continue;
+    const score = getQualityScore(s.quality);
+    if (score > best) best = score;
+  }
+  return best;
+}
+
+export function getMaxQualityLabel(streams?: VideoQualityStream[]): string {
+  if (!Array.isArray(streams) || streams.length === 0) return '';
+  let bestStream = streams[0];
+  let bestScore = getQualityScore(bestStream.quality);
+  for (const s of streams) {
+    const score = getQualityScore(s.quality);
+    if (score > bestScore) {
+      bestScore = score;
+      bestStream = s;
+    }
+  }
+  return bestStream.quality;
+}
+
+export function classifyResolutionLabel(width: number, height: number): string {
+  if (width >= 3800 || height >= 2000) return '2160p';
+  if (width >= 2500 || height >= 1350) return '1440p';
+  if (width >= 1800 || height >= 1000) return '1080p';
+  if (width >= 1200 || height >= 680) return '720p';
+  if (width >= 800 || height >= 450) return '480p';
+  if (width >= 500 || height >= 300) return '360p';
+  return height > 0 ? `${height}p` : 'HD';
+}
+
+export function parseHlsMasterVariants(playlistText: string, masterUrl: string): VideoQualityStream[] {
+  if (!playlistText || !playlistText.includes('#EXT-X-STREAM-INF')) return [];
+  const lines = playlistText.split(/\r?\n/);
+  const byLabel = new Map<string, { label: string; score: number; bandwidth: number; url: string }>();
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line.startsWith('#EXT-X-STREAM-INF:')) continue;
+
+    // Find next non-empty, non-comment URI line
+    let nextUri = '';
+    for (let j = i + 1; j < lines.length; j++) {
+      const candidate = lines[j].trim();
+      if (!candidate) continue;
+      if (candidate.startsWith('#')) continue;
+      nextUri = candidate;
+      break;
+    }
+    if (!nextUri) continue;
+
+    let absUrl = nextUri;
+    try {
+      absUrl = nextUri.startsWith('http') ? nextUri : new URL(nextUri, masterUrl).toString();
+    } catch {
+      continue;
+    }
+
+    const resMatch = line.match(/RESOLUTION=(\d+)x(\d+)/i);
+    const bwMatch = line.match(/(?:AVERAGE-)?BANDWIDTH=(\d+)/i);
+    const bandwidth = bwMatch ? parseInt(bwMatch[1], 10) : 0;
+
+    let label = '';
+    if (resMatch) {
+      const width = parseInt(resMatch[1], 10);
+      const height = parseInt(resMatch[2], 10);
+      if (height < 240 && width < 400) continue;
+      label = classifyResolutionLabel(width, height);
+    } else if (bandwidth > 0) {
+      if (bandwidth >= 6_000_000) label = '2160p';
+      else if (bandwidth >= 2_800_000) label = '1080p';
+      else if (bandwidth >= 1_200_000) label = '720p';
+      else if (bandwidth >= 600_000) label = '480p';
+      else label = '360p';
+    }
+    if (!label) continue;
+
+    const score = getQualityScore(label);
+    const existing = byLabel.get(label);
+    // Keep the highest-bitrate variant per resolution so 1080p is never a pixelated low-bitrate track
+    if (!existing || bandwidth > existing.bandwidth) {
+      byLabel.set(label, { label, score, bandwidth, url: absUrl });
+    }
+  }
+
+  return Array.from(byLabel.values())
+    .sort((a, b) => b.score - a.score || b.bandwidth - a.bandwidth)
+    .map((v) => ({ quality: v.label, hls: v.url, mp4: v.url }));
+}
+
+export function pickBetterQualityStream(
+  primary: StreamData | null,
+  candidates: Array<StreamData | null | undefined>
+): StreamData | null {
+  let best = primary && primary.streams?.length > 0 ? primary : null;
+  let bestScore = best ? getMaxQualityScore(best.streams) : 0;
+  const origLabel = best ? getMaxQualityLabel(best.streams) : '';
+
+  for (const cand of candidates) {
+    if (!cand || !cand.streams || cand.streams.length === 0) continue;
+    const candScore = getMaxQualityScore(cand.streams);
+    if (!best || candScore > bestScore) {
+      const upgraded = Boolean(primary && primary.streams?.length > 0 && candScore > getMaxQualityScore(primary.streams));
+      const mergedSubtitles =
+        cand.subtitles && cand.subtitles.length > 0 ? cand.subtitles : best?.subtitles || [];
+      best = upgraded
+        ? {
+            ...cand,
+            subtitles: mergedSubtitles,
+            upgradedMirror: true,
+            upgradedFromQuality: origLabel || undefined,
+          }
+        : cand;
+      bestScore = candScore;
+    }
+  }
+
+  return best;
+}
+
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.43';
+  public version = '0.0.44';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -1589,6 +1727,39 @@ export class RezkaProvider implements IProvider {
     return entry;
   }
 
+  private async fetchHlsMasterStreams(
+    masterUrl: string,
+    headers: Record<string, string>,
+    fallbackHint?: string
+  ): Promise<VideoQualityStream[]> {
+    try {
+      const m3u8Res = await appFetch(masterUrl, {
+        headers,
+        signal: AbortSignal.timeout(3000),
+      });
+      if (m3u8Res.ok) {
+        const playlistText = await m3u8Res.text();
+        const effectiveUrl = m3u8Res.url || masterUrl;
+        const parsed = parseHlsMasterVariants(playlistText, effectiveUrl);
+        if (parsed.length > 0) return parsed;
+      }
+    } catch {}
+
+    const hintUpper = String(fallbackHint || '').toUpperCase();
+    const inferredLabel =
+      hintUpper.includes('2160') || hintUpper.includes('4K')
+        ? '2160p'
+        : hintUpper.includes('1080') || hintUpper.includes('BDRIP') || hintUpper.includes('BLURAY')
+          ? '1080p'
+          : hintUpper.includes('720') || hintUpper.includes('HDRIP')
+            ? '720p'
+            : hintUpper.includes('480')
+              ? '480p'
+              : '720p';
+
+    return [{ quality: inferredLabel, hls: masterUrl, mp4: masterUrl }];
+  }
+
   private async extractBalancerStream(balancerSrc: string, episode?: number): Promise<StreamData | null> {
     try {
       const movieId = new URL(balancerSrc).searchParams.get('movie_id');
@@ -1645,22 +1816,29 @@ export class RezkaProvider implements IProvider {
       if (!filepath) return null;
 
       let finalM3u8 = filepath;
+      let streams: VideoQualityStream[] = [];
       try {
         const mr = await appFetch(filepath, {
           headers: { 'User-Agent': BROWSER_USER_AGENT, 'Referer': balancerSrc },
           signal: AbortSignal.timeout(4500),
         });
-        if (mr.ok && mr.url) {
-          finalM3u8 = mr.url;
+        if (mr.ok) {
+          finalM3u8 = mr.url || filepath;
+          const playlistText = await mr.text();
+          streams = parseHlsMasterVariants(playlistText, finalM3u8);
         }
       } catch (_) {}
 
+      if (streams.length === 0) {
+        streams = await this.fetchHlsMasterStreams(
+          finalM3u8,
+          { 'User-Agent': BROWSER_USER_AGENT, 'Referer': balancerSrc },
+          String(pool[0]?.streamQuality || '')
+        );
+      }
+
       return {
-        streams: [
-          { quality: '1080p', hls: finalM3u8, mp4: finalM3u8 },
-          { quality: '720p', hls: finalM3u8, mp4: finalM3u8 },
-          { quality: '480p', hls: finalM3u8, mp4: finalM3u8 },
-        ],
+        streams,
         subtitles: [],
         isAlternative: true,
         sourceName: 'Kinobase Balancer',
@@ -2319,42 +2497,11 @@ export class RezkaProvider implements IProvider {
       const masterUrl = data?.file;
       if (!masterUrl || typeof masterUrl !== 'string') return null;
 
-      const streams: VideoQualityStream[] = [];
-      try {
-        const m3u8Res = await appFetch(masterUrl, {
-          headers: { 'Referer': `${embedOrigin}/`, 'Origin': embedOrigin, 'User-Agent': BROWSER_USER_AGENT },
-          signal: AbortSignal.timeout(2500),
-        });
-        if (m3u8Res.ok) {
-          const playlistText = await m3u8Res.text();
-          const lines = playlistText.split(/\r?\n/);
-          const found: Array<{ height: number; url: string }> = [];
-          for (let i = 0; i < lines.length; i++) {
-            const m = lines[i].match(/RESOLUTION=\d+x(\d+)/);
-            const nextLine = lines[i + 1]?.trim();
-            if (m && nextLine && !nextLine.startsWith('#')) {
-              const height = parseInt(m[1], 10);
-              const absUrl = nextLine.startsWith('http') ? nextLine : new URL(nextLine, masterUrl).toString();
-              if (height >= 360) found.push({ height, url: absUrl });
-            }
-          }
-          found.sort((a, b) => b.height - a.height);
-          for (const v of found) {
-            const label = `${v.height}p`;
-            if (!streams.some((s) => s.quality === label)) {
-              streams.push({ quality: label, hls: v.url, mp4: v.url });
-            }
-          }
-        }
-      } catch {}
-
-      if (streams.length === 0) {
-        streams.push(
-          { quality: '1080p', hls: masterUrl, mp4: masterUrl },
-          { quality: '720p', hls: masterUrl, mp4: masterUrl },
-          { quality: '480p', hls: masterUrl, mp4: masterUrl }
-        );
-      }
+      const streams = await this.fetchHlsMasterStreams(masterUrl, {
+        'Referer': `${embedOrigin}/`,
+        'Origin': embedOrigin,
+        'User-Agent': BROWSER_USER_AGENT,
+      });
 
       const rawSub = typeof data?.subtitle === 'string'
         ? data.subtitle.replace(/(\[[^\]]+\])\/static\//g, `$1${embedOrigin}/static/`)
@@ -3511,11 +3658,20 @@ export class RezkaProvider implements IProvider {
         ? params.translatorId! - 1000
         : params.translatorId;
 
+    const state: { best: StreamData | null } = { best: null };
+    const considerStream = (candidate: StreamData | null) => {
+      if (!candidate || !candidate.streams || candidate.streams.length === 0) return false;
+      state.best = pickBetterQualityStream(state.best, [candidate]);
+      return getMaxQualityScore(state.best?.streams) >= 1080;
+    };
+
+    let triedKinogo = false;
     if (!forceKinobaseByOffset && (forceKinogoByOffset || this.isKinogo() || this.isKinogo(params.mediaId) || this.isKinogo(cachedItem?.url))) {
+      triedKinogo = true;
       const kinogoUrl = await this.resolveKinogoUrl(params.mediaId, metaForResolve);
       if (kinogoUrl) {
         const gStream = await this.getKinogoStream(kinogoUrl, { ...params, translatorId: normalizedTrId });
-        if (gStream && gStream.streams.length > 0) return gStream;
+        if (considerStream(gStream)) return state.best;
       }
     }
 
@@ -3532,36 +3688,40 @@ export class RezkaProvider implements IProvider {
       const parsed = this.parseKinobaseSeriesAndTranslators(pd.file, pd.subtitle);
       const streams = parsed.getEpisodeStreams(forceKinobaseByOffset ? normalizedTrId : params.translatorId, params.season, params.episode);
       if (streams.length > 0) {
-        return {
+        const kinobaseStream: StreamData = {
           streams,
           subtitles: parsed.subtitles,
           isAlternative: true,
           sourceName: 'Kinobase HLS',
           trailerUrl: pd.trailerUrl,
         };
+        if (considerStream(kinobaseStream)) return state.best;
       }
     }
 
+    // If current mirror only has <= 720p (or no stream), check balancer & sibling mirrors for 1080p+
     if (pd?.balancerSrc) {
       const bStream = await this.extractBalancerStream(pd.balancerSrc, params.episode);
-      if (bStream && bStream.streams.length > 0) {
-        return { ...bStream, trailerUrl: pd.trailerUrl };
+      if (bStream && considerStream({ ...bStream, trailerUrl: pd.trailerUrl })) {
+        return state.best;
       }
     }
 
-    let kinogoFallbackUrl = await this.resolveKinogoUrl(params.mediaId, metaForResolve);
-    if (!kinogoFallbackUrl && metaForResolve.title?.includes(':')) {
-      const shortTitle = metaForResolve.title.split(':')[0].trim();
-      if (shortTitle.length >= 3) {
-        kinogoFallbackUrl = await this.resolveKinogoUrl(params.mediaId, { ...metaForResolve, title: shortTitle });
+    if (!triedKinogo) {
+      let kinogoFallbackUrl = await this.resolveKinogoUrl(params.mediaId, metaForResolve);
+      if (!kinogoFallbackUrl && metaForResolve.title?.includes(':')) {
+        const shortTitle = metaForResolve.title.split(':')[0].trim();
+        if (shortTitle.length >= 3) {
+          kinogoFallbackUrl = await this.resolveKinogoUrl(params.mediaId, { ...metaForResolve, title: shortTitle });
+        }
+      }
+      if (kinogoFallbackUrl) {
+        const gStream = await this.getKinogoStream(kinogoFallbackUrl, { ...params, translatorId: normalizedTrId });
+        if (considerStream(gStream)) return state.best;
       }
     }
-    if (kinogoFallbackUrl) {
-      const gStream = await this.getKinogoStream(kinogoFallbackUrl, { ...params, translatorId: normalizedTrId });
-      if (gStream && gStream.streams.length > 0) return gStream;
-    }
 
-    if (pd?.kpId) {
+    if (pd?.kpId && getMaxQualityScore(state.best?.streams) < 1080) {
       try {
         const embedRes = await appFetch(`https://api.delivembed.cc/embed/kp/${pd.kpId}`, {
           signal: AbortSignal.timeout(4000),
@@ -3572,23 +3732,23 @@ export class RezkaProvider implements IProvider {
           const m3u8Match = embedHtml.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/);
           if (m3u8Match) {
             const streamUrl = m3u8Match[0];
-            return {
-              streams: [
-                { quality: '1080p', hls: streamUrl, mp4: streamUrl },
-                { quality: '720p', hls: streamUrl, mp4: streamUrl },
-                { quality: '480p', hls: streamUrl, mp4: streamUrl },
-              ],
+            const parsedStreams = await this.fetchHlsMasterStreams(streamUrl, {
+              'User-Agent': BROWSER_USER_AGENT,
+              'Referer': 'https://api.delivembed.cc/',
+            });
+            considerStream({
+              streams: parsedStreams,
               subtitles: [],
               isAlternative: true,
               sourceName: 'Collaps / Delivembed',
               trailerUrl: pd.trailerUrl,
-            };
+            });
           }
         }
       } catch (_) {}
     }
 
-    return null;
+    return state.best;
   }
 
   public async getStream(params: {
@@ -3772,7 +3932,28 @@ export class RezkaProvider implements IProvider {
               continue;
             }
             if (json && json.success && json.url) {
-              return parseStreamData(json.url, json.subtitle, json.thumbnails);
+              const rezkaStream = parseStreamData(json.url, json.subtitle, json.thumbnails);
+              // Auto-upgrade to an open mirror if this HDRezka mirror caps below 1080p
+              if (
+                !isUnreleasedMovie &&
+                getMaxQualityScore(rezkaStream.streams) < 1080 &&
+                (cachedItem?.title || cachedItem?.origTitle)
+              ) {
+                try {
+                  const altCandidate = await this.findAlternativeStream({
+                    mediaId: params.mediaId,
+                    title: cachedItem?.title,
+                    origTitle: cachedItem?.origTitle,
+                    year: cachedItem?.year,
+                    season: params.season,
+                    episode: params.episode,
+                    translatorId: params.translatorId,
+                  });
+                  const upgraded = pickBetterQualityStream(rezkaStream, [altCandidate]);
+                  if (upgraded) return upgraded;
+                } catch (_) {}
+              }
+              return rezkaStream;
             }
           } catch (err: any) {
             mirrorFailed = true;

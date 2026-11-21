@@ -3,7 +3,7 @@ import { createMainWindow, getMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
-import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, IPC_CHANNELS, isBadMirrorUrl, BROWSER_USER_AGENT, isAdUrl } from '../shared/constants';
+import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, IPC_CHANNELS, isBadMirrorUrl, BROWSER_USER_AGENT, isAdUrl, isCrossOriginPopupAd } from '../shared/constants';
 
 let browserAdBlockEnabled = true;
 let browserAdBlockedCount = 0;
@@ -114,11 +114,7 @@ if (!gotTheLock) {
     const browserSession = session.fromPartition('persist:cinema-browser');
     browserSession.setUserAgent(BROWSER_USER_AGENT);
     browserSession.webRequest.onBeforeRequest((details, callback) => {
-      if (
-        browserAdBlockEnabled &&
-        details.resourceType !== 'mainFrame' &&
-        isAdUrl(details.url)
-      ) {
+      if (browserAdBlockEnabled && isAdUrl(details.url)) {
         browserAdBlockedCount += 1;
         return callback({ cancel: true });
       }
@@ -130,14 +126,22 @@ if (!gotTheLock) {
       if (contents.getType() === 'webview') {
         contents.setUserAgent(BROWSER_USER_AGENT);
         contents.setWindowOpenHandler(({ url }) => {
-          if (/^https?:\/\//i.test(url) && !(browserAdBlockEnabled && isAdUrl(url))) {
-            contents.loadURL(url).catch(() => {});
-          } else if (browserAdBlockEnabled && isAdUrl(url)) {
+          if (browserAdBlockEnabled && isCrossOriginPopupAd(url, contents.getURL())) {
             browserAdBlockedCount += 1;
+            return { action: 'deny' };
+          }
+          if (/^https?:\/\//i.test(url)) {
+            contents.loadURL(url).catch(() => {});
           }
           return { action: 'deny' };
         });
         contents.on('will-navigate', (event, url) => {
+          if (browserAdBlockEnabled && isAdUrl(url)) {
+            event.preventDefault();
+            browserAdBlockedCount += 1;
+          }
+        });
+        contents.on('will-redirect', (event, url) => {
           if (browserAdBlockEnabled && isAdUrl(url)) {
             event.preventDefault();
             browserAdBlockedCount += 1;

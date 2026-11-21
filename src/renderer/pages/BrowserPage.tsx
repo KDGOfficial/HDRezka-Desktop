@@ -49,15 +49,83 @@ const WINDOW_SIZE_PRESETS = [
 const COSMETIC_ADBLOCK_CSS = `
   [id*="adfox"], [class*="adfox"], [id*="MarketGid"], [class*="mgbox"],
   [id*="yandex_rtb"], [class*="yandex_rtb"], .adsbygoogle, ins.adsbygoogle,
-  [class*="branding-"], [id*="branding"], .teasers, .teaser-block,
-  [class*="banner_top"], [class*="banner-top"], [class*="banner_bottom"],
-  a[href*="1xbet"], a[href*="mostbet"], a[href*="pinup"], a[href*="vulcan"],
-  a[href*="azino"], a[href*="vavada"], a[href*="melbet"], a[href*="fonbet"],
-  div[style*="z-index: 2147483647"], div[style*="z-index: 9999999"] {
+  [class*="branding-"], [id*="branding"], .branding, .brand-link, a.branding,
+  .teasers, .teaser-block, [class*="teaser_"], [id*="teaser"],
+  [class*="banner_top"], [class*="banner-top"], [class*="banner_bottom"], [class*="banner-bottom"],
+  [class*="sticky-ad"], [class*="ad-overlay"], [class*="ad_overlay"], [class*="vast-"],
+  iframe[src*="adfox"], iframe[src*="doubleclick"], iframe[src*="googlesyndication"],
+  iframe[src*="exoclick"], iframe[src*="adsterra"], iframe[src*="mgid"], iframe[src*="1xbet"],
+  iframe[src*="mostbet"], iframe[src*="pinup"], iframe[src*="vavada"], iframe[src*="melbet"],
+  a[href*="1xbet"], a[href*="1win"], a[href*="mostbet"], a[href*="pinup"], a[href*="vulcan"],
+  a[href*="vulkan"], a[href*="azino"], a[href*="vavada"], a[href*="melbet"], a[href*="fonbet"],
+  a[href*="winline"], a[href*="betboom"], a[href*="betcity"], a[href*="parimatch"],
+  div[style*="z-index: 2147483647"], div[style*="z-index: 9999999"],
+  a[style*="z-index: 2147483647"], a[style*="z-index: 9999999"] {
     display: none !important;
     visibility: hidden !important;
     pointer-events: none !important;
   }
+`;
+
+const ADBLOCK_RUNTIME_SCRIPT = `
+  (() => {
+    window.__hdrezkaAdBlockEnabled = true;
+    if (window.__hdrezkaAdBlockInstalled) return;
+    window.__hdrezkaAdBlockInstalled = true;
+
+    const origOpen = window.open;
+    window.open = function(url, target, features) {
+      if (window.__hdrezkaAdBlockEnabled) {
+        try {
+          if (!url) return null;
+          const u = new URL(String(url), location.href);
+          if (u.hostname !== location.hostname) return null;
+        } catch {
+          return null;
+        }
+      }
+      return origOpen ? origOpen.call(window, url, target, features) : null;
+    };
+
+    const cleanAds = () => {
+      if (!window.__hdrezkaAdBlockEnabled) return;
+      // Remove invisible full-screen clickunder / popunder shield overlays
+      document.querySelectorAll('a[target="_blank"], div[onclick], div[style*="fixed"]').forEach((el) => {
+        if (el.closest('video') || el.querySelector('video')) return;
+        const st = getComputedStyle(el);
+        const z = parseInt(st.zIndex, 10) || 0;
+        if (st.position === 'fixed' && z >= 9999) {
+          const r = el.getBoundingClientRect();
+          const coversScreen = r.width >= window.innerWidth * 0.6 && r.height >= window.innerHeight * 0.5;
+          const isTransparentOverlay = parseFloat(st.opacity) < 0.15 || st.backgroundColor === 'rgba(0, 0, 0, 0)';
+          if (coversScreen && isTransparentOverlay && (el.tagName === 'A' || !(el.textContent || '').trim())) {
+            el.remove();
+          }
+        }
+      });
+      // Auto-skip video pre-roll ads if an explicit Skip Ad button appears
+      document.querySelectorAll('button, div, span').forEach((btn) => {
+        const txt = (btn.textContent || '').trim();
+        if (/^(?:пропустить(?:\\s+рекламу)?|skip\\s*ad(?:s)?)$/i.test(txt)) {
+          btn.click();
+        }
+      });
+    };
+
+    cleanAds();
+    let pending = false;
+    const obs = new MutationObserver(() => {
+      if (pending || !window.__hdrezkaAdBlockEnabled) return;
+      pending = true;
+      setTimeout(() => {
+        pending = false;
+        cleanAds();
+      }, 250);
+    });
+    if (document.documentElement) {
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+    }
+  })();
 `;
 
 function isPlayableMediaPage(url: string): boolean {
@@ -228,6 +296,7 @@ export const BrowserPage: React.FC = () => {
         `);
         if (adBlockEnabledRef.current) {
           adBlockCssKeyRef.current = await wv.insertCSS?.(COSMETIC_ADBLOCK_CSS);
+          await wv.executeJavaScript?.(ADBLOCK_RUNTIME_SCRIPT).catch(() => {});
         }
         await applyVideoFitToWebview(videoFitRef.current);
       } catch {}
@@ -300,9 +369,13 @@ export const BrowserPage: React.FC = () => {
       try {
         if (next) {
           adBlockCssKeyRef.current = await wv.insertCSS?.(COSMETIC_ADBLOCK_CSS);
-        } else if (adBlockCssKeyRef.current && wv.removeInsertedCSS) {
-          await wv.removeInsertedCSS(adBlockCssKeyRef.current);
-          adBlockCssKeyRef.current = null;
+          await wv.executeJavaScript?.(ADBLOCK_RUNTIME_SCRIPT).catch(() => {});
+        } else {
+          if (adBlockCssKeyRef.current && wv.removeInsertedCSS) {
+            await wv.removeInsertedCSS(adBlockCssKeyRef.current);
+            adBlockCssKeyRef.current = null;
+          }
+          await wv.executeJavaScript?.('window.__hdrezkaAdBlockEnabled = false;').catch(() => {});
         }
       } catch {}
     }
@@ -876,7 +949,6 @@ export const BrowserPage: React.FC = () => {
           ref: webviewRef,
           src: browserUrl || 'https://kinobase.org/',
           partition: 'persist:cinema-browser',
-          allowpopups: 'true',
           useragent: BROWSER_USER_AGENT,
           className: !cinemaMode || videoFit === 'contain'
             ? 'w-full h-full bg-[#070507]'

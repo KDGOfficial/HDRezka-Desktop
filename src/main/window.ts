@@ -85,12 +85,29 @@ export function createMainWindow(): BrowserWindow {
       details.resourceType === 'xhr' ||
       details.resourceType === 'fetch' ||
       url.includes('voidboost') ||
+      url.includes('femeretes.org') ||
+      url.includes('vdbmate.org') ||
       url.includes('stream.') ||
       url.includes('.m3u8') ||
+      url.includes('.ts') ||
+      url.includes('.m4s') ||
       url.includes('.mp4') ||
       url.includes('.vtt');
 
-    if (isStreamOrApi && (url.includes('voidboost') || url.includes('stream.') || url.includes('hdrezka') || url.includes('rezka') || url.includes('.m3u8') || url.includes('.mp4') || url.includes('.vtt'))) {
+    if (
+      isStreamOrApi &&
+      (url.includes('voidboost') ||
+        url.includes('femeretes.org') ||
+        url.includes('vdbmate.org') ||
+        url.includes('stream.') ||
+        url.includes('hdrezka') ||
+        url.includes('rezka') ||
+        url.includes('.m3u8') ||
+        url.includes('.ts') ||
+        url.includes('.m4s') ||
+        url.includes('.mp4') ||
+        url.includes('.vtt'))
+    ) {
       details.requestHeaders['Referer'] = activeMirror + '/';
       details.requestHeaders['Origin'] = activeMirror;
       details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;

@@ -234,6 +234,18 @@ dialog::backdrop {
   gap: clamp(1rem, 1.4vw, 1.35rem);
 }
 
+/* Native horizontal slider track: contain horizontal overscroll only, smooth scroll when motion allowed */
+.slider-track {
+  overscroll-behavior-x: contain;
+  touch-action: manipulation;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .slider-track {
+    scroll-behavior: smooth;
+  }
+}
+
 /* Warm Porcelain Light Theme Surface & Contrast Adaptation */
 html[data-theme="light"] {
   --surface-void: #EFE7EC;

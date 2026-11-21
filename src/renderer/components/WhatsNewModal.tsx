@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Sparkles, Search, ShieldCheck, Sun, Monitor, Check, X, ExternalLink, Send } from 'lucide-react';
+import { SlidersHorizontal, Zap, Sparkles, PlayCircle, ShieldCheck, Check, X, ExternalLink, Send } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
@@ -49,27 +49,27 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
 
   const features = [
     {
-      icon: <Sparkles className="w-4 h-4 text-brand-orange" />,
+      icon: <SlidersHorizontal className="w-4 h-4 text-brand-orange" />,
       title: t.whatsNew.f1_title,
       desc: t.whatsNew.f1_desc,
     },
     {
-      icon: <Search className="w-4 h-4 text-brand-crimson" />,
+      icon: <Zap className="w-4 h-4 text-brand-gold" />,
       title: t.whatsNew.f2_title,
       desc: t.whatsNew.f2_desc,
     },
     {
-      icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
+      icon: <Sparkles className="w-4 h-4 text-brand-crimson" />,
       title: t.whatsNew.f3_title,
       desc: t.whatsNew.f3_desc,
     },
     {
-      icon: <Sun className="w-4 h-4 text-brand-gold" />,
+      icon: <PlayCircle className="w-4 h-4 text-amber-300" />,
       title: t.whatsNew.f4_title,
       desc: t.whatsNew.f4_desc,
     },
     {
-      icon: <Monitor className="w-4 h-4 text-amber-300" />,
+      icon: <ShieldCheck className="w-4 h-4 text-emerald-400" />,
       title: t.whatsNew.f5_title,
       desc: t.whatsNew.f5_desc,
     },

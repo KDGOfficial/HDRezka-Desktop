@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.43';
+export const APP_VERSION = '0.0.44';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
@@ -39,21 +39,46 @@ export const ANIME_MIRROR_SEEDS = [
 ];
 
 const AD_HOST_RE =
-  /(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.|adnxs\.com|adfox\.ru|an\.yandex\.ru|mc\.yandex\.ru|metrika\.yandex\.|direct\.yandex\.|mgid\.com|marketgid\.com|lentainform\.com|exoclick\.com|exosrv\.com|propellerads\.com|popads\.net|popcash\.net|clickadu\.com|adsterra\.com|hilltopads\.net|juicyads\.com|trafficjunky\.net|trafficfactory\.biz|trafmag\.com|adriver\.ru|adskeeper\.co\.uk|outbrain\.com|taboola\.com|criteo\.com|rtbhouse\.com|betweendigital\.com|videoroll\.net|viqeo\.tv|mixmarket\.biz|directadvert\.ru|recreativ\.ru|smi2\.ru|teasernet\.com|bodyclick\.net|gnezdo\.ru|1xbet|mostbet|pinup|pin-up|vulcan|vulkan|azino|melbet|fonbet|vavada|joycasino|parimatch|betwinner|betboom|olimpbet|leonbets|pokerdom|ggbet)/i;
+  /(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.|imasdk\.googleapis\.com|securepubads\.g\.doubleclick\.net|adtrafficquality\.google|adnxs\.com|adfox\.ru|an\.yandex\.ru|bs\.yandex\.ru|awaps\.yandex\.ru|mc\.yandex\.ru|metrika\.yandex\.|direct\.yandex\.|mgid\.com|marketgid\.com|lentainform\.com|exoclick\.com|exosrv\.com|exdynsrv\.com|realsrv\.com|tsyndicate\.com|propellerads\.com|popads\.net|popcash\.net|clickadu\.com|clickadilla\.com|adsterra\.com|hilltopads\.net|juicyads\.com|trafficjunky\.net|trafficfactory\.biz|trafmag\.com|adriver\.ru|adskeeper\.co\.uk|outbrain\.com|taboola\.com|criteo\.com|rtbhouse\.com|betweendigital\.com|videoroll\.net|viqeo\.tv|mixmarket\.biz|directadvert\.ru|recreativ\.ru|smi2\.ru|teasernet\.com|bodyclick\.net|gnezdo\.ru|advmaker\.net|octoclick\.net|kadam\.net|adspyglass\.com|admaven\.com|ad-maven\.com|monetag\.com|richads\.com|evadav\.com|pushhouse\.net|rollerads\.com|galaksion\.com|acint\.net|nativeroll\.tv|videonow\.ru|buzzoola\.com|pladform\.ru|rutarget\.ru|target\.my\.com|ad\.mail\.ru|r\.mail\.ru|top-fwz1\.mail\.ru|yadro\.ru|tns-counter\.ru|relap\.io|teads\.tv|pubmatic\.com|rubiconproject\.com|openx\.net|casalemedia\.com|smartadserver\.com|connatix\.com|springserve\.com|spotxchange\.com|onclkds\.com|popunder\.net|clickunder\.ru|zeroredirect\.com|bidvertiser\.com|revcontent\.com|mellowads\.com|luxup\.ru|scorecardresearch\.com|quantserve\.com|clarity\.ms|hotjar\.com|1xbet|1win|1xslots|mostbet|pinup|pin-up|vulcan|vulkan|azino|melbet|fonbet|vavada|joycasino|parimatch|betwinner|betboom|olimpbet|leonbets|pokerdom|ggbet|winline|betcity|ligastavok|liga-stavok|marathonbet|zenitbet|tennisi|catcasino|freshcasino|solcasino|jetcasino|dripcasino|starda|r7casino|dragonmoney|linebet|megapari|betandyou|888starz|spinbetter|bc\.game|stake\.com)/i;
+
+const AD_VIDEO_PATH_RE =
+  /(?:\/(?:vast|vpaid|preroll|midroll|reklama|ad_video|adv_video|video_ad|commercials?)\b|[?&](?:vast|vpaid|ad_tag|ad_url|preroll|midroll)=)/i;
 
 const AD_PATH_RE =
-  /(?:\/(?:vast|vpaid|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|reklama|doubleclick)\b|[?&](?:vast|ad_tag|ad_url|preroll|popunder)=)/i;
+  /(?:\/(?:vast|vpaid|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|reklama|doubleclick|pcode\/adfox|pagead\/)\b|[?&](?:vast|ad_tag|ad_url|preroll|popunder|clickunder)=)/i;
+
+const TRUSTED_MEDIA_PORTAL_RE =
+  /(?:^|\.)(?:kinobase\.org|kinogo\.[a-z]+|yummyanime\.[a-z]+|yummyani\.[a-z]+|yani\.tv|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
 
 export function isAdUrl(url: string): boolean {
   if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) return false;
   try {
     const parsed = new URL(url);
     if (AD_HOST_RE.test(parsed.hostname)) return true;
-    // Never block actual HLS/MP4 media segments on known streaming CDNs
-    if (/\.(?:m3u8|ts|mp4|vtt|srt)(?:$|\?)/i.test(parsed.pathname)) return false;
-    return AD_PATH_RE.test(parsed.pathname + parsed.search);
+    const pathAndQuery = parsed.pathname + parsed.search;
+    // Block explicit pre-roll/VAST video ad assets even when served as .mp4/.m3u8
+    if (AD_VIDEO_PATH_RE.test(pathAndQuery)) return true;
+    // Never block actual movie HLS/MP4/subtitle media segments on known streaming CDNs
+    if (/\.(?:m3u8|ts|mp4|m4s|vtt|srt)(?:$|\?)/i.test(parsed.pathname)) return false;
+    return AD_PATH_RE.test(pathAndQuery);
   } catch {
     return false;
+  }
+}
+
+export function isCrossOriginPopupAd(popupUrl: string, sourceUrl?: string): boolean {
+  if (!popupUrl || (!popupUrl.startsWith('http://') && !popupUrl.startsWith('https://'))) return true;
+  if (isAdUrl(popupUrl)) return true;
+  try {
+    const target = new URL(popupUrl);
+    if (TRUSTED_MEDIA_PORTAL_RE.test(target.hostname)) return false;
+    if (!sourceUrl || (!sourceUrl.startsWith('http://') && !sourceUrl.startsWith('https://'))) return true;
+    const source = new URL(sourceUrl);
+    const baseDomain = (h: string) => h.replace(/^www\./i, '').split('.').slice(-2).join('.').toLowerCase();
+    // Cross-origin window.open() on streaming sites is overwhelmingly popunder/clickunder ad traffic
+    return baseDomain(target.hostname) !== baseDomain(source.hostname);
+  } catch {
+    return true;
   }
 }
 

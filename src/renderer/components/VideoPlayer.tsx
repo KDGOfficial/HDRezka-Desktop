@@ -24,13 +24,92 @@ import {
   Scaling,
   Globe,
   ShieldCheck,
+  Clock,
+  X,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { HorizontalSlider } from './HorizontalSlider';
 import { useTranslation } from '../i18n';
 import { formatDuration } from '../../shared/utils';
 import appLogo from '../assets/logo.png';
+
+function getHlsLevelQualityRank(level: { width?: number; height?: number }): number {
+  const w = level.width || 0;
+  const h = level.height || 0;
+  if (w >= 3800 || h >= 2000) return 2160;
+  if (w >= 2500 || h >= 1350) return 1440;
+  if (w >= 1800 || h >= 1000) return 1080;
+  if (w >= 1200 || h >= 680) return 720;
+  if (w >= 800 || h >= 450) return 480;
+  if (w >= 500 || h >= 300) return 360;
+  return h;
+}
+
+function getTargetQualityRank(label: string): number {
+  const q = (label || '').toLowerCase();
+  if (q.includes('2160') || q.includes('4k')) return 2160;
+  if (q.includes('1440')) return 1440;
+  if (q.includes('1080')) return 1080;
+  if (q.includes('720')) return 720;
+  if (q.includes('480')) return 480;
+  if (q.includes('360')) return 360;
+  return parseInt(q.replace(/[^\d]/g, ''), 10) || 1080;
+}
+
+function findBestHlsLevelIndex(
+  levels: Array<{ width?: number; height?: number; bitrate?: number }>,
+  targetQuality: string
+): number {
+  if (!levels || levels.length === 0) return -1;
+  const targetRank = getTargetQualityRank(targetQuality);
+
+  // 1. Exact resolution class match -> pick highest bitrate so picture is crisp, never pixelated
+  let bestExactIdx = -1;
+  let bestExactBitrate = -1;
+  levels.forEach((lvl, idx) => {
+    const rank = getHlsLevelQualityRank(lvl);
+    const br = lvl.bitrate || 0;
+    if (rank === targetRank && br >= bestExactBitrate) {
+      bestExactBitrate = br;
+      bestExactIdx = idx;
+    }
+  });
+  if (bestExactIdx !== -1) return bestExactIdx;
+
+  // 2. Fallback: for FullHD/4K pick highest resolution + bitrate available; otherwise closest <= target
+  if (targetRank >= 1080) {
+    let bestIdx = 0;
+    let bestRank = -1;
+    let bestBr = -1;
+    levels.forEach((lvl, idx) => {
+      const rank = getHlsLevelQualityRank(lvl);
+      const br = lvl.bitrate || 0;
+      if (rank > bestRank || (rank === bestRank && br > bestBr)) {
+        bestRank = rank;
+        bestBr = br;
+        bestIdx = idx;
+      }
+    });
+    return bestIdx;
+  }
+
+  let closestIdx = 0;
+  let closestDiff = Infinity;
+  let closestBr = -1;
+  levels.forEach((lvl, idx) => {
+    const rank = getHlsLevelQualityRank(lvl);
+    const diff = Math.abs(rank - targetRank);
+    const br = lvl.bitrate || 0;
+    if (diff < closestDiff || (diff === closestDiff && br > closestBr)) {
+      closestDiff = diff;
+      closestBr = br;
+      closestIdx = idx;
+    }
+  });
+  return closestIdx;
+}
 
 export const VideoPlayer: React.FC = () => {
   const { t } = useTranslation();
@@ -48,10 +127,13 @@ export const VideoPlayer: React.FC = () => {
     playbackSpeed,
     volume,
     initialTime,
+    resumeOfferTime,
     isLoading,
     error,
     closePlayer,
+    dismissResumeOffer,
     setQuality,
+    syncHlsQualities,
     setSubtitle,
     setPlaybackSpeed,
     setVolume,
@@ -65,6 +147,7 @@ export const VideoPlayer: React.FC = () => {
   const hlsRef = useRef<Hls | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [buffered, setBuffered] = useState(0);
@@ -72,6 +155,7 @@ export const VideoPlayer: React.FC = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
+  const [episodeMenuSeasonId, setEpisodeMenuSeasonId] = useState<number | undefined>(seasonId);
   const [isUiLocked, setIsUiLocked] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -84,6 +168,34 @@ export const VideoPlayer: React.FC = () => {
   const lastVolumeRef = useRef(volume > 0 ? volume : 0.8);
   const isResizingRef = useRef(false);
   const resizeStartRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  const userSeekedRef = useRef(false);
+  const lastUiSyncRef = useRef(0);
+  const showControlsRef = useRef(showControls);
+  const currentQualityRef = useRef(currentQuality);
+
+  showControlsRef.current = showControls;
+  currentQualityRef.current = currentQuality;
+
+  useEffect(() => {
+    setEpisodeMenuSeasonId(seasonId);
+  }, [seasonId, mediaDetails?.id]);
+
+  // Sync displayed time immediately when OSD reappears after being hidden
+  useEffect(() => {
+    if (showControls && videoRef.current) {
+      setCurrentTime(videoRef.current.currentTime || 0);
+      if (videoRef.current.buffered.length > 0) {
+        setBuffered(videoRef.current.buffered.end(videoRef.current.buffered.length - 1));
+      }
+    }
+  }, [showControls]);
+
+  // Auto-dismiss optional resume pill after 12 seconds so it never clutters playback
+  useEffect(() => {
+    if (!resumeOfferTime) return;
+    const tmr = setTimeout(() => dismissResumeOffer(), 12000);
+    return () => clearTimeout(tmr);
+  }, [resumeOfferTime, dismissResumeOffer]);
 
   const subtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
   const activeTranslator =
@@ -272,15 +384,24 @@ export const VideoPlayer: React.FC = () => {
       videoRef.current.pause();
       videoRef.current.removeAttribute('src');
       videoRef.current.load();
+      setIsBuffering(false);
       return;
     }
 
     const video = videoRef.current;
+    const startSec = initialTime > 0 ? initialTime : 0;
+    userSeekedRef.current = false;
+    setIsBuffering(true);
+    setCurrentTime(startSec);
     video.volume = volume;
     video.defaultPlaybackRate = playbackSpeed;
 
-    if (streamData?.isAlternative) {
-      showToast('Воспроизведение через альтернативный онлайн-источник');
+    if (streamData?.upgradedMirror && streamData?.upgradedFromQuality) {
+      showToast(
+        `Автопереключение на ${currentQualityRef.current} (${streamData.sourceName || 'зеркало HD'}) вместо ${streamData.upgradedFromQuality}`
+      );
+    } else if (streamData?.isAlternative) {
+      showToast(`Источник: ${streamData.sourceName || 'альтернативный поток'}`);
     }
 
     if (hlsRef.current) {
@@ -288,71 +409,172 @@ export const VideoPlayer: React.FC = () => {
       hlsRef.current = null;
     }
 
+    let cleanedUp = false;
+    let onNativeLoadedMetadata: (() => void) | null = null;
+
     if (isHls && Hls.isSupported()) {
+      let networkRetries = 0;
+      let mediaRetries = 0;
+      let introGuardApplied = false;
+
       const hls = new Hls({
         enableWorker: true,
-        lowLatencyMode: true,
+        // VOD movies must NOT use LL-HLS lowLatencyMode (it starves buffer and skips intro segments)
+        lowLatencyMode: false,
+        startPosition: startSec,
+        maxBufferLength: 60,
+        maxMaxBufferLength: 180,
+        maxBufferSize: 120 * 1000 * 1000,
+        maxBufferHole: 1.0,
+        backBufferLength: 30,
+        nudgeOffset: 0.2,
+        nudgeMaxRetry: 8,
+        // Assume broadband desktop connection so master playlists start crisp instead of pixelated 360p
+        abrEwmaDefaultEstimate: 10_000_000,
+        capLevelToPlayerSize: false,
+        fragLoadingMaxRetry: 6,
+        fragLoadingRetryDelay: 500,
+        fragLoadingMaxRetryTimeout: 8000,
+        manifestLoadingMaxRetry: 4,
+        levelLoadingMaxRetry: 4,
       });
       hlsRef.current = hls;
       hls.loadSource(currentStreamUrl);
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        if (initialTime > 0) {
-          video.currentTime = initialTime;
+        if (cleanedUp) return;
+
+        // Lock HLS level to requested resolution (highest bitrate variant) so 1080p is never pixelated
+        if (hls.levels && hls.levels.length > 1) {
+          const targetIdx = findBestHlsLevelIndex(hls.levels, currentQualityRef.current);
+          if (targetIdx >= 0) {
+            hls.currentLevel = targetIdx;
+            hls.nextLevel = targetIdx;
+            hls.loadLevel = targetIdx;
+          }
+
+          // If provider exposed only a single master entry, populate real parsed resolutions in the Quality menu
+          if (streamData?.streams && streamData.streams.length <= 1) {
+            const byLabel = new Map<string, { rank: number; bitrate: number }>();
+            for (const lvl of hls.levels) {
+              const rank = getHlsLevelQualityRank(lvl);
+              if (rank < 300) continue;
+              const label = `${rank}p`;
+              const prev = byLabel.get(label);
+              if (!prev || (lvl.bitrate || 0) > prev.bitrate) {
+                byLabel.set(label, { rank, bitrate: lvl.bitrate || 0 });
+              }
+            }
+            if (byLabel.size > 1) {
+              const discovered = Array.from(byLabel.entries())
+                .sort((a, b) => b[1].rank - a[1].rank)
+                .map(([quality]) => ({ quality, hls: currentStreamUrl, mp4: currentStreamUrl }));
+              const activeRank = targetIdx >= 0 ? getHlsLevelQualityRank(hls.levels[targetIdx]) : 0;
+              syncHlsQualities(discovered, activeRank >= 300 ? `${activeRank}p` : discovered[0].quality);
+            }
+          }
         }
+
+        // Explicitly anchor playback at startSec (0:00 for fresh playback) so intro is never cut off
+        video.currentTime = startSec;
         video.play().catch(() => setIsPlaying(false));
       });
 
+      hls.on(Hls.Events.LEVEL_LOADED, () => {
+        if (cleanedUp || introGuardApplied) return;
+        if (startSec === 0 && !userSeekedRef.current && video.currentTime > 1.2 && video.currentTime < 45) {
+          introGuardApplied = true;
+          video.currentTime = 0;
+        }
+      });
+
       hls.on(Hls.Events.ERROR, (_, data) => {
-        if (data.fatal) {
-          switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR: {
-              if (currentStreamUrl.includes('voidboost') || currentStreamUrl.includes('ukrtelcdn')) {
-                const unblocked = currentStreamUrl
-                  .replace(/https?:\/\/stream\.voidboost\.(?:cc|top|club|link)/i, 'https://femeretes.org')
-                  .replace(/https?:\/\/[a-z0-9.-]+\.ukrtelcdn\.net/i, 'https://vdbmate.org');
-                if (unblocked !== currentStreamUrl) {
-                  showToast('Переключение на резервный CDN...');
-                  hls.loadSource(unblocked);
-                  hls.startLoad();
-                  return;
-                }
-              }
-              const altMp4 = streamData?.streams?.find((s) => s.mp4 && s.mp4 !== currentStreamUrl)?.mp4;
-              if (altMp4 && videoRef.current) {
-                hls.destroy();
-                hlsRef.current = null;
-                videoRef.current.src = altMp4;
-                videoRef.current.load();
-                videoRef.current.play().catch(() => setIsPlaying(false));
+        if (cleanedUp) return;
+        if (!data.fatal) {
+          if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR && video.readyState < 3) {
+            setIsBuffering(true);
+          }
+          return;
+        }
+
+        switch (data.type) {
+          case Hls.ErrorTypes.NETWORK_ERROR: {
+            if (networkRetries === 0 && (currentStreamUrl.includes('voidboost') || currentStreamUrl.includes('ukrtelcdn'))) {
+              const unblocked = currentStreamUrl
+                .replace(/https?:\/\/stream\.voidboost\.(?:cc|top|club|link)/i, 'https://femeretes.org')
+                .replace(/https?:\/\/[a-z0-9.-]+\.ukrtelcdn\.net/i, 'https://vdbmate.org');
+              if (unblocked !== currentStreamUrl) {
+                networkRetries += 1;
+                showToast('Переключение на резервный CDN...');
+                hls.loadSource(unblocked);
+                hls.startLoad(video.currentTime || startSec);
                 return;
               }
-              hls.startLoad();
-              break;
             }
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
-              break;
-            default:
+            if (networkRetries < 3) {
+              networkRetries += 1;
+              hls.startLoad(video.currentTime || startSec);
+              return;
+            }
+            const altMp4 = streamData?.streams?.find((s) => s.mp4 && s.mp4 !== currentStreamUrl)?.mp4;
+            if (altMp4 && videoRef.current) {
               hls.destroy();
-              usePlayerStore.setState({
-                error: 'Не удалось загрузить видеопоток. Попробуйте выбрать другое качество или сменить активное зеркало в Настройках.',
-              });
-              break;
+              hlsRef.current = null;
+              const resumePos = videoRef.current.currentTime || startSec;
+              videoRef.current.src = altMp4;
+              videoRef.current.load();
+              videoRef.current.currentTime = resumePos;
+              videoRef.current.play().catch(() => setIsPlaying(false));
+              return;
+            }
+            hls.destroy();
+            hlsRef.current = null;
+            setIsBuffering(false);
+            usePlayerStore.setState({
+              error: 'Не удалось загрузить видеопоток. Попробуйте выбрать другое качество или сменить активное зеркало в Настройках.',
+            });
+            break;
           }
+          case Hls.ErrorTypes.MEDIA_ERROR:
+            if (mediaRetries < 3) {
+              mediaRetries += 1;
+              hls.recoverMediaError();
+            } else {
+              hls.destroy();
+              hlsRef.current = null;
+              setIsBuffering(false);
+              usePlayerStore.setState({
+                error: 'Ошибка декодирования видеопотока. Попробуйте выбрать другое качество или озвучку.',
+              });
+            }
+            break;
+          default:
+            hls.destroy();
+            hlsRef.current = null;
+            setIsBuffering(false);
+            usePlayerStore.setState({
+              error: 'Не удалось загрузить видеопоток. Попробуйте выбрать другое качество или сменить активное зеркало в Настройках.',
+            });
+            break;
         }
       });
     } else {
       video.src = currentStreamUrl;
+      onNativeLoadedMetadata = () => {
+        if (cleanedUp) return;
+        video.currentTime = startSec;
+        video.play().catch(() => setIsPlaying(false));
+      };
+      video.addEventListener('loadedmetadata', onNativeLoadedMetadata, { once: true });
       video.load();
-      if (initialTime > 0) {
-        video.currentTime = initialTime;
-      }
-      video.play().catch(() => setIsPlaying(false));
     }
 
     return () => {
+      cleanedUp = true;
+      if (onNativeLoadedMetadata) {
+        video.removeEventListener('loadedmetadata', onNativeLoadedMetadata);
+      }
       if (hlsRef.current) {
         hlsRef.current.destroy();
         hlsRef.current = null;
@@ -360,14 +582,15 @@ export const VideoPlayer: React.FC = () => {
     };
   }, [currentStreamUrl, isHls, isOpen]);
 
-  // Periodic progress saving
+  // Periodic progress saving (stable 5s interval — never re-armed on every timeupdate frame)
   useEffect(() => {
-    if (!isOpen || !mediaDetails || currentTime <= 0 || duration <= 0) return;
+    if (!isOpen || !mediaDetails) return;
 
     const interval = setInterval(() => {
       if (window.api && videoRef.current) {
         const time = videoRef.current.currentTime;
         const dur = videoRef.current.duration;
+        if (!Number.isFinite(time) || !Number.isFinite(dur) || time <= 0 || dur <= 0) return;
         const percent = (time / dur) * 100;
 
         window.api.saveProgress(mediaDetails.id, seasonId || 0, episodeId || 0, time, dur);
@@ -391,7 +614,7 @@ export const VideoPlayer: React.FC = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [isOpen, mediaDetails, seasonId, episodeId, currentTime, duration]);
+  }, [isOpen, mediaDetails, seasonId, episodeId]);
 
   // Keyboard controls
   useEffect(() => {
@@ -480,15 +703,40 @@ export const VideoPlayer: React.FC = () => {
 
   const seekDelta = (delta: number) => {
     if (!videoRef.current) return;
-    videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.currentTime + delta, duration));
+    userSeekedRef.current = true;
+    dismissResumeOffer();
+    const next = Math.max(0, Math.min(videoRef.current.currentTime + delta, duration || videoRef.current.duration || 0));
+    videoRef.current.currentTime = next;
+    setCurrentTime(next);
   };
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const target = parseFloat(e.target.value);
+    userSeekedRef.current = true;
+    dismissResumeOffer();
     setCurrentTime(target);
     if (videoRef.current) {
       videoRef.current.currentTime = target;
     }
+  };
+
+  const handleSelectQuality = (qualityLabel: string, streamUrlForQuality: string) => {
+    const hls = hlsRef.current;
+    if (isHls && hls && streamUrlForQuality === currentStreamUrl && hls.levels && hls.levels.length > 1) {
+      const targetIdx = findBestHlsLevelIndex(hls.levels, qualityLabel);
+      if (targetIdx >= 0) {
+        hls.currentLevel = targetIdx;
+        hls.nextLevel = targetIdx;
+        hls.loadLevel = targetIdx;
+      }
+      setQuality(qualityLabel);
+      showToast(`Качество: ${qualityLabel}`);
+    } else {
+      const resumePos = videoRef.current?.currentTime || 0;
+      setQuality(qualityLabel, resumePos);
+      showToast(`Качество: ${qualityLabel}`);
+    }
+    setActiveMenu('none');
   };
 
   const handleVolumeChange = (newVol: number) => {
@@ -589,6 +837,43 @@ export const VideoPlayer: React.FC = () => {
         </div>
       )}
 
+      {/* Optional 1-click Resume Pill (never auto-cuts movie intro) */}
+      {resumeOfferTime && !isLoading && !error && (
+        <div className="absolute bottom-28 left-6 z-40 flex items-center gap-2 px-4 py-2 rounded-full cinema-glass border border-brand-orange/40 shadow-elevated animate-fade-in">
+          <button
+            type="button"
+            onClick={() => {
+              userSeekedRef.current = true;
+              if (videoRef.current) {
+                videoRef.current.currentTime = resumeOfferTime;
+                setCurrentTime(resumeOfferTime);
+              }
+              dismissResumeOffer();
+              showToast(`Продолжено с ${formatDuration(resumeOfferTime)}`);
+            }}
+            className="flex items-center gap-2 text-xs font-extrabold text-white hover:text-brand-orange cursor-pointer"
+          >
+            <Clock className="w-3.5 h-3.5 text-brand-orange" aria-hidden="true" />
+            <span>Продолжить с {formatDuration(resumeOfferTime)}</span>
+          </button>
+          <button
+            type="button"
+            onClick={dismissResumeOffer}
+            aria-label="Смотреть сначала"
+            className="p-1 rounded-full hover:bg-white/[0.15] text-zinc-400 hover:text-white cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
+      {/* Subtle Mid-Playback Buffering Indicator */}
+      {isBuffering && !isLoading && !error && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
+          <div className="w-12 h-12 rounded-full border-[3px] border-white/15 border-t-brand-orange border-r-brand-crimson animate-spin" />
+        </div>
+      )}
+
       {/* Video Element */}
       <video
         ref={videoRef}
@@ -607,15 +892,26 @@ export const VideoPlayer: React.FC = () => {
         }`}
         onClick={togglePlay}
         onTimeUpdate={() => {
-          if (videoRef.current) {
-            setCurrentTime(videoRef.current.currentTime);
-            if (videoRef.current.buffered.length > 0) {
-              setBuffered(videoRef.current.buffered.end(videoRef.current.buffered.length - 1));
-            }
+          const v = videoRef.current;
+          if (!v) return;
+          // Skip React re-renders while OSD is hidden to prevent software-compositor frame drops
+          if (!showControlsRef.current) return;
+          const now = performance.now();
+          if (now - lastUiSyncRef.current < 250) return;
+          lastUiSyncRef.current = now;
+          setCurrentTime(v.currentTime);
+          if (v.buffered.length > 0) {
+            setBuffered(v.buffered.end(v.buffered.length - 1));
           }
         }}
         onDurationChange={() => {
           if (videoRef.current) setDuration(videoRef.current.duration);
+        }}
+        onWaiting={() => setIsBuffering(true)}
+        onCanPlay={() => setIsBuffering(false)}
+        onPlaying={() => {
+          setIsPlaying(true);
+          setIsBuffering(false);
         }}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
@@ -675,25 +971,32 @@ export const VideoPlayer: React.FC = () => {
           )}
 
           {mediaDetails?.translators && mediaDetails.translators.length > 1 && (
-            <div className="flex flex-wrap justify-center gap-2 max-w-2xl mb-5" aria-label="Выбор озвучки">
-              <span className="w-full text-center text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                Попробовать другую озвучку
+            <div className="w-full max-w-2xl mb-5 space-y-2" aria-label="Выбор озвучки">
+              <span className="block w-full text-center text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                Попробовать другую озвучку ({mediaDetails.translators.length})
               </span>
-              {mediaDetails.translators.map((tr) => (
-                <button
-                  key={tr.id}
-                  type="button"
-                  onClick={() => switchTranslator(tr.id)}
-                  aria-pressed={translatorId === tr.id}
-                  className={`px-3.5 py-2 rounded-full text-xs font-bold cursor-pointer ${
-                    translatorId === tr.id
-                      ? 'btn-ember text-white'
-                      : 'bg-white/[0.08] text-zinc-200 hover:bg-white/[0.16] border border-white/10'
-                  }`}
-                >
-                  {tr.name}
-                </button>
-              ))}
+              <HorizontalSlider
+                ariaLabel="Выбор озвучки"
+                compact
+                itemCount={mediaDetails.translators.length}
+                trackClassName="flex items-center gap-2"
+              >
+                {mediaDetails.translators.map((tr) => (
+                  <button
+                    key={tr.id}
+                    type="button"
+                    onClick={() => switchTranslator(tr.id, 0)}
+                    aria-pressed={translatorId === tr.id}
+                    className={`flex-shrink-0 whitespace-nowrap px-3.5 py-2 rounded-full text-xs font-bold cursor-pointer ${
+                      translatorId === tr.id
+                        ? 'btn-ember text-white'
+                        : 'bg-white/[0.08] text-zinc-200 hover:bg-white/[0.16] border border-white/10'
+                    }`}
+                  >
+                    {tr.name}
+                  </button>
+                ))}
+              </HorizontalSlider>
             </div>
           )}
 
@@ -776,10 +1079,10 @@ export const VideoPlayer: React.FC = () => {
         </div>
       )}
 
-      {/* Cinema OSD Controls Overlay */}
+      {/* Cinema OSD Controls Overlay (visibility:hidden when faded out prevents software compositor overdraw) */}
       <div
         className={`absolute inset-0 flex flex-col justify-between p-6 pointer-events-none transition-opacity duration-300 ${
-          showControls && !error ? 'opacity-100' : 'opacity-0'
+          showControls && !error ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
       >
         {/* Top Floating Glass Bar */}
@@ -1136,10 +1439,7 @@ export const VideoPlayer: React.FC = () => {
               <button
                 key={s.quality}
                 type="button"
-                onClick={() => {
-                  setQuality(s.quality);
-                  setActiveMenu('none');
-                }}
+                onClick={() => handleSelectQuality(s.quality, s.hls || s.mp4)}
                 className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
                   currentQuality === s.quality
                     ? 'btn-ember text-white'
@@ -1222,16 +1522,17 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Translator Menu Popup */}
         {activeMenu === 'translator' && mediaDetails?.translators && (
-          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[240px] max-h-72 overflow-y-auto space-y-1">
-            <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
-              Выбор озвучки
+          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[260px] max-w-[340px] max-h-72 overflow-y-auto space-y-1">
+            <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
+              <span>Выбор озвучки</span>
+              <span className="font-mono text-zinc-500">{mediaDetails.translators.length}</span>
             </div>
             {mediaDetails.translators.map((tr) => (
               <button
                 key={tr.id}
                 type="button"
                 onClick={() => {
-                  switchTranslator(tr.id);
+                  switchTranslator(tr.id, videoRef.current?.currentTime || 0);
                   setActiveMenu('none');
                 }}
                 className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
@@ -1247,33 +1548,95 @@ export const VideoPlayer: React.FC = () => {
           </div>
         )}
 
-        {/* Episodes Menu Popup */}
-        {activeMenu === 'episodes' && currentSeason && currentSeason.episodes && (
-          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-80 max-h-80 overflow-y-auto space-y-2.5">
-            <div className="font-display text-xs font-black text-white">Серии ({currentSeason.title})</div>
-            <div className="grid grid-cols-4 gap-2">
-              {currentSeason.episodes.map((ep) => (
-                <button
-                  key={ep.episodeId}
-                  type="button"
-                  onClick={() => {
-                    if (seasonId !== undefined) {
-                      switchEpisode(seasonId, ep.episodeId);
-                      setActiveMenu('none');
-                    }
-                  }}
-                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold cursor-pointer ${
-                    episodeId === ep.episodeId
-                      ? 'btn-ember text-white'
-                      : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-200'
-                  }`}
+        {/* Episodes Menu Popup (with Season & Episode Sliders) */}
+        {activeMenu === 'episodes' && mediaDetails?.seasons && mediaDetails.seasons.length > 0 && (() => {
+          const menuSeason =
+            mediaDetails.seasons.find((s) => s.id === episodeMenuSeasonId) ||
+            currentSeason ||
+            mediaDetails.seasons[0];
+          const eps = menuSeason?.episodes || [];
+          return (
+            <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[360px] max-w-[90vw] space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="font-display text-xs font-black text-white">
+                  Серии ({menuSeason.title || `Сезон ${menuSeason.id}`})
+                </div>
+                <span className="text-[10px] font-mono font-bold text-zinc-400">{eps.length} сер.</span>
+              </div>
+
+              {mediaDetails.seasons.length > 1 && (
+                <HorizontalSlider
+                  ariaLabel="Выбор сезона"
+                  compact
+                  itemCount={mediaDetails.seasons.length}
+                  trackClassName="flex items-center gap-1.5"
                 >
-                  {ep.episodeId} сер.
-                </button>
-              ))}
+                  {mediaDetails.seasons.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setEpisodeMenuSeasonId(s.id)}
+                      className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap cursor-pointer ${
+                        menuSeason.id === s.id
+                          ? 'btn-ember text-white'
+                          : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-300'
+                      }`}
+                    >
+                      {s.title || `Сезон ${s.id}`}
+                    </button>
+                  ))}
+                </HorizontalSlider>
+              )}
+
+              {eps.length > 12 ? (
+                <HorizontalSlider
+                  ariaLabel="Выбор серии"
+                  compact
+                  itemCount={eps.length}
+                  trackClassName="grid grid-rows-3 grid-flow-col auto-cols-[74px] gap-1.5"
+                >
+                  {eps.map((ep) => (
+                    <button
+                      key={ep.episodeId}
+                      type="button"
+                      onClick={() => {
+                        switchEpisode(menuSeason.id, ep.episodeId);
+                        setActiveMenu('none');
+                      }}
+                      className={`py-2 px-1 text-center rounded-xl text-xs font-bold cursor-pointer ${
+                        seasonId === menuSeason.id && episodeId === ep.episodeId
+                          ? 'btn-ember text-white'
+                          : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-200'
+                      }`}
+                    >
+                      {ep.episodeId} сер.
+                    </button>
+                  ))}
+                </HorizontalSlider>
+              ) : (
+                <div className="grid grid-cols-4 gap-2 max-h-60 overflow-y-auto">
+                  {eps.map((ep) => (
+                    <button
+                      key={ep.episodeId}
+                      type="button"
+                      onClick={() => {
+                        switchEpisode(menuSeason.id, ep.episodeId);
+                        setActiveMenu('none');
+                      }}
+                      className={`py-2 px-1 text-center rounded-xl text-xs font-bold cursor-pointer ${
+                        seasonId === menuSeason.id && episodeId === ep.episodeId
+                          ? 'btn-ember text-white'
+                          : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-200'
+                      }`}
+                    >
+                      {ep.episodeId} сер.
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-          </div>
-        )}
+          );
+        })()}
       </div>
 
       {/* Persistent top drag handle when pinned */}

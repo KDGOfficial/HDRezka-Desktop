@@ -15,6 +15,7 @@ interface PlayerState {
   playbackSpeed: number;
   volume: number;
   initialTime: number;
+  resumeOfferTime: number | null;
   isLoading: boolean;
   error: string | null;
   trailerUrl?: string;
@@ -27,12 +28,14 @@ interface PlayerState {
     startTime?: number;
   }) => Promise<void>;
   closePlayer: () => void;
-  setQuality: (quality: string) => void;
+  dismissResumeOffer: () => void;
+  setQuality: (quality: string, resumeAt?: number) => void;
+  syncHlsQualities: (streams: VideoQualityStream[], activeQuality?: string) => void;
   setSubtitle: (language: string) => void;
   setPlaybackSpeed: (speed: number) => void;
   setVolume: (volume: number) => void;
   switchEpisode: (seasonId: number, episodeId: number) => Promise<void>;
-  switchTranslator: (translatorId: number) => Promise<void>;
+  switchTranslator: (translatorId: number, resumeAt?: number) => Promise<void>;
   retryPlayback: () => Promise<void>;
 }
 
@@ -52,12 +55,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   playbackSpeed: 1.0,
   volume: 0.8,
   initialTime: 0,
+  resumeOfferTime: null,
   isLoading: false,
   error: null,
   trailerUrl: undefined,
 
-  openPlayer: async ({ details, translatorId, seasonId, episodeId, startTime = 0 }) => {
+  openPlayer: async ({ details, translatorId, seasonId, episodeId, startTime }) => {
     const seq = ++playRequestSeq;
+    const explicitStart = typeof startTime === 'number' && Number.isFinite(startTime) ? Math.max(0, startTime) : 0;
     set({
       isOpen: true,
       mediaDetails: details,
@@ -69,20 +74,20 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       streamData: null,
       currentStreamUrl: '',
       trailerUrl: undefined,
-      initialTime: startTime,
+      initialTime: explicitStart,
+      resumeOfferTime: null,
     });
 
     try {
-      // Check saved progress if startTime not explicitly given
-      let startPosition = startTime;
-      if (startPosition === 0 && window.api) {
+      // Always start cleanly from 0:00 unless caller explicitly requested a resume timestamp;
+      // offer saved progress as a 1-click pill instead of silently cutting the movie intro.
+      if (startTime === undefined && window.api) {
         const prog = await window.api.getProgress(details.id, seasonId || 0, episodeId || 0);
         if (seq !== playRequestSeq) return;
-        if (prog && prog.currentTime > 10 && prog.currentTime < prog.duration - 30) {
-          startPosition = prog.currentTime;
+        if (prog && prog.currentTime >= 45 && prog.duration > 120 && prog.currentTime < prog.duration - 60) {
+          set({ resumeOfferTime: prog.currentTime });
         }
       }
-      set({ initialTime: startPosition });
 
       const activeTranslatorId = (typeof translatorId === 'number')
         ? translatorId
@@ -157,23 +162,40 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       streamData: null,
       currentStreamUrl: '',
       trailerUrl: undefined,
+      initialTime: 0,
+      resumeOfferTime: null,
       isLoading: false,
       error: null,
     });
   },
 
-  setQuality: (quality: string) => {
-    const { streamData } = get();
+  dismissResumeOffer: () => set({ resumeOfferTime: null }),
+
+  setQuality: (quality: string, resumeAt?: number) => {
+    const { streamData, currentStreamUrl } = get();
     if (!streamData) return;
     const match = streamData.streams.find((s) => s.quality === quality);
     if (match) {
+      const nextUrl = match.hls || match.mp4;
       const useHls = !!match.hls;
       set({
         currentQuality: quality,
-        currentStreamUrl: match.hls || match.mp4,
+        currentStreamUrl: nextUrl,
         isHls: useHls,
+        ...(nextUrl !== currentStreamUrl && typeof resumeAt === 'number' && resumeAt > 0
+          ? { initialTime: resumeAt }
+          : {}),
       });
     }
+  },
+
+  syncHlsQualities: (streams: VideoQualityStream[], activeQuality?: string) => {
+    const { streamData } = get();
+    if (!streamData || streams.length === 0) return;
+    set({
+      streamData: { ...streamData, streams },
+      ...(activeQuality ? { currentQuality: activeQuality } : {}),
+    });
   },
 
   setSubtitle: (language: string) => set({ currentSubtitle: language }),
@@ -192,8 +214,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     });
   },
 
-  switchTranslator: async (translatorId: number) => {
-    const { mediaDetails, seasonId, episodeId, initialTime } = get();
+  switchTranslator: async (translatorId: number, resumeAt?: number) => {
+    const { mediaDetails, seasonId, episodeId } = get();
     if (!mediaDetails) return;
 
     let updatedDetails = { ...mediaDetails, currentTranslatorId: translatorId };
@@ -214,7 +236,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       translatorId,
       seasonId,
       episodeId,
-      startTime: initialTime || 0,
+      startTime: typeof resumeAt === 'number' && resumeAt > 0 ? resumeAt : 0,
     });
   },
 

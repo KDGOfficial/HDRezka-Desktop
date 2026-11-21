@@ -59,6 +59,8 @@ export interface StreamData {
   isAlternative?: boolean;
   sourceName?: string;
   trailerUrl?: string;
+  upgradedMirror?: boolean;
+  upgradedFromQuality?: string;
 }
 
 export interface MediaReview {
