@@ -54,6 +54,19 @@ export function createMainWindow(): BrowserWindow {
 
     const activeMirror = provider.getActiveMirror();
 
+    if (
+      url.includes('redcdn.org') ||
+      url.includes('threnet.xyz') ||
+      url.includes('kinobase.org') ||
+      url.includes('mvapspdmpg.com') ||
+      url.includes('tazaromikaz.link')
+    ) {
+      details.requestHeaders['Referer'] = 'https://kinobase.org/';
+      details.requestHeaders['Origin'] = 'https://kinobase.org';
+      details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+
     const isStreamOrApi =
       details.resourceType === 'media' ||
       details.resourceType === 'xhr' ||

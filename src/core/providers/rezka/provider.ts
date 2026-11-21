@@ -12,6 +12,8 @@ import {
   MirrorStatus,
   ContentType,
   Translator,
+  VideoQualityStream,
+  SubtitleTrack,
 } from '../../../shared/types';
 import { DEFAULT_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../../shared/constants';
 import { parseStreamData } from './decoder';
@@ -105,13 +107,24 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.34';
+  public version = '0.0.35';
 
   private activeMirror: string;
   private mirrors: string[];
   private timeoutMs: number;
   private mediaCache: Map<string, Partial<MediaItem>> = new Map();
   private mediaUrlCache: Map<string, string> = new Map();
+  private kinobasePlayerCache: Map<
+    string,
+    {
+      ts: number;
+      file: any;
+      subtitle?: string;
+      trailerUrl?: string;
+      balancerSrc?: string;
+      kpId?: string;
+    }
+  > = new Map();
 
   constructor(activeMirror = 'https://rezka.ag', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
     this.mirrors = [...mirrors].filter((m) => !isBadMirrorUrl(m));
@@ -212,7 +225,12 @@ export class RezkaProvider implements IProvider {
           const latency = Date.now() - rootT0;
           const text = await rootRes.text();
           const isBlocked = this.isAntiBot(text);
-          const hasRezkaContent = text.includes('b-content') || text.includes('b-post') || text.includes('b-top');
+          const hasRezkaContent =
+            text.includes('b-content') ||
+            text.includes('b-post') ||
+            text.includes('b-top') ||
+            text.includes('kinobase') ||
+            text.includes('Кинобейс');
           const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
           const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
           const isLiveSite = isLiveRezka && text.length > 200;
@@ -513,11 +531,719 @@ export class RezkaProvider implements IProvider {
     }
   }
 
+  private isKinobase(urlOrMirror?: string): boolean {
+    const target = (urlOrMirror || this.activeMirror || '').toLowerCase();
+    return target.includes('kinobase.org') || target.startsWith('/film/') || target.startsWith('/serial/');
+  }
+
+  private parseKinobaseItems(html: string, defaultType: ContentType = 'films'): MediaItem[] {
+    const $ = cheerio.load(html);
+    const items: MediaItem[] = [];
+    const seen = new Set<string>();
+    $('li.item, div.item').each((_, el) => {
+      const linkEl = $(el).find('.title a, .poster a, a').first();
+      const href = linkEl.attr('href') || '';
+      const rawTitle = $(el).find('.title a').text().trim() || linkEl.attr('title') || linkEl.text().trim();
+      if (!href || !rawTitle || !/\/(?:film|serial)\/\d+/.test(href)) return;
+
+      const idMatch = href.match(/\/(?:film|serial)\/(\d+)/);
+      const id = idMatch ? idMatch[1] : href;
+      if (seen.has(id)) return;
+      seen.add(id);
+
+      const fullUrl = href.startsWith('http')
+        ? href
+        : `https://kinobase.org${href.startsWith('/') ? '' : '/'}${href}`;
+      const img = $(el).find('img').first();
+      let poster = img.attr('data-src') || img.attr('src') || '';
+      if (poster && !poster.startsWith('http')) {
+        poster = `https://kinobase.org${poster.startsWith('/') ? '' : '/'}${poster}`;
+      }
+
+      const title = rawTitle.replace(/\s*\(\d{4}\)\s*$/, '').trim();
+      const yearText = $(el).find('.year').text().trim();
+      const yMatch = yearText.match(/\b(19\d{2}|20\d{2})\b/) || rawTitle.match(/\b(19\d{2}|20\d{2})\b/);
+      const year = yMatch ? parseInt(yMatch[1], 10) : undefined;
+      const rText = $(el).find('.rating').first().text().trim();
+      const rating = rText ? parseFloat(rText) : undefined;
+      const labelText = $(el).find('.label').text().trim();
+
+      let type: ContentType = defaultType;
+      if (href.includes('/serial/')) type = 'series';
+      else if (defaultType === 'films' && href.includes('/film/')) type = 'films';
+
+      const item: MediaItem = {
+        id,
+        title: title || rawTitle,
+        url: fullUrl,
+        poster,
+        year,
+        type,
+        rating: rating && !isNaN(rating) ? rating : undefined,
+        info: labelText || yearText || undefined,
+      };
+      this.mediaCache.set(fullUrl, item);
+      this.mediaCache.set(href, item);
+      this.mediaCache.set(id, item);
+      this.mediaUrlCache.set(id, fullUrl);
+      items.push(item);
+    });
+    return items;
+  }
+
+  private async fetchKinobasePage(url: string, timeoutMs = 5000): Promise<{ html: string; cookies: string } | null> {
+    try {
+      const res = await appFetch(url, {
+        headers: { 'User-Agent': BROWSER_USER_AGENT },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!res.ok) return null;
+      const html = await res.text();
+      if (!html || this.isAntiBot(html)) return null;
+      const setCookies = (res.headers as any).getSetCookie
+        ? (res.headers as any).getSetCookie()
+        : [res.headers.get('set-cookie')];
+      const cookies = (setCookies || [])
+        .filter(Boolean)
+        .map((c: string) => c.split(';')[0].trim())
+        .filter(Boolean)
+        .join('; ');
+      return { html, cookies };
+    } catch {
+      return null;
+    }
+  }
+
+  private async getKinobaseHomeSections() {
+    try {
+      const [homePage, filmsPage, serialsPage, animPage] = await Promise.all([
+        this.fetchKinobasePage('https://kinobase.org/'),
+        this.fetchKinobasePage('https://kinobase.org/films?sort=rating'),
+        this.fetchKinobasePage('https://kinobase.org/serials'),
+        this.fetchKinobasePage('https://kinobase.org/animation'),
+      ]);
+
+      const homeItems = homePage ? this.parseKinobaseItems(homePage.html) : [];
+      const filmsItems = filmsPage ? this.parseKinobaseItems(filmsPage.html, 'films') : [];
+      const seriesItems = serialsPage ? this.parseKinobaseItems(serialsPage.html, 'series') : [];
+      const animItems = animPage ? this.parseKinobaseItems(animPage.html, 'animation') : [];
+
+      if (homeItems.length === 0 && filmsItems.length === 0 && seriesItems.length === 0) {
+        return null;
+      }
+
+      const popular = (homeItems.length > 0 ? homeItems : filmsItems).slice(0, 16);
+      const newReleasesList = homeItems.filter((i) => (i.year || 0) >= 2024);
+      const newReleases = (newReleasesList.length > 0 ? newReleasesList : homeItems.slice(16, 32)).slice(0, 16);
+      const topMovies = (filmsItems.length > 0 ? filmsItems : homeItems.filter((i) => i.type === 'films')).slice(0, 16);
+      const topSeries = (seriesItems.length > 0 ? seriesItems : homeItems.filter((i) => i.type === 'series')).slice(0, 16);
+      const recommendations = [...filmsItems.slice(0, 8), ...animItems.slice(0, 8)];
+      const expectedList = homeItems.filter((i) => (i.year || 0) >= 2025);
+      const expected = (expectedList.length > 0 ? expectedList : homeItems).slice(0, 16);
+      const hero = topMovies[0] || popular[0] || topSeries[0];
+
+      return {
+        hero,
+        popular,
+        newReleases: newReleases.length > 0 ? newReleases : popular,
+        topMovies: topMovies.length > 0 ? topMovies : popular,
+        topSeries: topSeries.length > 0 ? topSeries : popular,
+        recommendations: recommendations.length > 0 ? recommendations : popular,
+        expected,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async getKinobaseCatalog(filter: CatalogFilter): Promise<SearchResult | null> {
+    try {
+      const routeMap: Record<ContentType, string> = {
+        films: '/films',
+        series: '/serials',
+        cartoons: '/animation',
+        animation: '/animation',
+        shows: '/tv',
+      };
+      const baseRoute = routeMap[filter.type] || '/films';
+      const params = new URLSearchParams();
+      if (filter.sort === 'popular' || filter.sort === 'rating') {
+        params.set('sort', 'rating');
+      }
+      if (filter.page > 1) {
+        params.set('page', String(filter.page));
+      }
+      const qs = params.toString();
+      const targetUrl = `https://kinobase.org${baseRoute}${qs ? `?${qs}` : ''}`;
+      const page = await this.fetchKinobasePage(targetUrl);
+      if (!page) return null;
+
+      const items = this.parseKinobaseItems(page.html, filter.type);
+      if (items.length === 0) return null;
+
+      const hasMore = page.html.includes(`page=${filter.page + 1}`) || page.html.includes('pagination');
+      return {
+        items,
+        page: filter.page,
+        hasMore,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async searchKinobase(query: string): Promise<MediaItem[]> {
+    const cleanQ = query.trim();
+    if (!cleanQ) return [];
+    const page = await this.fetchKinobasePage(`https://kinobase.org/search?query=${encodeURIComponent(cleanQ)}`, 4000);
+    if (!page) return [];
+    return this.parseKinobaseItems(page.html);
+  }
+
+  public parseKinobaseFileString(
+    fileStr: string,
+    preferredTranslatorId?: number
+  ): {
+    translators: Translator[];
+    streamsByTranslator: Map<number, VideoQualityStream[]>;
+    defaultStreams: VideoQualityStream[];
+  } {
+    const translators: Translator[] = [];
+    const translatorIdsByName = new Map<string, number>();
+    const streamsByTranslator = new Map<number, VideoQualityStream[]>();
+
+    if (!fileStr || typeof fileStr !== 'string') {
+      return { translators, streamsByTranslator, defaultStreams: [] };
+    }
+
+    const qualityBlocks = Array.from(fileStr.matchAll(/\[([^\]]+)\]([^[]*)/g));
+    for (const block of qualityBlocks) {
+      const quality = block[1].trim();
+      const body = block[2].replace(/,\s*$/, '').trim();
+      if (!quality || !body) continue;
+
+      const variants = body.split(';').map((v) => v.trim()).filter(Boolean);
+      for (const variant of variants) {
+        const voiceMatch = variant.match(/^\{([^}]+)\}([\s\S]+)$/);
+        const voiceName = voiceMatch ? voiceMatch[1].trim() : 'Оригинал / Дубляж';
+        const urlsPart = voiceMatch ? voiceMatch[2].trim() : variant;
+        const urls = urlsPart
+          .split(/\s+or\s+/i)
+          .map((u) => u.trim())
+          .filter((u) => /^https?:\/\//i.test(u));
+        if (urls.length === 0) continue;
+
+        let trId = translatorIdsByName.get(voiceName);
+        if (!trId) {
+          trId = translators.length + 1;
+          translatorIdsByName.set(voiceName, trId);
+          translators.push({ id: trId, name: voiceName, premium: false });
+        }
+
+        const list = streamsByTranslator.get(trId) || [];
+        if (!list.some((s) => s.quality === quality)) {
+          list.push({ quality, hls: urls[0], mp4: urls[0] });
+          streamsByTranslator.set(trId, list);
+        }
+      }
+    }
+
+    const qualityRank = (q: string) => parseInt(q.replace(/[^\d]/g, ''), 10) || 0;
+    for (const [trId, list] of streamsByTranslator.entries()) {
+      list.sort((a, b) => qualityRank(b.quality) - qualityRank(a.quality));
+      streamsByTranslator.set(trId, list);
+    }
+
+    const selectedId =
+      (preferredTranslatorId && streamsByTranslator.has(preferredTranslatorId)
+        ? preferredTranslatorId
+        : translators[0]?.id) || 0;
+    const defaultStreams = (selectedId && streamsByTranslator.get(selectedId)) || [];
+
+    return { translators, streamsByTranslator, defaultStreams };
+  }
+
+  private parseKinobaseSubtitles(rawSubtitle?: string): SubtitleTrack[] {
+    if (!rawSubtitle || typeof rawSubtitle !== 'string') return [];
+    const tracks: SubtitleTrack[] = [];
+    for (const block of rawSubtitle.matchAll(/\[([^\]]+)\]([^[]*)/g)) {
+      const language = block[1].trim();
+      const urlsPart = block[2].replace(/,\s*$/, '').trim();
+      const firstUrl = urlsPart
+        .split(/\s+or\s+/i)
+        .map((u) => u.trim())
+        .find((u) => /^https?:\/\//i.test(u));
+      if (language && firstUrl) {
+        tracks.push({ language, url: firstUrl });
+      }
+    }
+    return tracks;
+  }
+
+  private parseKinobaseSeriesAndTranslators(
+    rawFile: any,
+    rawSubtitle?: string
+  ): {
+    translators: Translator[];
+    seasons?: Season[];
+    getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number) => VideoQualityStream[];
+    subtitles: SubtitleTrack[];
+  } {
+    const subtitles = this.parseKinobaseSubtitles(rawSubtitle);
+    let parsed: any = rawFile;
+    if (typeof rawFile === 'string') {
+      const trimmed = rawFile.trim();
+      if (trimmed.startsWith('[') && !/^\[\d+p/i.test(trimmed)) {
+        try {
+          parsed = JSON.parse(trimmed);
+        } catch {
+          parsed = rawFile;
+        }
+      }
+    }
+
+    if (typeof parsed === 'string') {
+      const movieParsed = this.parseKinobaseFileString(parsed);
+      return {
+        translators: movieParsed.translators,
+        seasons: undefined,
+        subtitles,
+        getEpisodeStreams: (translatorId?: number) => {
+          if (translatorId && movieParsed.streamsByTranslator.has(translatorId)) {
+            return movieParsed.streamsByTranslator.get(translatorId)!;
+          }
+          return movieParsed.defaultStreams;
+        },
+      };
+    }
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return {
+        translators: [],
+        seasons: undefined,
+        subtitles,
+        getEpisodeStreams: () => [],
+      };
+    }
+
+    const seasons: Season[] = [];
+    const episodeFiles = new Map<string, string>();
+    const hasSeasonFolders = parsed.some((s: any) => Array.isArray(s?.folder));
+
+    if (hasSeasonFolders) {
+      parsed.forEach((s: any, sIdx: number) => {
+        const seasonTitle = s?.title || `Сезон ${sIdx + 1}`;
+        const seasonNumMatch = String(seasonTitle).match(/\d+/);
+        const seasonId = seasonNumMatch ? parseInt(seasonNumMatch[0], 10) : sIdx + 1;
+        const episodes = Array.isArray(s?.folder)
+          ? s.folder.map((ep: any, epIdx: number) => {
+              const epTitle = ep?.title || `Серия ${epIdx + 1}`;
+              const epId = epIdx + 1;
+              if (ep?.file) episodeFiles.set(`${seasonId}_${epId}`, String(ep.file));
+              return { id: epId, episodeId: epId, seasonId, title: epTitle };
+            })
+          : [];
+        if (episodes.length > 0) {
+          seasons.push({ id: seasonId, title: seasonTitle, episodes });
+        }
+      });
+    } else {
+      const episodes = parsed.map((ep: any, epIdx: number) => {
+        const epId = epIdx + 1;
+        const epTitle = ep?.title || `Серия ${epId}`;
+        if (ep?.file) episodeFiles.set(`1_${epId}`, String(ep.file));
+        return { id: epId, episodeId: epId, seasonId: 1, title: epTitle };
+      });
+      if (episodes.length > 0) {
+        seasons.push({ id: 1, title: 'Сезон 1', episodes });
+      }
+    }
+
+    const sampleFile = episodeFiles.values().next().value || '';
+    const sampleParsed = this.parseKinobaseFileString(sampleFile);
+
+    return {
+      translators: sampleParsed.translators,
+      seasons: seasons.length > 0 ? seasons : undefined,
+      subtitles,
+      getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number) => {
+        const targetKey = `${seasonId || seasons[0]?.id || 1}_${episodeId || 1}`;
+        const epFile = episodeFiles.get(targetKey) || sampleFile;
+        if (!epFile) return [];
+        return this.parseKinobaseFileString(epFile, translatorId).defaultStreams;
+      },
+    };
+  }
+
+  private async extractKinobasePlayerData(
+    filmUrl: string,
+    preloadedHtml?: string,
+    preloadedCookies?: string
+  ): Promise<{
+    file: any;
+    subtitle?: string;
+    trailerUrl?: string;
+    balancerSrc?: string;
+    kpId?: string;
+  } | null> {
+    const cached = this.kinobasePlayerCache.get(filmUrl);
+    if (cached && Date.now() - cached.ts < 10 * 60 * 1000) {
+      return cached;
+    }
+
+    let html = preloadedHtml || '';
+    let cookies = preloadedCookies || '';
+    if (!html) {
+      const page = await this.fetchKinobasePage(filmUrl, 5000);
+      if (!page) return null;
+      html = page.html;
+      cookies = page.cookies;
+    }
+
+    const trailerMatch = html.match(/MOVIE_TRAILER\s*=\s*["']([^"']+)["']/i);
+    const trailerUrl = trailerMatch ? trailerMatch[1] : undefined;
+    const kpMatch = html.match(/kinopoisk\.ru\/film\/(\d+)/i);
+    const kpId = kpMatch ? kpMatch[1] : undefined;
+    const $ = cheerio.load(html);
+    const balancerSrc = $('#tab-options a[href="#online2"]').attr('data-balancer-src') || undefined;
+
+    let file: any = null;
+    let subtitle: string | undefined;
+
+    try {
+      const inlineVars = $('script')
+        .map((_, el) => $(el).html() || '')
+        .get()
+        .find((s) => s.includes('MOVIE_URL'));
+      const hsPathMatch = html.match(/\/static\/js\/hs\.js\?v=\d+/);
+      if (inlineVars && hsPathMatch) {
+        const hsRes = await appFetch(`https://kinobase.org${hsPathMatch[0]}`, {
+          headers: {
+            'User-Agent': BROWSER_USER_AGENT,
+            'Referer': filmUrl,
+            ...(cookies ? { Cookie: cookies } : {}),
+          },
+          signal: AbortSignal.timeout(4500),
+        });
+        if (hsRes.ok) {
+          const hsCode = await hsRes.text();
+          const vmMod = (process as any).getBuiltinModule?.('vm') || (0, eval)('require')('vm');
+          let readyFn: (() => void) | null = null;
+          const ajaxCalls: any[] = [];
+          const fakeEl: any = new Proxy(
+            {
+              ready: (fn: () => void) => {
+                readyFn = fn;
+                return fakeEl;
+              },
+              width: () => 800,
+              height: () => 450,
+            },
+            { get: (t, p) => (p in t ? t[p] : () => fakeEl) }
+          );
+          const fakeJq: any = (sel: any) => {
+            if (typeof sel === 'function') {
+              readyFn = sel;
+              return fakeEl;
+            }
+            return fakeEl;
+          };
+          fakeJq.fn = { jquery: '3.0.0', rating: () => {} };
+          fakeJq.extend = Object.assign;
+          fakeJq.ajax = (opts: any) => {
+            ajaxCalls.push(opts);
+          };
+          fakeJq.get = () => ({ done: () => {}, fail: () => {}, always: () => {} });
+          fakeJq.post = () => ({ done: () => {}, fail: () => {}, always: () => {} });
+
+          let playerConfig: any = null;
+          const parsedUrl = new URL(filmUrl);
+          const sandbox: any = {
+            document: {
+              cookie: cookies,
+              getElementsByTagName: () => [{ innerHTML: 'kinobase.org', href: 'https://kinobase.org' }],
+              querySelectorAll: () => [{ innerHTML: 'kinobase.org', href: 'https://kinobase.org' }],
+              getElementById: () => null,
+              querySelector: () => null,
+            },
+            location: { hostname: 'kinobase.org', href: filmUrl, pathname: parsedUrl.pathname },
+            screen: { width: 1920, height: 1080 },
+            localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} },
+            navigator: { userAgent: BROWSER_USER_AGENT },
+            $: fakeJq,
+            jQuery: fakeJq,
+            Playerjs: function (cfg: any) {
+              playerConfig = cfg;
+            },
+            Uppod: function (cfg: any) {
+              playerConfig = cfg;
+            },
+            atob: (s: string) => Buffer.from(s, 'base64').toString('binary'),
+            btoa: (s: string) => Buffer.from(s, 'binary').toString('base64'),
+            setTimeout: () => {},
+            Image: function () {},
+            PLAYER_TYPE: 'new',
+            FILE_TYPE: 'hls',
+            ENABLE_HDR: '0',
+            CURRENT_USER_ID: 0,
+          };
+          vmMod.createContext(sandbox);
+          vmMod.runInContext('window = globalThis; global = globalThis;', sandbox);
+          vmMod.runInContext(inlineVars, sandbox);
+          vmMod.runInContext(hsCode, sandbox);
+          if (readyFn) (readyFn as () => void)();
+
+          if (ajaxCalls[0]?.url) {
+            const u1 =
+              'https://kinobase.org' +
+              ajaxCalls[0].url +
+              '?' +
+              new URLSearchParams(ajaxCalls[0].data || {}).toString();
+            const r1 = await appFetch(u1, {
+              headers: {
+                'User-Agent': BROWSER_USER_AGENT,
+                'Referer': filmUrl,
+                ...(cookies ? { Cookie: cookies } : {}),
+              },
+              signal: AbortSignal.timeout(4000),
+            });
+            if (r1.ok) {
+              ajaxCalls[0].success?.(await r1.text());
+              if (ajaxCalls[1]?.url) {
+                const u2 =
+                  'https://kinobase.org' +
+                  ajaxCalls[1].url +
+                  '?' +
+                  new URLSearchParams(ajaxCalls[1].data || {}).toString();
+                const r2 = await appFetch(u2, {
+                  headers: {
+                    'User-Agent': BROWSER_USER_AGENT,
+                    'Referer': filmUrl,
+                    ...(cookies ? { Cookie: cookies } : {}),
+                  },
+                  signal: AbortSignal.timeout(4000),
+                });
+                if (r2.ok) {
+                  ajaxCalls[1].success?.(await r2.text());
+                }
+              }
+            }
+          }
+
+          if (playerConfig?.file) {
+            file = playerConfig.file;
+            subtitle = playerConfig.subtitle;
+          }
+        }
+      }
+    } catch (_) {}
+
+    const entry = {
+      ts: Date.now(),
+      file,
+      subtitle,
+      trailerUrl,
+      balancerSrc,
+      kpId,
+    };
+    this.kinobasePlayerCache.set(filmUrl, entry);
+    return entry;
+  }
+
+  private async extractBalancerStream(balancerSrc: string, episode?: number): Promise<StreamData | null> {
+    try {
+      const movieId = new URL(balancerSrc).searchParams.get('movie_id');
+      if (!movieId) return null;
+      const br = await appFetch(balancerSrc, {
+        headers: { 'User-Agent': BROWSER_USER_AGENT, 'Referer': 'https://kinobase.org/' },
+        signal: AbortSignal.timeout(4500),
+      });
+      if (!br.ok) return null;
+      const bh = await br.text();
+      const hdrMatch = bh.match(/window\.REQUEST_HEADERS\s*=\s*(\{[^}]+\})/);
+      const baseMatch = bh.match(/window\.ENV_BASE_URL\s*=\s*'([^']+)'/);
+      if (!hdrMatch || !baseMatch) return null;
+
+      const reqHeaders = JSON.parse(hdrMatch[1].replace(/'/g, '"'));
+      const baseUrl = baseMatch[1];
+      const apiHeaders = {
+        ...reqHeaders,
+        'X-Has-Token': 'true',
+        'X-Parent-Referrer': 'https://kinobase.org/',
+        'User-Agent': BROWSER_USER_AGENT,
+        'Referer': balancerSrc,
+      };
+      const er = await appFetch(`${baseUrl}/catalog-api/episodes?content-id=${movieId}`, {
+        headers: apiHeaders,
+        signal: AbortSignal.timeout(4500),
+      });
+      if (!er.ok) return null;
+      const eJson: any[] = await er.json();
+      if (!Array.isArray(eJson) || eJson.length === 0) return null;
+
+      const epIdx = episode && episode > 0 && eJson[episode - 1] ? episode - 1 : 0;
+      const filepath = eJson[epIdx]?.episodeVariants?.[0]?.filepath;
+      if (!filepath) return null;
+
+      let finalM3u8 = filepath;
+      try {
+        const mr = await appFetch(filepath, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT, 'Referer': balancerSrc },
+          signal: AbortSignal.timeout(4500),
+        });
+        if (mr.ok && mr.url) {
+          finalM3u8 = mr.url;
+        }
+      } catch (_) {}
+
+      return {
+        streams: [
+          { quality: '1080p', hls: finalM3u8, mp4: finalM3u8 },
+          { quality: '720p', hls: finalM3u8, mp4: finalM3u8 },
+          { quality: '480p', hls: finalM3u8, mp4: finalM3u8 },
+        ],
+        subtitles: [],
+        isAlternative: true,
+        sourceName: 'Kinobase Balancer',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private async resolveKinobaseUrl(urlOrId: string, meta?: Partial<MediaItem>): Promise<string | null> {
+    const normId = urlOrId.split('/').pop()?.split('-')[0] || urlOrId;
+    const candidates = [urlOrId, meta?.url, this.mediaUrlCache.get(normId)];
+    for (const c of candidates) {
+      if (c && this.isKinobase(c)) {
+        return c.startsWith('http') ? c : `https://kinobase.org${c.startsWith('/') ? '' : '/'}${c}`;
+      }
+    }
+
+    const rawTitle = meta?.title || meta?.origTitle || '';
+    const query = rawTitle.split('/')[0].replace(/[^\p{L}\p{N}\s]/gu, ' ').trim();
+    if (!query) return null;
+
+    const results = await this.searchKinobase(query);
+    if (results.length === 0) return null;
+    if (meta?.year) {
+      const exactYear = results.find((r) => r.year === meta.year);
+      if (exactYear) return exactYear.url;
+    }
+    return results[0].url;
+  }
+
+  private async getKinobaseDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails | null> {
+    try {
+      const filmUrl = await this.resolveKinobaseUrl(urlOrId, meta);
+      if (!filmUrl) return null;
+
+      const page = await this.fetchKinobasePage(filmUrl, 5000);
+      if (!page) return null;
+
+      const $ = cheerio.load(page.html);
+      let ld: any = {};
+      $('script[type="application/ld+json"]').each((_, el) => {
+        try {
+          const parsed = JSON.parse($(el).html() || '{}');
+          if (parsed && (parsed.name || parsed.description)) ld = parsed;
+        } catch {}
+      });
+
+      const idMatch = filmUrl.match(/\/(?:film|serial)\/(\d+)/);
+      const id = idMatch ? idMatch[1] : meta?.id || urlOrId;
+      this.mediaUrlCache.set(id, filmUrl);
+
+      const title = $('#title h1').first().text().trim() || ld.name || meta?.title || '';
+      if (!title) return null;
+
+      let poster = $('#media .poster img').first().attr('src') || ld.image || meta?.poster || '';
+      if (poster && !poster.startsWith('http')) {
+        poster = `https://kinobase.org${poster.startsWith('/') ? '' : '/'}${poster}`;
+      }
+
+      let origTitle = meta?.origTitle || '';
+      let country = meta?.country || '';
+      let ageRating = '';
+      let duration = '';
+      const genres: string[] = Array.isArray(ld.genre) ? ld.genre : [];
+      let year = ld.datePublished ? parseInt(String(ld.datePublished).slice(0, 4), 10) : (meta?.year || 0);
+
+      $('#info .info_item').each((_, el) => {
+        const key = $(el).find('.key').text().trim();
+        const val = $(el).find('.value').text().trim();
+        if (key.includes('Название')) origTitle = val;
+        else if (key.includes('Страна')) country = val;
+        else if (key.includes('Возраст')) ageRating = val;
+        else if (key.includes('Время') || key.includes('Длительность')) duration = val;
+        else if (key.includes('Год') && !year) {
+          const ym = val.match(/\b(19\d{2}|20\d{2})\b/);
+          if (ym) year = parseInt(ym[1], 10);
+        }
+      });
+
+      const ratingRezka = parseFloat($('#rating_votes .rating_site').parent().text().replace(/[^\d.]/g, '')) || ld.aggregateRating?.ratingValue || meta?.rating;
+      const ratingKp = parseFloat($('#rating_votes .rating_kp').parent().text().replace(/[^\d.]/g, '')) || undefined;
+      const ratingImdb = parseFloat($('#rating_votes .rating_imdb').parent().text().replace(/[^\d.]/g, '')) || undefined;
+      const description = ld.description || $('.description, [itemprop="description"]').text().trim() || '';
+      const directors = Array.isArray(ld.director) ? ld.director.map((d: any) => d?.name).filter(Boolean) : [];
+      const actors = Array.isArray(ld.actor) ? ld.actor.map((a: any) => a?.name).filter(Boolean) : [];
+
+      let type: ContentType = meta?.type || 'films';
+      if (filmUrl.includes('/serial/') || page.html.includes('MOVIE_TYPE = "serials"')) type = 'series';
+      else if (page.html.includes('MOVIE_TYPE = "animation"')) type = 'animation';
+
+      const playerData = await this.extractKinobasePlayerData(filmUrl, page.html, page.cookies);
+      const parsedMedia = playerData?.file
+        ? this.parseKinobaseSeriesAndTranslators(playerData.file, playerData.subtitle)
+        : { translators: [], seasons: undefined };
+
+      const translators: Translator[] =
+        parsedMedia.translators.length > 0
+          ? parsedMedia.translators
+          : [{ id: 1, name: 'Дубляж / Оригинал', premium: false }];
+
+      return {
+        id,
+        title,
+        origTitle,
+        poster,
+        backdrop: poster,
+        year,
+        country,
+        genres,
+        type,
+        duration,
+        ageRating,
+        ratingRezka: ratingRezka && !isNaN(ratingRezka) ? ratingRezka : undefined,
+        ratingImdb: ratingImdb && !isNaN(ratingImdb) ? ratingImdb : undefined,
+        ratingKp: ratingKp && !isNaN(ratingKp) ? ratingKp : undefined,
+        description,
+        directors,
+        actors,
+        translators,
+        currentTranslatorId: translators[0]?.id ?? 1,
+        seasons: parsedMedia.seasons,
+        similar: [],
+        antiBot: false,
+      };
+    } catch {
+      return null;
+    }
+  }
+
   public async getHomeSections() {
+    if (this.isKinobase()) {
+      const kHome = await this.getKinobaseHomeSections();
+      if (kHome) return kHome;
+      return FALLBACK_HOME_SECTIONS;
+    }
     try {
       const html = await this.fetchHtml(this.activeMirror);
       if (this.isAntiBot(html)) {
-        console.warn('[RezkaProvider] Active mirror protected by anti-bot. Loading live sections from search.php.');
+        console.warn('[RezkaProvider] Active mirror protected by anti-bot. Trying Kinobase / search fallback.');
+        const kHome = await this.getKinobaseHomeSections();
+        if (kHome) return kHome;
         return await this.fetchLiveRezkaHomeSections();
       }
       const $ = cheerio.load(html);
@@ -533,7 +1259,9 @@ export class RezkaProvider implements IProvider {
       });
 
       if (allItems.length === 0) {
-        console.warn('[RezkaProvider] Parsed 0 items from mirror. Loading live sections from search.php.');
+        console.warn('[RezkaProvider] Parsed 0 items from mirror. Trying Kinobase / search fallback.');
+        const kHome = await this.getKinobaseHomeSections();
+        if (kHome) return kHome;
         return await this.fetchLiveRezkaHomeSections();
       }
 
@@ -589,12 +1317,18 @@ export class RezkaProvider implements IProvider {
         expected: expected.slice(0, 16),
       };
     } catch (err) {
-      console.warn('[RezkaProvider] Error fetching home sections, trying live search.php:', err);
+      console.warn('[RezkaProvider] Error fetching home sections, trying Kinobase / live search:', err);
+      const kHome = await this.getKinobaseHomeSections();
+      if (kHome) return kHome;
       return await this.fetchLiveRezkaHomeSections();
     }
   }
 
   public async getCatalog(filter: CatalogFilter) {
+    if (this.isKinobase()) {
+      const kCat = await this.getKinobaseCatalog(filter);
+      if (kCat) return kCat;
+    }
     try {
       const catSlug = filter.type === 'shows' ? 'show' : filter.type;
       let path = `/${catSlug}/`;
@@ -640,6 +1374,9 @@ export class RezkaProvider implements IProvider {
         hasMore,
       };
     } catch (err) {
+      const kCat = await this.getKinobaseCatalog(filter);
+      if (kCat) return kCat;
+
       try {
         const queryTerm = filter.genre || (filter.type === 'films' ? 'фильм' : filter.type === 'series' ? 'сериал' : filter.type === 'cartoons' ? 'мультфильм' : 'аниме');
         const liveCatalog = await this.searchAdvanced(queryTerm, filter.page);
@@ -786,6 +1523,11 @@ export class RezkaProvider implements IProvider {
       }
     }
 
+    if (this.isKinobase(urlOrId) || this.isKinobase(cachedMeta?.url) || this.isKinobase()) {
+      const kd = await this.getKinobaseDetails(urlOrId, cachedMeta);
+      if (kd) return kd;
+    }
+
     try {
       let targetUrl = cachedMeta?.url || urlOrId;
       if (!targetUrl.includes('.html')) {
@@ -863,6 +1605,9 @@ export class RezkaProvider implements IProvider {
       }
 
       if (this.isAntiBot(html) || !html) {
+        const kd = await this.getKinobaseDetails(urlOrId, cachedMeta);
+        if (kd) return kd;
+
         // All mirrors are behind the bot check: probe working translators from AJAX stream endpoint
         const fb = getFallbackDetails(urlOrId, cachedMeta);
         fb.antiBot = true;
@@ -1135,6 +1880,18 @@ export class RezkaProvider implements IProvider {
 }
 
   public async getSeriesEpisodes(mediaId: string, translatorId: number): Promise<Season[]> {
+    const cachedUrl = this.mediaUrlCache.get(mediaId);
+    if (this.isKinobase() || this.isKinobase(mediaId) || this.isKinobase(cachedUrl)) {
+      const filmUrl = await this.resolveKinobaseUrl(mediaId, this.mediaCache.get(mediaId));
+      if (filmUrl) {
+        const pd = await this.extractKinobasePlayerData(filmUrl);
+        if (pd?.file) {
+          const parsed = this.parseKinobaseSeriesAndTranslators(pd.file, pd.subtitle);
+          if (parsed.seasons && parsed.seasons.length > 0) return parsed.seasons;
+        }
+      }
+    }
+
     const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
     const translatorsToTry = [translatorId];
 
@@ -1222,69 +1979,70 @@ export class RezkaProvider implements IProvider {
     title?: string;
     origTitle?: string;
     year?: number;
+    season?: number;
+    episode?: number;
+    translatorId?: number;
   }): Promise<StreamData | null> {
-    const rawTitle = params.title || '';
-    const cleanTitle = rawTitle.split('/')[0].replace(/[^\p{L}\p{N}\s]/gu, ' ').trim();
-    const queries = [cleanTitle, params.origTitle].filter((q): q is string => Boolean(q && q.length > 1));
-    if (queries.length === 0) return null;
+    const cachedItem = this.mediaCache.get(params.mediaId);
+    const filmUrl = await this.resolveKinobaseUrl(params.mediaId, {
+      ...cachedItem,
+      title: params.title || cachedItem?.title,
+      origTitle: params.origTitle || cachedItem?.origTitle,
+      year: params.year || cachedItem?.year,
+    });
+    if (!filmUrl) return null;
 
-    for (const q of queries) {
+    const pd = await this.extractKinobasePlayerData(filmUrl);
+    if (!pd) return null;
+
+    if (pd.file) {
+      const parsed = this.parseKinobaseSeriesAndTranslators(pd.file, pd.subtitle);
+      const streams = parsed.getEpisodeStreams(params.translatorId, params.season, params.episode);
+      if (streams.length > 0) {
+        return {
+          streams,
+          subtitles: parsed.subtitles,
+          isAlternative: true,
+          sourceName: 'Kinobase HLS',
+          trailerUrl: pd.trailerUrl,
+        };
+      }
+    }
+
+    if (pd.balancerSrc) {
+      const bStream = await this.extractBalancerStream(pd.balancerSrc, params.episode);
+      if (bStream && bStream.streams.length > 0) {
+        return { ...bStream, trailerUrl: pd.trailerUrl };
+      }
+    }
+
+    if (pd.kpId) {
       try {
-        const sRes = await appFetch(`https://kinobase.org/search?query=${encodeURIComponent(q)}`, {
-          signal: AbortSignal.timeout(3500),
-          headers: {
-            'User-Agent': BROWSER_USER_AGENT,
-          },
+        const embedRes = await appFetch(`https://api.delivembed.cc/embed/kp/${pd.kpId}`, {
+          signal: AbortSignal.timeout(4000),
+          headers: { 'User-Agent': BROWSER_USER_AGENT },
         });
-        if (!sRes.ok) continue;
-        const sHtml = await sRes.text();
-        const matches = sHtml.match(/href="(\/film\/\d+[^"]*)"/g) || [];
-        if (matches.length === 0) continue;
-
-        const filmPath = matches[0].replace('href="', '').replace('"', '');
-        const filmRes = await appFetch(`https://kinobase.org${filmPath}`, {
-          signal: AbortSignal.timeout(3500),
-          headers: {
-            'User-Agent': BROWSER_USER_AGENT,
-          },
-        });
-        if (!filmRes.ok) continue;
-        const filmHtml = await filmRes.text();
-
-        const trailerMatch = filmHtml.match(/MOVIE_TRAILER\s*=\s*["']([^"']+)["']/i);
-        const trailerUrl = trailerMatch ? trailerMatch[1] : undefined;
-
-        const kpMatch = filmHtml.match(/kinopoisk\.ru\/film\/(\d+)/i);
-        const kpId = kpMatch ? kpMatch[1] : null;
-
-        if (kpId) {
-          const embedRes = await appFetch(`https://api.delivembed.cc/embed/kp/${kpId}`, {
-            signal: AbortSignal.timeout(4000),
-            headers: {
-              'User-Agent': BROWSER_USER_AGENT,
-            },
-          });
-          if (embedRes.ok) {
-            const embedHtml = await embedRes.text();
-            const m3u8Match = embedHtml.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/);
-            if (m3u8Match) {
-              const streamUrl = m3u8Match[0];
-              return {
-                streams: [
-                  { quality: '1080p', hls: streamUrl, mp4: streamUrl },
-                  { quality: '720p', hls: streamUrl, mp4: streamUrl },
-                  { quality: '480p', hls: streamUrl, mp4: streamUrl },
-                ],
-                subtitles: [],
-                isAlternative: true,
-                sourceName: 'Collaps / Delivembed',
-                trailerUrl,
-              };
-            }
+        if (embedRes.ok) {
+          const embedHtml = await embedRes.text();
+          const m3u8Match = embedHtml.match(/https?:\/\/[^"'\s]+\.m3u8[^"'\s]*/);
+          if (m3u8Match) {
+            const streamUrl = m3u8Match[0];
+            return {
+              streams: [
+                { quality: '1080p', hls: streamUrl, mp4: streamUrl },
+                { quality: '720p', hls: streamUrl, mp4: streamUrl },
+                { quality: '480p', hls: streamUrl, mp4: streamUrl },
+              ],
+              subtitles: [],
+              isAlternative: true,
+              sourceName: 'Collaps / Delivembed',
+              trailerUrl: pd.trailerUrl,
+            };
           }
         }
       } catch (_) {}
     }
+
     return null;
   }
 
@@ -1314,6 +2072,31 @@ export class RezkaProvider implements IProvider {
       cachedItem.year >= currentYear &&
       (!cachedItem.type || cachedItem.type === 'films')
     );
+
+    if (
+      this.isKinobase() ||
+      this.isKinobase(params.mediaId) ||
+      this.isKinobase(cachedItem?.url) ||
+      this.isKinobase(this.mediaUrlCache.get(params.mediaId) || this.mediaUrlCache.get(normId))
+    ) {
+      const kinobaseStream = await this.findAlternativeStream({
+        mediaId: params.mediaId,
+        title: cachedItem?.title,
+        origTitle: cachedItem?.origTitle,
+        year: cachedItem?.year,
+        season: params.season,
+        episode: params.episode,
+        translatorId: params.translatorId,
+      });
+      if (kinobaseStream && kinobaseStream.streams.length > 0) {
+        return kinobaseStream;
+      }
+      throw new Error(
+        isUnreleasedMovie
+          ? `Фильм «${cachedItem?.title || 'Фильм'}» (${cachedItem?.year || currentYear}) ещё не вышел в цифровой релиз.`
+          : 'Видеопоток для данного фильма временно недоступен на Kinobase. Попробуйте другое зеркало в Настройках.'
+      );
+    }
 
     // Fast path for unreleased future titles: don't loop through doomed mirrors
     const mirrorsToTry = isUnreleasedMovie
@@ -1446,18 +2229,23 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    // Try finding alternative stream online across web balancers (Collaps / Kinobase)
-    try {
-      const altStream = await this.findAlternativeStream({
-        mediaId: params.mediaId,
-        title: cachedItem?.title,
-        origTitle: cachedItem?.origTitle,
-        year: cachedItem?.year,
-      });
-      if (altStream && altStream.streams && altStream.streams.length > 0) {
-        return altStream;
-      }
-    } catch (_) {}
+    // Try finding alternative stream online via Kinobase / web balancers
+    if (!isUnreleasedMovie) {
+      try {
+        const altStream = await this.findAlternativeStream({
+          mediaId: params.mediaId,
+          title: cachedItem?.title,
+          origTitle: cachedItem?.origTitle,
+          year: cachedItem?.year,
+          season: params.season,
+          episode: params.episode,
+          translatorId: params.translatorId,
+        });
+        if (altStream && altStream.streams && altStream.streams.length > 0) {
+          return altStream;
+        }
+      } catch (_) {}
+    }
 
     if (isUnreleasedMovie) {
       throw new Error(
@@ -1482,6 +2270,10 @@ export class RezkaProvider implements IProvider {
 
   public async searchFast(query: string) {
     if (!query.trim()) return [];
+    if (this.isKinobase()) {
+      const kItems = await this.searchKinobase(query);
+      if (kItems.length > 0) return kItems;
+    }
     try {
       const formData = new URLSearchParams();
       formData.append('q', query.trim());
@@ -1549,6 +2341,9 @@ export class RezkaProvider implements IProvider {
       if (results.length > 0) return results;
     } catch {}
 
+    const kItems = await this.searchKinobase(query);
+    if (kItems.length > 0) return kItems;
+
     const q = query.toLowerCase();
     return FALLBACK_ITEMS.filter(
       (i) => i.title.toLowerCase().includes(q) || (i.origTitle && i.origTitle.toLowerCase().includes(q))
@@ -1569,6 +2364,12 @@ export class RezkaProvider implements IProvider {
   }
 
   public async searchAdvanced(query: string, page = 1): Promise<SearchResult> {
+    if (this.isKinobase()) {
+      const kItems = await this.searchKinobase(query);
+      if (kItems.length > 0) {
+        return { items: kItems, page: 1, hasMore: false };
+      }
+    }
     try {
       const url = `${this.activeMirror}/search/?do=search&subaction=search&q=${encodeURIComponent(query)}&page=${page}`;
       const html = await this.fetchHtml(url);
@@ -1595,7 +2396,12 @@ export class RezkaProvider implements IProvider {
       }
     } catch {}
 
-    // Fallback: live search.php which bypasses anti-bot
+    // Fallback: Kinobase search, then live search.php
+    const kItems = await this.searchKinobase(query);
+    if (kItems.length > 0) {
+      return { items: kItems, page: 1, hasMore: false };
+    }
+
     const fastResults = await this.searchFast(query);
     const q = query.toLowerCase();
     const fallbackMatches = FALLBACK_ITEMS.filter(

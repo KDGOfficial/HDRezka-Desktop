@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.34';
+export const APP_VERSION = '0.0.35';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
@@ -21,6 +21,7 @@ export function isBadMirrorUrl(url: string): boolean {
 }
 
 export const DEFAULT_MIRRORS = [
+  'https://kinobase.org',
   'https://rezka.ag',
   'https://hdrezka.me',
   'https://hdrezka.club',
@@ -57,7 +58,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   app: {
     autoLaunch: false,
     checkUpdatesOnStart: true,
-    activeMirror: 'https://rezka.ag',
+    activeMirror: 'https://kinobase.org',
     mirrors: DEFAULT_MIRRORS,
     requestTimeoutMs: 8000,
   },

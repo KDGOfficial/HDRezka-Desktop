@@ -46,15 +46,22 @@ if (!gotTheLock) {
     // Clean user settings from dead or phishing mirrors (hdrezka.is, rezka.fi, rezkify.com, etc.)
     const userMirrors = settings.app?.mirrors || [];
     const cleanedMirrors = userMirrors.filter((m) => !isBadMirrorUrl(m));
-    const finalMirrors = cleanedMirrors.length > 0 ? cleanedMirrors : DEFAULT_MIRRORS;
+    const baseMirrors = cleanedMirrors.length > 0 ? cleanedMirrors : DEFAULT_MIRRORS;
+    const finalMirrors = baseMirrors.includes('https://kinobase.org')
+      ? baseMirrors
+      : ['https://kinobase.org', ...baseMirrors];
     provider.setMirrors(finalMirrors);
 
     const currentMirror = settings.app?.activeMirror;
     const isBad = isBadMirrorUrl(currentMirror || '');
-    const workingMirror = isBad ? (finalMirrors[0] || 'https://rezka.ag') : currentMirror;
+    const workingMirror = isBad ? (finalMirrors[0] || 'https://kinobase.org') : currentMirror;
     provider.setActiveMirror(workingMirror);
 
-    if (workingMirror !== currentMirror || cleanedMirrors.length !== userMirrors.length) {
+    if (
+      workingMirror !== currentMirror ||
+      cleanedMirrors.length !== userMirrors.length ||
+      finalMirrors.length !== baseMirrors.length
+    ) {
       db.saveSettings({
         app: {
           ...settings.app,
@@ -64,20 +71,26 @@ if (!gotTheLock) {
       });
     }
 
-    // Automatically discover fresh mirrors online and select best reachable mirror in background
-    provider.findOnlineMirrors().then((res) => {
-      if (res.added.length > 0) {
-        const curSettings = db.getSettings();
+    const persistBestMirror = (bestMirror: string) => {
+      if (!bestMirror) return;
+      const curSettings = db.getSettings();
+      const mergedMirrors = provider.getMirrors();
+      if (bestMirror !== curSettings.app?.activeMirror || mergedMirrors.length !== (curSettings.app?.mirrors?.length || 0)) {
         db.saveSettings({
           app: {
             ...curSettings.app,
-            mirrors: provider.getMirrors(),
+            activeMirror: bestMirror,
+            mirrors: mergedMirrors,
           },
         });
       }
+    };
+
+    // Automatically discover fresh mirrors online and select best reachable mirror in background
+    provider.findOnlineMirrors().then(() => {
       return provider.selectBestMirror();
-    }).catch(() => {
-      provider.selectBestMirror().catch(() => {});
+    }).then(persistBestMirror).catch(() => {
+      provider.selectBestMirror().then(persistBestMirror).catch(() => {});
     });
 
     // 2. Register all IPC handlers

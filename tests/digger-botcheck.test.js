@@ -273,3 +273,45 @@ test('checkMirrors detects root anti-bot instead of being fooled by search.php',
     globalThis.fetch = origFetch;
   }
 });
+
+test('checkMirrors marks kinobase.org as available without verification', async () => {
+  const provider = new RezkaProvider('https://kinobase.org', ['https://kinobase.org']);
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      '<!doctype html><html><head><title>Кинобейс — смотреть фильмы онлайн</title></head><body><div class="container">kinobase ' +
+        'x'.repeat(300) +
+        '</div></body></html>',
+      { status: 200 }
+    );
+
+  try {
+    const statuses = await provider.checkMirrors();
+    assert.equal(statuses[0].isAvailable, true);
+    assert.equal(statuses[0].needsVerification, false);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('parseKinobaseFileString parses multi-voiceover quality streams and translators', () => {
+  const provider = new RezkaProvider('https://kinobase.org', ['https://kinobase.org']);
+  const sample =
+    '[360p]{Дубляж}https://cdn1.redcdn.org/360.m3u8 or https://cdn2.redcdn.org/360.m3u8;{LostFilm}https://cdn1.redcdn.org/lf_360.m3u8,[720p]{Дубляж}https://cdn1.redcdn.org/720.m3u8;{LostFilm}https://cdn1.redcdn.org/lf_720.m3u8,[1080p]{Дубляж}https://cdn1.redcdn.org/1080.m3u8';
+
+  const parsed = provider.parseKinobaseFileString(sample, 1);
+  assert.deepEqual(
+    parsed.translators.map((t) => [t.id, t.name]),
+    [
+      [1, 'Дубляж'],
+      [2, 'LostFilm'],
+    ]
+  );
+  assert.deepEqual(
+    parsed.defaultStreams.map((s) => s.quality),
+    ['1080p', '720p', '360p']
+  );
+  assert.equal(parsed.defaultStreams[0].hls, 'https://cdn1.redcdn.org/1080.m3u8');
+  assert.equal(parsed.streamsByTranslator.get(2)?.length, 2);
+});

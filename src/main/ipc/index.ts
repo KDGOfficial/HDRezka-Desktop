@@ -118,10 +118,17 @@ export function registerIpcHandlers(): void {
     const provider = providerManager.getProvider();
     const curSettings = db.getSettings();
     const cleanedMirrors = (curSettings.app?.mirrors || DEFAULT_MIRRORS).filter((m) => !isBadMirrorUrl(m));
-    if (curSettings.app?.mirrors && cleanedMirrors.length !== curSettings.app.mirrors.length) {
-      db.saveSettings({ app: { ...curSettings.app, mirrors: cleanedMirrors } });
+    const finalMirrors = cleanedMirrors.includes('https://kinobase.org')
+      ? cleanedMirrors
+      : ['https://kinobase.org', ...cleanedMirrors];
+    if (
+      !curSettings.app?.mirrors ||
+      finalMirrors.length !== curSettings.app.mirrors.length ||
+      finalMirrors.some((m, i) => m !== curSettings.app.mirrors[i])
+    ) {
+      db.saveSettings({ app: { ...curSettings.app, mirrors: finalMirrors } });
     }
-    return await provider.checkMirrors(cleanedMirrors);
+    return await provider.checkMirrors(finalMirrors);
   });
 
   ipcMain.handle(IPC_CHANNELS.FIND_ONLINE_MIRRORS, async () => {
@@ -383,6 +390,7 @@ export function registerIpcHandlers(): void {
 
       win.webContents.on('did-navigate', async (e, url, statusCode) => {
         if (statusCode === 500) {
+          mirror = 'https://kinobase.org';
           await renderSuccessScreen();
           await injectVerifyBar();
           setTimeout(checkState, 300);
@@ -526,8 +534,11 @@ export function registerIpcHandlers(): void {
     const s = db.getSettings();
     if (s.app?.mirrors) {
       const cleaned = s.app.mirrors.filter((m) => !isBadMirrorUrl(m));
-      if (cleaned.length !== s.app.mirrors.length) {
-        return db.saveSettings({ app: { ...s.app, mirrors: cleaned } });
+      const withKinobase = cleaned.includes('https://kinobase.org')
+        ? cleaned
+        : ['https://kinobase.org', ...cleaned];
+      if (withKinobase.length !== s.app.mirrors.length || withKinobase.some((m, i) => m !== s.app.mirrors[i])) {
+        return db.saveSettings({ app: { ...s.app, mirrors: withKinobase } });
       }
     }
     return s;
