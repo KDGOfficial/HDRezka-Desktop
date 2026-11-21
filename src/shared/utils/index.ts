@@ -109,24 +109,40 @@ export function fixKeyboardLayout(input: string): string {
   return trimmed;
 }
 
-function levenshtein(a: string, b: string): number {
+function damerauLevenshtein(a: string, b: string): number {
   const m = a.length;
   const n = b.length;
   if (m === 0) return n;
   if (n === 0) return m;
-  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  const dp: number[][] = Array.from({ length: m + 1 }, () => new Array<number>(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
   for (let i = 1; i <= m; i++) {
-    const curr = [i];
     for (let j = 1; j <= n; j++) {
       const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      curr[j] = Math.min(prev[j] + 1, curr[j - 1] + 1, prev[j - 1] + cost);
+      let val = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        val = Math.min(val, dp[i - 2][j - 2] + 1);
+      }
+      dp[i][j] = val;
     }
-    prev = curr;
   }
-  return prev[n];
+  return dp[m][n];
 }
 
-const COMMON_ENGLISH_WORDS = /^(?:the|and|man|war|day|new|one|two|red|bad|big|boy|dog|cat|god|top|hot|old|end|all|star|dark|iron|dune|lost|last|love|dead|game|ring|king|lord|hero|soul|time|life|john|wick|joker|blade|alien|shrek|naruto|bleach|one|piece|arcane|avatar|matrix|batman|spider|venom|marvel|anime|movie|series|dragon|demon|slayer|attack|titan|death|note|ghoul|hunter|berserk|frieren|solo)$/i;
+function looksPlausibleRussian(text: string): boolean {
+  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return false;
+  for (const w of words) {
+    // Russian words never start with ь/ъ/ы or contain impossible layout-artifact sequences
+    if (/^[ьъы]/.test(w)) return false;
+    if (/[ьъ]{2}|[эы]{2}|[бвгджзйклмнпрстфхцчшщ]{5,}/.test(w)) return false;
+    if (w.length >= 3 && !/[аеёиоуыэюя]/.test(w)) return false;
+  }
+  return /[аеёиоуыэюя]/.test(text);
+}
+
+const COMMON_ENGLISH_WORDS = /^(?:the|and|man|war|day|new|one|two|red|bad|big|boy|dog|cat|god|top|hot|old|end|all|star|dark|iron|dune|lost|last|love|dead|game|ring|king|lord|hero|soul|time|life|john|wick|joker|blade|alien|shrek|naruto|bleach|piece|arcane|avatar|matrix|batman|spider|venom|marvel|anime|movie|series|dragon|demon|slayer|attack|titan|death|note|ghoul|hunter|berserk|frieren|solo|mr|mrs|ms|dr|st|vs)$/i;
 
 /** Returns a T9 layout-fix or typo/prefix suggestion when input looks mistyped. */
 export function getT9Correction(
@@ -136,6 +152,7 @@ export function getT9Correction(
   const raw = query.trim();
   if (raw.length < 2) return null;
   const low = raw.toLowerCase();
+  const normLow = low.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ');
 
   const corpus = Array.from(
     new Set([
@@ -150,31 +167,51 @@ export function getT9Correction(
   if (hasLat && !hasCyr) {
     const converted = fixKeyboardLayout(raw);
     const convLow = converted.toLowerCase();
+    const convNorm = convLow.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ');
+    // Detect Russian-layout punctuation inside words (e.g. "l.yf" -> "дюна", ";bpym" -> "жизнь"),
+    // while ignoring valid English punctuation like "Mr. Robot", "Dr. House", "Schindler's List".
+    const hasLayoutPunct =
+      /[[\];`][a-z]|[a-z][[\];`]/i.test(raw) ||
+      /[a-z][.,][a-z]/i.test(raw) ||
+      (/[a-z]'[a-z]/i.test(raw) && !/'(?:s|t|m|d|re|ve|ll)\b/i.test(raw));
+    const matchesCorpus = corpus.some((w) => {
+      const wn = w.replace(/[-_]+/g, ' ');
+      return wn === convNorm || wn.startsWith(convNorm);
+    });
     const looksGibberishEn =
-      /[.,;'[\]`]/.test(raw) ||
+      hasLayoutPunct ||
       (!/[aeiouy]/i.test(raw) && raw.length >= 3) ||
       /[bcdfghjklmnpqrstvwxz]{4,}/i.test(raw) ||
-      corpus.some((w) => w === convLow || w.startsWith(convLow));
+      matchesCorpus;
 
-    const firstToken = low.split(/\s+/)[0];
-    if (looksGibberishEn && convLow !== low && !COMMON_ENGLISH_WORDS.test(firstToken)) {
-      const exactPrefix = corpus.find((w) => w.startsWith(convLow) && w.length > convLow.length);
+    const firstToken = low.split(/[\s.'-]+/)[0];
+    if (
+      looksGibberishEn &&
+      convLow !== low &&
+      !COMMON_ENGLISH_WORDS.test(firstToken) &&
+      (matchesCorpus || looksPlausibleRussian(convLow))
+    ) {
+      const exactPrefix = corpus.find((w) => {
+        const wn = w.replace(/[-_]+/g, ' ');
+        return wn.startsWith(convNorm) && wn.length > convNorm.length;
+      });
       return {
-        suggestion: exactPrefix && convLow.length >= 4 ? exactPrefix : converted,
+        suggestion: exactPrefix && convNorm.length >= 4 ? exactPrefix : converted,
         reason: 'layout',
       };
     }
   }
 
-  // 2. Direct fuzzy typo match against corpus (Levenshtein <= 2)
-  if (low.length >= 4) {
+  // 2. Direct fuzzy typo match against corpus (Damerau-Levenshtein <= 2)
+  if (normLow.length >= 4) {
     let bestWord = '';
     let bestDist = 3;
     for (const word of corpus) {
-      if (word === low) return null;
-      if (Math.abs(word.length - low.length) > 2) continue;
-      const d = levenshtein(low, word);
-      const maxAllowed = low.length <= 5 ? 1 : 2;
+      const wn = word.replace(/[-_]+/g, ' ');
+      if (wn === normLow) return null;
+      if (Math.abs(wn.length - normLow.length) > 2) continue;
+      const d = damerauLevenshtein(normLow, wn);
+      const maxAllowed = normLow.length <= 5 ? 1 : 2;
       if (d > 0 && d <= maxAllowed && d < bestDist) {
         bestDist = d;
         bestWord = word;
@@ -186,14 +223,24 @@ export function getT9Correction(
   }
 
   // 3. Prefix autocomplete if user typed >= 3 chars matching a known title
-  if (low.length >= 3) {
-    const prefix = corpus.find((w) => w.startsWith(low) && w.length > low.length + 1);
+  if (normLow.length >= 3) {
+    const prefix = corpus.find((w) => {
+      const wn = w.replace(/[-_]+/g, ' ');
+      return wn.startsWith(normLow) && wn.length > normLow.length + 1;
+    });
     if (prefix) {
       return { suggestion: prefix, reason: 'autocomplete' };
     }
   }
 
   return null;
+}
+
+export function formatCompactNumber(num?: number): string {
+  if (!num || num <= 0 || Number.isNaN(num)) return '';
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(num >= 100_000 ? 0 : 1).replace(/\.0$/, '')}K`;
+  return String(Math.round(num));
 }
 
 export type SearchSortBy = 'relevance' | 'year' | 'rating' | 'views';

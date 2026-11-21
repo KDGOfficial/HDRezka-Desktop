@@ -35,7 +35,7 @@ const PORTALS = [
   { id: 'rutube', label: 'Rutube', base: 'https://rutube.ru/', search: (q: string) => `https://rutube.ru/search/?query=${encodeURIComponent(q)}` },
 ];
 
-type BrowserVideoFit = 'contain' | '16:10' | '21:9' | 'cover' | 'fill';
+type BrowserVideoFit = 'contain' | '16:10' | '21:9' | '4:3' | 'cover' | 'fill';
 
 const WINDOW_SIZE_PRESETS = [
   { w: 480, h: 270, label: '480×270', tag: '16:9 S' },
@@ -67,6 +67,7 @@ function isPlayableMediaPage(url: string): boolean {
     /kinogo\.[^/]+\/\d+-[^/]+\.html/i.test(url) ||
     /animego\.[^/]+\/anime\/[^/?#]+/i.test(url) ||
     /uakino\.[^/]+\/[^/]+\/.*\d+-[^/]+\.html/i.test(url) ||
+    /(?:yummyanime|yummyani|yani)\.[^/]+\/(?:anime\/\d+|[^/]*\d+-[^/]+\.html)/i.test(url) ||
     /(?:rezka|hdrezka)[^/]*\/(?:films|series|cartoons|animation|show)\/.*\/\d+-[^/]+\.html/i.test(url)
   );
 }
@@ -112,8 +113,13 @@ export const BrowserPage: React.FC = () => {
   const toastTimerRef = useRef<any>(null);
   const adBlockCssKeyRef = useRef<string | null>(null);
   const videoFitCssKeyRef = useRef<string | null>(null);
+  const adBlockEnabledRef = useRef(adBlockEnabled);
+  const videoFitRef = useRef(videoFit);
   const isResizingRef = useRef(false);
   const resizeStartRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+
+  adBlockEnabledRef.current = adBlockEnabled;
+  videoFitRef.current = videoFit;
 
   const activeSearchTerm = browserQuery || searchQuery || '';
 
@@ -177,7 +183,9 @@ export const BrowserPage: React.FC = () => {
             ? 'video { object-fit: fill !important; width: 100% !important; height: 100% !important; }'
             : fit === '16:10'
               ? 'video { aspect-ratio: 16 / 10 !important; object-fit: cover !important; }'
-              : 'video { aspect-ratio: 21 / 9 !important; object-fit: cover !important; }';
+              : fit === '4:3'
+                ? 'video { aspect-ratio: 4 / 3 !important; object-fit: cover !important; }'
+                : 'video { aspect-ratio: 21 / 9 !important; object-fit: cover !important; }';
       if (wv.insertCSS) {
         videoFitCssKeyRef.current = await wv.insertCSS(css);
       }
@@ -218,10 +226,10 @@ export const BrowserPage: React.FC = () => {
           ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 99px; }
           ::-webkit-scrollbar-thumb:hover { background: #FF4D1A; }
         `);
-        if (adBlockEnabled) {
+        if (adBlockEnabledRef.current) {
           adBlockCssKeyRef.current = await wv.insertCSS?.(COSMETIC_ADBLOCK_CSS);
         }
-        await applyVideoFitToWebview(videoFit);
+        await applyVideoFitToWebview(videoFitRef.current);
       } catch {}
       syncState();
     };
@@ -255,7 +263,7 @@ export const BrowserPage: React.FC = () => {
       wv.removeEventListener('enter-html-full-screen', onEnterHtmlFs);
       wv.removeEventListener('leave-html-full-screen', onLeaveHtmlFs);
     };
-  }, [adBlockEnabled, videoFit]);
+  }, []);
 
   // Auto-hide Cinema OSD controls after 3.5s
   const resetHideTimer = () => {
@@ -377,11 +385,12 @@ export const BrowserPage: React.FC = () => {
   };
 
   const cycleVideoFit = () => {
-    const order: BrowserVideoFit[] = ['contain', '16:10', '21:9', 'cover', 'fill'];
+    const order: BrowserVideoFit[] = ['contain', '16:10', '21:9', '4:3', 'cover', 'fill'];
     const labels: Record<BrowserVideoFit, string> = {
       contain: t.player.scaleOriginal,
       '16:10': 'Масштаб: 16:10',
-      '21:9': 'Масштаб: 21:9',
+      '21:9': 'Масштаб: 21:9 (Ultrawide)',
+      '4:3': 'Масштаб: 4:3',
       cover: t.player.scaleCover,
       fill: t.player.scaleFill,
     };
@@ -412,25 +421,19 @@ export const BrowserPage: React.FC = () => {
     setCinemaMode(false);
   };
 
-  // Hotkeys matching VideoPlayer 1:1 (H, P, Z, F, Esc)
+  // Hotkeys matching VideoPlayer 1:1 (H, P, Z, F, Esc), including when <webview> holds focus
   useEffect(() => {
     if (!cinemaMode) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
-      if (e.code === 'KeyH') {
-        e.preventDefault();
+    const dispatchCode = (code: string) => {
+      if (code === 'KeyH') {
         toggleUiLock();
-      } else if (e.code === 'KeyP') {
-        e.preventDefault();
+      } else if (code === 'KeyP') {
         handleTogglePin();
-      } else if (e.code === 'KeyZ') {
-        e.preventDefault();
+      } else if (code === 'KeyZ') {
         cycleVideoFit();
-      } else if (e.code === 'KeyF') {
-        e.preventDefault();
+      } else if (code === 'KeyF') {
         toggleFullscreen();
-      } else if (e.code === 'Escape') {
-        e.preventDefault();
+      } else if (code === 'Escape') {
         if (isUiLocked) {
           setIsUiLocked(false);
           setShowControls(true);
@@ -442,8 +445,20 @@ export const BrowserPage: React.FC = () => {
         }
       }
     };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      if (['KeyH', 'KeyP', 'KeyZ', 'KeyF', 'Escape'].includes(e.code)) {
+        e.preventDefault();
+        dispatchCode(e.code);
+      }
+    };
     window.addEventListener('keydown', onKeyDown);
-    return () => window.removeEventListener('keydown', onKeyDown);
+    const unsubWebviewKey = window.api?.onBrowserWebviewKey?.((code) => dispatchCode(code));
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      unsubWebviewKey?.();
+    };
   }, [cinemaMode, isUiLocked, isPinned, videoFit, t]);
 
   const navigateTo = (target: string) => {
@@ -586,11 +601,22 @@ export const BrowserPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCinemaMode(true)}
-                title="Открыть плеер на весь экран (как в основном приложении)"
+                title="Режим киноплеера 1:1 (масштаб, закрепление, скрытие UI)"
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-xs font-bold text-zinc-100 hover:text-white cursor-pointer flex-shrink-0"
               >
                 <MonitorPlay className="w-3.5 h-3.5 text-brand-orange" />
                 <span className="hidden lg:inline">Киноплеер</span>
+              </button>
+
+              {/* 1-Click Fullscreen Cinema Mode */}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label="Открыть плеер на весь экран"
+                title="Открыть на весь экран (F)"
+                className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-300 hover:text-white border border-white/[0.08] cursor-pointer flex-shrink-0"
+              >
+                <Maximize className="w-4 h-4" />
               </button>
 
               {playable && (
@@ -662,7 +688,25 @@ export const BrowserPage: React.FC = () => {
       {/* 1:1 Cinema Player Mode Floating Top OSD Bar (matches VideoPlayer.tsx) */}
       {cinemaMode && (
         <>
+          {/* Invisible top-edge hover reveal strip so mouse users can always bring back hidden OSD over <webview> */}
+          {!isUiLocked && !showControls && (
+            <div
+              onMouseEnter={resetHideTimer}
+              onMouseMove={resetHideTimer}
+              className="absolute top-0 left-0 right-0 h-7 z-40 pointer-events-auto"
+            />
+          )}
+
           <div
+            onMouseEnter={() => {
+              if (!isUiLocked) {
+                setShowControls(true);
+                if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+              }
+            }}
+            onMouseLeave={() => {
+              if (!isUiLocked) resetHideTimer();
+            }}
             className={`absolute top-0 left-0 right-0 z-40 flex items-center justify-between bg-gradient-to-b from-[#070507]/90 via-[#070507]/50 to-transparent p-5 drag-region transition-opacity duration-300 ${
               showControls && !isUiLocked ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
@@ -795,6 +839,9 @@ export const BrowserPage: React.FC = () => {
           {/* Persistent top drag handle when pinned */}
           {isPinned && (
             <div
+              onMouseEnter={() => {
+                if (!isUiLocked) resetHideTimer();
+              }}
               className="absolute top-0 left-0 right-0 h-5 drag-region pointer-events-auto z-30 cursor-grab active:cursor-grabbing"
               title={t.player.pinnedDragTip}
             />
@@ -823,15 +870,27 @@ export const BrowserPage: React.FC = () => {
         </>
       )}
 
-      {/* Single Persistent Embedded Chromium Webview with AdBlock partition */}
-      {React.createElement('webview', {
-        ref: webviewRef,
-        src: browserUrl || 'https://kinobase.org/',
-        partition: 'persist:cinema-browser',
-        allowpopups: 'true',
-        useragent: BROWSER_USER_AGENT,
-        className: 'w-full flex-1 bg-[#070507]',
-      })}
+      {/* Single Persistent Embedded Chromium Webview with AdBlock partition & 1:1 Cinema aspect/scale stage */}
+      <div className="w-full flex-1 flex items-center justify-center bg-[#070507] overflow-hidden relative">
+        {React.createElement('webview', {
+          ref: webviewRef,
+          src: browserUrl || 'https://kinobase.org/',
+          partition: 'persist:cinema-browser',
+          allowpopups: 'true',
+          useragent: BROWSER_USER_AGENT,
+          className: !cinemaMode || videoFit === 'contain'
+            ? 'w-full h-full bg-[#070507]'
+            : videoFit === 'cover'
+              ? 'w-full h-full bg-[#070507] scale-[1.18] transition-transform duration-200'
+              : videoFit === 'fill'
+                ? 'w-full h-full bg-[#070507] scale-x-[1.12] scale-y-[1.08] transition-transform duration-200'
+                : videoFit === '16:10'
+                  ? 'w-[min(100%,calc(100dvh*16/10))] h-[min(100%,calc(100dvw*10/16))] bg-[#070507] transition-all duration-200'
+                  : videoFit === '4:3'
+                    ? 'w-[min(100%,calc(100dvh*4/3))] h-[min(100%,calc(100dvw*3/4))] bg-[#070507] transition-all duration-200'
+                    : 'w-[min(100%,calc(100dvh*21/9))] h-[min(100%,calc(100dvw*9/21))] bg-[#070507] transition-all duration-200',
+        })}
+      </div>
     </div>
   );
 };

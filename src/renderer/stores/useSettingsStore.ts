@@ -29,8 +29,16 @@ interface SettingsState {
   setUpdateModalOpen: (open: boolean) => void;
 }
 
+function getInitialTheme(): UserSettings['theme'] {
+  try {
+    const saved = localStorage.getItem('color-scheme');
+    if (saved === 'light' || saved === 'dark') return saved;
+  } catch {}
+  return DEFAULT_USER_SETTINGS.theme;
+}
+
 export const useSettingsStore = create<SettingsState>((set, get) => ({
-  settings: DEFAULT_USER_SETTINGS,
+  settings: { ...DEFAULT_USER_SETTINGS, theme: getInitialTheme() },
   mirrorsStatus: [],
   isCheckingMirrors: false,
   isFindingMirrors: false,

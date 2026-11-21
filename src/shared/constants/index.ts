@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.40';
+export const APP_VERSION = '0.0.41';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
@@ -177,9 +177,10 @@ export const IPC_CHANNELS = {
   OPEN_EXTERNAL_URL: 'app:openExternal',
   CHECK_JUST_UPDATED: 'app:checkJustUpdated',
 
-  // Browser AdBlock
+  // Browser AdBlock & Cinema Hotkeys
   BROWSER_SET_ADBLOCK: 'browser:setAdBlock',
   BROWSER_GET_ADBLOCK: 'browser:getAdBlock',
+  BROWSER_WEBVIEW_KEY: 'browser:webviewKey',
 };
 
 export const GENRES = [

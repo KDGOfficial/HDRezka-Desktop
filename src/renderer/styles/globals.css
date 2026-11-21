@@ -291,7 +291,9 @@ html[data-theme="light"] .app-header {
   border-color: rgba(24, 16, 22, 0.09);
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *):not(.btn-ember):not(.btn-ember *):not(.play-squircle):not(.play-squircle *).text-white {
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *):not(.btn-ember):not(.btn-ember *):not(.play-squircle):not(.play-squircle *):not([class*="from-emerald-"]):not([class*="bg-emerald-600"]).text-white,
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *):not(.btn-ember):not(.btn-ember *):not(.play-squircle):not(.play-squircle *).text-zinc-100,
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *):not(.btn-ember):not(.btn-ember *):not(.play-squircle):not(.play-squircle *):not([class*="hover:bg-brand-crimson"]).hover\:text-white:hover {
   color: #181016;
 }
 
@@ -305,15 +307,32 @@ html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface
   color: #675561;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*="bg-white/["] {
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-emerald-300,
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-emerald-400 {
+  color: #047857;
+}
+
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-amber-200,
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-amber-300 {
+  color: #92400E;
+}
+
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *).text-rose-300 {
+  color: #BE123C;
+}
+
+/* Match only static bg-white/[...] tokens (not hover:bg-white/[...]) so unhovered ghost buttons stay transparent */
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="bg-white/["],
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" bg-white/["] {
   background-color: rgba(24, 16, 22, 0.05);
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*="bg-white/["]:hover {
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*="hover:bg-white/["]:hover {
   background-color: rgba(24, 16, 22, 0.1);
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*="border-white/["] {
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="border-white/["],
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" border-white/["] {
   border-color: rgba(24, 16, 22, 0.12);
 }
 
@@ -321,12 +340,20 @@ html[data-theme="light"] :where(input, select, textarea):not(.cinema-player-surf
   color: #181016;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*="bg-[#0"],
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*="bg-[#1"] {
+html[data-theme="light"] select option {
+  background-color: #FFFFFF;
+  color: #181016;
+}
+
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="bg-[#0"],
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" bg-[#0"],
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="bg-[#1"],
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" bg-[#1"] {
   background-color: #F4ECF1;
 }
 
-html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*="bg-black/"] {
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class^="bg-black/"],
+html[data-theme="light"] :not(.cinema-player-surface):not(.cinema-player-surface *)[class*=" bg-black/"] {
   background-color: rgba(24, 16, 22, 0.06);
 }
 
@@ -341,6 +368,10 @@ html[data-theme="light"] .logo-pill:not(.cinema-player-surface *):not(.cinema-pl
   border-color: rgba(24, 16, 22, 0.18);
   color: #181016;
   box-shadow: none;
+}
+
+html[data-theme="light"] .logo-pill:not(.cinema-player-surface *):not(.cinema-player-surface) svg {
+  color: #181016;
 }
 
 html[data-theme="light"] dialog:modal {

@@ -1,7 +1,7 @@
 import React from 'react';
-import { Star, Heart, Play, Plus, X } from 'lucide-react';
+import { Star, Heart, Play, Plus, X, Eye } from 'lucide-react';
 import { MediaItem } from '../../shared/types';
-import { getRatingColor } from '../../shared/utils';
+import { getRatingColor, formatCompactNumber } from '../../shared/utils';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
 
@@ -56,9 +56,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
       aria-label={item.title}
       className={`group relative flex flex-col cursor-pointer cinema-card select-none rounded-2xl ${sizeClasses}`}
     >
-      {/* 2:3 Cinema Poster Frame */}
+      {/* 2:3 Cinema Poster Frame (always dark cinema glass over artwork in both themes) */}
       <div
-        className="relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-dark-surface border border-white/[0.08] shadow-card group-hover:border-brand-ember/60 group-hover:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.88),0_0_26px_-6px_rgba(255,42,66,0.45)] transition-all duration-300"
+        className="cinema-player-surface relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-dark-surface border border-white/[0.08] shadow-card group-hover:border-brand-ember/60 group-hover:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.88),0_0_26px_-6px_rgba(255,42,66,0.45)] transition-all duration-300"
       >
         {item.poster ? (
           <img
@@ -189,6 +189,15 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
           {item.year && <span className="tabular-nums">{item.year}</span>}
           {item.year && item.country && <span className="text-zinc-600">·</span>}
           {item.country && <span className="truncate">{item.country}</span>}
+          {item.views && item.views > 0 && (
+            <>
+              {(item.year || item.country) && <span className="text-zinc-600">·</span>}
+              <span className="inline-flex items-center gap-0.5 tabular-nums flex-shrink-0" title={`${item.views.toLocaleString()} просмотров`}>
+                <Eye className="w-3 h-3 opacity-75" aria-hidden="true" />
+                {formatCompactNumber(item.views)}
+              </span>
+            </>
+          )}
         </div>
       </div>
     </article>

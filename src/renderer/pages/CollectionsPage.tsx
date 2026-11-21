@@ -163,7 +163,7 @@ export const CollectionsPage: React.FC = () => {
             <p className="text-xs text-zinc-400 mt-1">{t.collections.emptyDesc}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+          <div className="cinema-grid">
             {items.map((it) => {
               const asMediaItem: MediaItem = {
                 id: it.mediaId,

@@ -3,7 +3,7 @@ import { createMainWindow, getMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
-import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, isBadMirrorUrl, BROWSER_USER_AGENT, isAdUrl } from '../shared/constants';
+import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, IPC_CHANNELS, isBadMirrorUrl, BROWSER_USER_AGENT, isAdUrl } from '../shared/constants';
 
 let browserAdBlockEnabled = true;
 let browserAdBlockedCount = 0;
@@ -125,7 +125,7 @@ if (!gotTheLock) {
       return callback({});
     });
 
-    // Configure built-in cinema browser webview: match desktop UA, block ad popups, sync HTML5 fullscreen
+    // Configure built-in cinema browser webview: match desktop UA, block ad popups & redirects, forward cinema hotkeys
     app.on('web-contents-created', (_, contents) => {
       if (contents.getType() === 'webview') {
         contents.setUserAgent(BROWSER_USER_AGENT);
@@ -136,6 +136,24 @@ if (!gotTheLock) {
             browserAdBlockedCount += 1;
           }
           return { action: 'deny' };
+        });
+        contents.on('will-navigate', (event, url) => {
+          if (browserAdBlockEnabled && isAdUrl(url)) {
+            event.preventDefault();
+            browserAdBlockedCount += 1;
+          }
+        });
+        contents.on('before-input-event', (_event, input) => {
+          if (
+            input.type === 'keyDown' &&
+            !input.isAutoRepeat &&
+            !input.control &&
+            !input.alt &&
+            !input.meta &&
+            ['Escape', 'KeyH', 'KeyP', 'KeyZ', 'KeyF'].includes(input.code)
+          ) {
+            getMainWindow()?.webContents.send(IPC_CHANNELS.BROWSER_WEBVIEW_KEY, input.code);
+          }
         });
       }
     });

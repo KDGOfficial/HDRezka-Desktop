@@ -108,7 +108,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.40';
+  public version = '0.0.41';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -835,13 +835,19 @@ export class RezkaProvider implements IProvider {
 
   private dedupeMediaItems(items: MediaItem[]): MediaItem[] {
     const out: MediaItem[] = [];
-    const seen = new Set<string>();
+    const byKey = new Map<string, MediaItem>();
     for (const item of items) {
-      const key = `${item.title.toLowerCase().replace(/[^a-zа-яёіїє0-9]/gi, '')}:${item.year || ''}:${item.url}`;
-      const titleYearKey = `${item.title.toLowerCase().replace(/[^a-zа-яёіїє0-9]/gi, '')}:${item.year || ''}`;
-      if (seen.has(key) || (item.year && seen.has(titleYearKey))) continue;
-      seen.add(key);
-      if (item.year) seen.add(titleYearKey);
+      const normTitle = item.title.toLowerCase().replace(/[^a-zа-яёіїє0-9]/gi, '');
+      const key = `${normTitle}:${item.year || ''}:${item.url}`;
+      const titleYearKey = item.year ? `${normTitle}:${item.year}` : '';
+      const existing = byKey.get(key) || (titleYearKey ? byKey.get(titleYearKey) : undefined);
+      if (existing) {
+        if (!existing.views && item.views) existing.views = item.views;
+        if (!existing.rating && item.rating) existing.rating = item.rating;
+        continue;
+      }
+      byKey.set(key, item);
+      if (titleYearKey) byKey.set(titleYearKey, item);
       out.push(item);
     }
     return out;
@@ -1908,12 +1914,18 @@ export class RezkaProvider implements IProvider {
         rawTitle.match(/\b(19\d{2}|20\d{2})\b/) ||
         $(el).find('.sInfo').text().match(/Год выпуска:\s*(19\d{2}|20\d{2})/);
       const year = yearMatch ? parseInt(yearMatch[1], 10) : undefined;
-      const kpMatch = $(el).find('.fullKP').text().match(/(\d+(?:\.\d+)?)/);
+      const kpText = $(el).find('.fullKP').text();
+      const kpMatch = kpText.match(/(\d+(?:\.\d+)?)/);
       const rating = kpMatch ? parseFloat(kpMatch[1]) : undefined;
       const qualityText = $(el).find('.fQuality').text().replace(/Качество:/i, '').trim();
       const lentaText = $(el).find('.lenta .cont').text().trim();
       const viewsRaw = $(el).find('.sViews, .views, [class*="view"]').first().text().replace(/\s+/g, '');
-      const viewsMatch = viewsRaw.match(/(\d+)/);
+      const kpVotesMatch = kpText.match(/\((\d[\d\s]{1,12})\)/);
+      const siteVotesMatch = $(el).find('.hRating').text().match(/Голосов:\s*(\d[\d\s]*)/i);
+      const viewsMatch =
+        viewsRaw.match(/(\d+)/) ||
+        (kpVotesMatch ? [kpVotesMatch[0], kpVotesMatch[1].replace(/\s+/g, '')] : null) ||
+        (siteVotesMatch ? [siteVotesMatch[0], siteVotesMatch[1].replace(/\s+/g, '')] : null);
       const views = viewsMatch ? parseInt(viewsMatch[1], 10) : undefined;
       const title = rawTitle.replace(/\s*\(\d{4}\)\s*$/, '').trim();
       const genreText = $(el).find('.sInfo a').text().toLowerCase();
@@ -3309,39 +3321,50 @@ export class RezkaProvider implements IProvider {
     const cleanTitle = (title || origTitle || '').replace(/\s*\(\d{4}\).*$/, '').trim();
     if (!cleanTitle) return null;
 
-    try {
-      const searchQuery = year ? `${cleanTitle} ${year}` : cleanTitle;
-      const srRes = await appFetch(
-        `https://ru.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(searchQuery)}&srlimit=3&format=json`,
-        { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2200) }
-      );
-      if (!srRes.ok) return null;
-      const srJson: any = await srRes.json();
-      const firstTitle = srJson?.query?.search?.[0]?.title;
-      if (!firstTitle) return null;
+    const wikiHeaders = {
+      'User-Agent': 'HDRezkaDesktop/0.0.41 (https://github.com/KDGOfficial/HDRezka-Desktop)',
+      'Accept': 'application/json',
+    };
+    const queries = Array.from(
+      new Set(
+        [
+          year ? `${cleanTitle} ${year}` : cleanTitle,
+          origTitle && origTitle.trim() && origTitle.trim().toLowerCase() !== cleanTitle.toLowerCase()
+            ? `${origTitle.trim()}${year ? ` ${year}` : ''}`
+            : '',
+          cleanTitle.includes(':') ? cleanTitle.split(':')[0].trim() : '',
+        ].filter((q) => q.length >= 2)
+      )
+    );
 
-      const ppRes = await appFetch(
-        `https://ru.wikipedia.org/w/api.php?action=query&prop=pageprops&ppprop=wikibase_item&titles=${encodeURIComponent(firstTitle)}&format=json`,
-        { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2200) }
-      );
-      if (!ppRes.ok) return null;
-      const ppJson: any = await ppRes.json();
-      const pages = ppJson?.query?.pages || {};
-      const pageObj: any = Object.values(pages)[0];
-      const qid = pageObj?.pageprops?.wikibase_item;
-      if (!qid) return null;
+    for (const searchQuery of queries) {
+      try {
+        const ppRes = await appFetch(
+          `https://ru.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=${encodeURIComponent(searchQuery)}&gsrlimit=4&prop=pageprops&ppprop=wikibase_item&format=json`,
+          { headers: wikiHeaders, signal: AbortSignal.timeout(2800) }
+        );
+        if (!ppRes.ok) continue;
+        const ppJson: any = await ppRes.json();
+        const pages = Object.values(ppJson?.query?.pages || {}) as any[];
+        pages.sort((a, b) => (a.index ?? 99) - (b.index ?? 99));
+        const qids = pages
+          .map((p) => p?.pageprops?.wikibase_item)
+          .filter((q): q is string => typeof q === 'string' && q.length > 0);
+        if (qids.length === 0) continue;
 
-      const wdRes = await appFetch(
-        `https://www.wikidata.org/w/api.php?action=wbgetclaims&entity=${qid}&property=P2603&format=json`,
-        { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2200) }
-      );
-      if (!wdRes.ok) return null;
-      const wdJson: any = await wdRes.json();
-      const kpId = wdJson?.claims?.P2603?.[0]?.mainsnak?.datavalue?.value;
-      return kpId ? String(kpId) : null;
-    } catch {
-      return null;
+        const wdRes = await appFetch(
+          `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(qids.join('|'))}&props=claims&format=json`,
+          { headers: wikiHeaders, signal: AbortSignal.timeout(2800) }
+        );
+        if (!wdRes.ok) continue;
+        const wdJson: any = await wdRes.json();
+        for (const qid of qids) {
+          const kpId = wdJson?.entities?.[qid]?.claims?.P2603?.[0]?.mainsnak?.datavalue?.value;
+          if (kpId) return String(kpId);
+        }
+      } catch {}
     }
+    return null;
   }
 
   private async fetchKinopoiskReviews(
@@ -3359,7 +3382,7 @@ export class RezkaProvider implements IProvider {
           'Accept-Language': 'ru-RU,ru;q=0.9',
         },
         skipCookies: true,
-        signal: AbortSignal.timeout(3500),
+        signal: AbortSignal.timeout(6000),
       });
       if (!res.ok) return [];
       const html = await res.text();
@@ -3385,10 +3408,14 @@ export class RezkaProvider implements IProvider {
 
     if (cleanTitle) {
       try {
+        const wikiHeaders = {
+          'User-Agent': 'HDRezkaDesktop/0.0.41 (https://github.com/KDGOfficial/HDRezka-Desktop)',
+          'Accept': 'application/json',
+        };
         const searchQuery = year ? `${cleanTitle} ${year} фильм` : `${cleanTitle} фильм`;
         const srRes = await appFetch(
           `https://ru.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(searchQuery)}&format=json`,
-          { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2500) }
+          { headers: wikiHeaders, signal: AbortSignal.timeout(2800) }
         );
         if (srRes.ok) {
           const srJson: any = await srRes.json();
@@ -3396,7 +3423,7 @@ export class RezkaProvider implements IProvider {
           if (pageId) {
             const exRes = await appFetch(
               `https://ru.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&pageids=${pageId}&format=json`,
-              { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2500) }
+              { headers: wikiHeaders, signal: AbortSignal.timeout(2800) }
             );
             if (exRes.ok) {
               const exJson: any = await exRes.json();
@@ -3492,7 +3519,13 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    const filmUrl = await this.resolveKinobaseUrl(params.mediaId, metaForResolve);
+    let filmUrl = await this.resolveKinobaseUrl(params.mediaId, metaForResolve);
+    if (!filmUrl && metaForResolve.title?.includes(':')) {
+      const shortTitle = metaForResolve.title.split(':')[0].trim();
+      if (shortTitle.length >= 3) {
+        filmUrl = await this.resolveKinobaseUrl(params.mediaId, { ...metaForResolve, title: shortTitle });
+      }
+    }
     const pd = filmUrl ? await this.extractKinobasePlayerData(filmUrl) : null;
 
     if (pd?.file) {
@@ -3516,7 +3549,13 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    const kinogoFallbackUrl = await this.resolveKinogoUrl(params.mediaId, metaForResolve);
+    let kinogoFallbackUrl = await this.resolveKinogoUrl(params.mediaId, metaForResolve);
+    if (!kinogoFallbackUrl && metaForResolve.title?.includes(':')) {
+      const shortTitle = metaForResolve.title.split(':')[0].trim();
+      if (shortTitle.length >= 3) {
+        kinogoFallbackUrl = await this.resolveKinogoUrl(params.mediaId, { ...metaForResolve, title: shortTitle });
+      }
+    }
     if (kinogoFallbackUrl) {
       const gStream = await this.getKinogoStream(kinogoFallbackUrl, { ...params, translatorId: normalizedTrId });
       if (gStream && gStream.streams.length > 0) return gStream;
@@ -3895,8 +3934,12 @@ export class RezkaProvider implements IProvider {
   public async searchAdvanced(query: string, page = 1): Promise<SearchResult> {
     const animePromise = page === 1 ? this.searchAnimeMirrors(query) : Promise.resolve([]);
     if (this.isKinobase()) {
-      const [kItems, animeItems] = await Promise.all([this.searchKinobase(query), animePromise]);
-      const merged = this.dedupeMediaItems([...kItems, ...animeItems]);
+      const [kItems, gItems, animeItems] = await Promise.all([
+        this.searchKinobase(query),
+        page === 1 ? this.searchKinogo(query) : Promise.resolve([]),
+        animePromise,
+      ]);
+      const merged = this.dedupeMediaItems([...kItems, ...gItems, ...animeItems]);
       if (merged.length > 0) {
         return { items: merged, page: 1, hasMore: false };
       }

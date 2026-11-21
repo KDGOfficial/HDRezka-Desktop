@@ -17,18 +17,18 @@ function loadTsModule(relPath, external = []) {
   return m.exports;
 }
 
-const { fixKeyboardLayout, getT9Correction, sortMediaItems } = loadTsModule('../src/shared/utils/index.ts');
+const { fixKeyboardLayout, getT9Correction, sortMediaItems, formatCompactNumber } = loadTsModule('../src/shared/utils/index.ts');
 const { isAdUrl, APP_VERSION, ANIME_MIRROR_SEEDS } = loadTsModule('../src/shared/constants/index.ts');
 const { RezkaProvider } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('Version constants and anime mirror seeds are configured for 0.0.40', () => {
-  assert.equal(APP_VERSION, '0.0.40');
+test('Version constants and anime mirror seeds are configured for 0.0.41', () => {
+  assert.equal(APP_VERSION, '0.0.41');
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('yani.tv')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('animego')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('uakino')));
 });
 
-test('T9 fixKeyboardLayout & getT9Correction fix wrong layout, typos, and preserve real English titles', () => {
+test('T9 fixKeyboardLayout & getT9Correction fix wrong layout, typos, and preserve real English titles with punctuation', () => {
   assert.equal(fixKeyboardLayout('yfhenj'), 'наруто');
   assert.equal(fixKeyboardLayout('l.yf'), 'дюна');
   assert.equal(fixKeyboardLayout(''), '');
@@ -47,11 +47,25 @@ test('T9 fixKeyboardLayout & getT9Correction fix wrong layout, typos, and preser
   assert.equal(typoHit.suggestion, 'наруто');
   assert.equal(typoHit.reason, 'typo');
 
-  // Valid English movie/anime words must not be mangled into Russian layout gibberish
-  const validEn = getT9Correction('naruto');
-  assert.equal(validEn, null);
+  // Transposition + hyphen-free multi-word typo must match
+  const transHit = getT9Correction('человек паку');
+  assert.ok(transHit);
+  assert.equal(transHit.suggestion, 'человек-паук');
+  assert.equal(transHit.reason, 'typo');
+
+  // Valid English titles (including dots & apostrophes) must NEVER be mangled into Russian gibberish
+  assert.equal(getT9Correction('naruto'), null);
+  assert.equal(getT9Correction('Mr. Robot'), null);
+  assert.equal(getT9Correction("Schindler's List"), null);
+  assert.equal(getT9Correction("Ocean's Eleven"), null);
+  assert.equal(getT9Correction('Dr. House'), null);
   assert.equal(getT9Correction('a'), null);
   assert.equal(getT9Correction('   '), null);
+
+  assert.equal(formatCompactNumber(1_026_649), '1M');
+  assert.equal(formatCompactNumber(125_400), '125K');
+  assert.equal(formatCompactNumber(9_500), '9.5K');
+  assert.equal(formatCompactNumber(780), '780');
 });
 
 test('sortMediaItems sorts by year, rating, and views with missing values placed last', () => {
@@ -172,4 +186,28 @@ test('parseKinopoiskReviews extracts Kinopoisk comments with sentiment and sourc
   assert.equal(reviews[0].author, 'Иван Петров');
   assert.match(reviews[0].text, /Настоящий шедевр/);
   assert.equal(reviews[1].sentiment, 'negative');
+});
+
+test('Kinogo parser extracts Kinopoisk audience views and dedupeMediaItems enriches views', () => {
+  const provider = new RezkaProvider();
+  const kinogoHtml = `
+    <div class="shortStory">
+      <div class="hTitle"><a href="/104-interstellar.html">Интерстеллар (2014)</a></div>
+      <div class="sPoster"><img data-src="/uploads/interstellar.jpg" /></div>
+      <div class="fullKP">КиноПоиск:8.7 (1026649)</div>
+      <div class="fQuality">Качество:BDRip</div>
+    </div>
+  `;
+  const parsed = provider.parseKinogoItems(kinogoHtml);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].views, 1026649);
+  assert.equal(parsed[0].rating, 8.7);
+
+  const merged = provider.dedupeMediaItems([
+    { id: 'kb-1', title: 'Интерстеллар', year: 2014, url: 'https://kinobase.org/film/7921', poster: '', type: 'films' },
+    parsed[0],
+  ]);
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].views, 1026649);
+  assert.equal(merged[0].rating, 8.7);
 });

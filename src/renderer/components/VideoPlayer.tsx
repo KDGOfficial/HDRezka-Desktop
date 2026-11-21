@@ -598,11 +598,11 @@ export const VideoPlayer: React.FC = () => {
             : videoFit === 'fill'
               ? 'w-full h-full object-fill'
               : videoFit === '16:10'
-                ? 'max-w-full max-h-full aspect-[16/10] object-cover'
+                ? 'w-[min(100%,calc(100dvh*16/10))] h-[min(100%,calc(100dvw*10/16))] object-cover'
                 : videoFit === '21:9'
-                  ? 'max-w-full max-h-full aspect-[21/9] object-cover'
+                  ? 'w-[min(100%,calc(100dvh*21/9))] h-[min(100%,calc(100dvw*9/21))] object-cover'
                   : videoFit === '4:3'
-                    ? 'max-w-full max-h-full aspect-[4/3] object-cover'
+                    ? 'w-[min(100%,calc(100dvh*4/3))] h-[min(100%,calc(100dvw*3/4))] object-cover'
                     : 'w-full h-full object-contain'
         }`}
         onClick={togglePlay}

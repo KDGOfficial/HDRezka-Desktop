@@ -130,6 +130,13 @@ export const api = {
     ipcRenderer.invoke(IPC_CHANNELS.BROWSER_SET_ADBLOCK, enabled),
   getAdBlockStats: (): Promise<{ enabled: boolean; blockedCount: number }> =>
     ipcRenderer.invoke(IPC_CHANNELS.BROWSER_GET_ADBLOCK),
+  onBrowserWebviewKey: (callback: (code: string) => void) => {
+    const handler = (_: any, code: string) => callback(code);
+    ipcRenderer.on(IPC_CHANNELS.BROWSER_WEBVIEW_KEY, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.BROWSER_WEBVIEW_KEY, handler);
+    };
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);
