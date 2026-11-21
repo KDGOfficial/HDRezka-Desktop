@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { AlertCircle, RefreshCw, ShieldCheck } from 'lucide-react';
 import { HeroBanner } from '../components/HeroBanner';
 import { MediaSlider } from '../components/MediaSlider';
 import { MediaItem } from '../../shared/types';
@@ -9,7 +9,7 @@ import { useTranslation } from '../i18n';
 
 export const HomePage: React.FC = () => {
   const { setPage, watchHistory, loadWatchHistory } = useMediaStore();
-  const { settings } = useSettingsStore();
+  const { settings, mirrorsStatus, verificationEpoch, verifyMirror } = useSettingsStore();
   const { t } = useTranslation();
 
   const [loading, setLoading] = useState(true);
@@ -24,7 +24,7 @@ export const HomePage: React.FC = () => {
   useEffect(() => {
     loadWatchHistory();
     loadHomeData();
-  }, [settings.app.activeMirror]);
+  }, [settings.app.activeMirror, verificationEpoch]);
 
   const loadHomeData = async () => {
     if (!window.api) return;
@@ -108,9 +108,28 @@ export const HomePage: React.FC = () => {
   }
 
   const { homeSections } = settings;
+  const activeMirrorStatus = mirrorsStatus.find((m) => m.url === settings.app.activeMirror);
+  const hasPlaceholderPosters =
+    popular.length > 0 && popular.every((p) => p.poster?.includes('unsplash.com'));
+  const showVerifyBanner = Boolean(activeMirrorStatus?.needsVerification) || hasPlaceholderPosters;
 
   return (
     <div className="w-full pb-16 animate-fadeIn">
+      {showVerifyBanner && (
+        <div className="mb-6 p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
+            <span className="leading-snug">{t.details.antiBotWarning}</span>
+          </div>
+          <button
+            onClick={() => verifyMirror(settings.app.activeMirror)}
+            className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
+          >
+            {t.details.passVerification}
+          </button>
+        </div>
+      )}
+
       {/* Hero Banner */}
       {homeSections.hero && hero && <HeroBanner item={hero} />}
 

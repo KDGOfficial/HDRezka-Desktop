@@ -3,8 +3,7 @@ import { createMainWindow, getMainWindow } from './window';
 import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
-import { DEFAULT_MIRRORS, isBadMirrorUrl } from '../shared/constants';
-import { clearStaleAnubisCookies } from '../core/providers/rezka/provider';
+import { DEFAULT_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../shared/constants';
 
 // Ensure consistent app name and userData path across versions and packaging
 app.name = 'hdrezka-desktop';
@@ -14,7 +13,7 @@ app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
 
 // Same UA as provider requests, so the site's bot-check cookie matches between the check window and fetches
-app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
+app.userAgentFallback = BROWSER_USER_AGENT;
 
 // Acquire single instance lock
 const gotTheLock = app.requestSingleInstanceLock();
@@ -33,13 +32,8 @@ if (!gotTheLock) {
   app.whenReady().then(async () => {
     // Ensure defaultSession userAgent matches exactly
     if (session?.defaultSession) {
-      session.defaultSession.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
-      );
+      session.defaultSession.setUserAgent(BROWSER_USER_AGENT);
     }
-
-    // Proactively clear any stale/corrupted Anubis bot verification tokens to avoid HTTP 500 blank screen
-    await clearStaleAnubisCookies();
 
     // Chromium network stack shares session cookies with app windows (needed for HDRezka session / anti-bot check)
     globalThis.fetch = net.fetch as typeof fetch;

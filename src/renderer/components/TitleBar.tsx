@@ -96,6 +96,7 @@ export const TitleBar: React.FC = () => {
   const currentMirror = settings.app.activeMirror || 'https://hdrezka-home.tv';
   const mirrorStatus = mirrorsStatus.find((m) => m.url === currentMirror);
   const isAvailable = mirrorStatus ? mirrorStatus.isAvailable : true;
+  const needsVerification = Boolean(mirrorStatus?.isAvailable && mirrorStatus?.needsVerification);
   const cleanMirror = currentMirror.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
   return (
@@ -122,7 +123,11 @@ export const TitleBar: React.FC = () => {
         >
           <span
             className={`w-1.5 h-1.5 rounded-full ${
-              isAvailable ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]' : 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]'
+              !isAvailable
+                ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]'
+                : needsVerification
+                ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]'
+                : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
             }`}
           />
           <span className="truncate max-w-[130px] font-mono">{cleanMirror}</span>

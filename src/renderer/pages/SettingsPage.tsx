@@ -16,6 +16,7 @@ import {
   CheckCircle2,
   Send,
   Search,
+  ShieldCheck,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
@@ -32,6 +33,7 @@ export const SettingsPage: React.FC = () => {
     isCheckingMirrors,
     findOnlineMirrors,
     isFindingMirrors,
+    verifyMirror,
     removeCustomMirror,
     setActiveMirror,
     updateInfo,
@@ -92,6 +94,10 @@ export const SettingsPage: React.FC = () => {
       setFindMirrorsStatus(t.settings.allMirrorsCurrent);
     }
     setTimeout(() => setFindMirrorsStatus(null), 4500);
+  };
+
+  const handleVerifyMirror = async (targetMirror: string) => {
+    await verifyMirror(targetMirror);
   };
 
   const handleClearCache = async () => {
@@ -347,6 +353,14 @@ export const SettingsPage: React.FC = () => {
                 <span>{isFindingMirrors ? t.settings.findingOnlineMirrors : t.settings.findOnlineMirrors}</span>
               </button>
               <button
+                onClick={() => handleVerifyMirror(settings.app.activeMirror)}
+                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-zinc-300 transition-colors cursor-pointer"
+                title={t.settings.verifyBtn}
+              >
+                <ShieldCheck className="w-3.5 h-3.5 inline mr-1 text-emerald-400" />
+                <span>{t.details.passVerification}</span>
+              </button>
+              <button
                 onClick={() => checkMirrors()}
                 disabled={isCheckingMirrors}
                 className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-50 transition-colors border border-white/10 cursor-pointer"
@@ -364,6 +378,31 @@ export const SettingsPage: React.FC = () => {
               <span>{findMirrorsStatus}</span>
             </div>
           )}
+
+          {/* Mirrors Verification Banner */}
+          {(() => {
+            const activeStatus = mirrorsStatus.find((m) => m.url === settings.app.activeMirror);
+            const activeNeedsVerification = activeStatus?.isAvailable && activeStatus?.needsVerification;
+            const availableMirrors = mirrorsStatus.filter((m) => m.isAvailable);
+            const allAvailableNeedVerification =
+              availableMirrors.length > 0 && availableMirrors.every((m) => m.needsVerification);
+            const shouldShowBanner = activeNeedsVerification || allAvailableNeedVerification;
+
+            return shouldShowBanner ? (
+              <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3 animate-fadeIn">
+                <div className="flex items-center space-x-2.5 min-w-0">
+                  <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
+                  <span className="leading-snug">{t.settings.needsVerificationHint}</span>
+                </div>
+                <button
+                  onClick={() => handleVerifyMirror(settings.app.activeMirror)}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
+                >
+                  {t.details.passVerification}
+                </button>
+              </div>
+            ) : null;
+          })()}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {settings.app.mirrors?.map((mirror) => {
@@ -383,7 +422,9 @@ export const SettingsPage: React.FC = () => {
                     <span
                       className={`w-2 h-2 rounded-full flex-shrink-0 ${
                         status?.isAvailable
-                          ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
+                          ? status.needsVerification
+                            ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]'
+                            : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
                           : 'bg-red-500'
                       }`}
                     />
@@ -394,9 +435,21 @@ export const SettingsPage: React.FC = () => {
                     {status && (
                       <span className="text-[10px] text-zinc-500 font-mono">
                         {status.latencyMs < 9000
-                          ? `${status.latencyMs}ms`
+                          ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
                           : t.settings.error}
                       </span>
+                    )}
+                    {status?.needsVerification && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleVerifyMirror(mirror);
+                        }}
+                        className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                        title={t.details.passVerification}
+                      >
+                        {t.details.passVerification}
+                      </button>
                     )}
                     {isActive && (
                       <span className="px-1.5 py-0.5 rounded-md bg-brand-red text-white text-[9px] font-black uppercase">

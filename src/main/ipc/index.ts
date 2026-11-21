@@ -4,9 +4,10 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { spawn } from 'child_process';
-import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, isBadMirrorUrl } from '../../shared/constants';
+import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
 import { getMainWindow } from '../window';
 import { ProviderManager } from '../../core/providers/manager';
+import { clearStaleAnubisCookies } from '../../core/providers/rezka/provider';
 import { AppDatabase } from '../database';
 import { CatalogFilter, WatchHistoryEntry, FavoriteItem, CollectionItem, UserSettings, UpdateInfo, UpdateProgress } from '../../shared/types';
 
@@ -149,42 +150,6 @@ export function registerIpcHandlers(): void {
     return provider.getActiveMirror();
   });
 
-  // Helper to remove any stale bot verification cookies that cause HTTP 500 blank screen
-  async function clearStaleVerificationCookies(targetDomainOrUrl: string) {
-    try {
-      let host = 'hdrezka.kim';
-      try {
-        if (targetDomainOrUrl.startsWith('http')) {
-          host = new URL(targetDomainOrUrl).hostname;
-        } else {
-          host = targetDomainOrUrl;
-        }
-      } catch (_) {}
-
-      const allCookies = await session.defaultSession.cookies.get({}).catch(() => []);
-      for (const c of allCookies) {
-        const name = c.name.toLowerCase();
-        if (
-          name.includes('anubis') ||
-          name.includes('cf_clearance') ||
-          name.includes('_vc_id') ||
-          name.includes('challenge')
-        ) {
-          const cookieDomain = c.domain?.startsWith('.') ? c.domain.slice(1) : (c.domain || host);
-          const urlsToTry = [
-            `https://${cookieDomain}${c.path || '/'}`,
-            `http://${cookieDomain}${c.path || '/'}`,
-          ];
-          for (const u of urlsToTry) {
-            await session.defaultSession.cookies.remove(u, c.name).catch(() => {});
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[VerifyMirror] Failed to clear stale cookies:', e);
-    }
-  }
-
   // Opens the mirror in a visible window so the user passes the site's bot check; cookies land in the shared session
   ipcMain.handle(IPC_CHANNELS.VERIFY_MIRROR, async (event, targetMirrorOrUrl?: string) => {
     const activeMirror = providerManager.getProvider().getActiveMirror();
@@ -237,8 +202,8 @@ export function registerIpcHandlers(): void {
       db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
     }
 
-    // Proactively clear stale verification cookies to avoid HTTP 500
-    await clearStaleVerificationCookies(mirror);
+    // Proactively clear stale verification cookies for this mirror host to avoid HTTP 500
+    await clearStaleAnubisCookies(mirror);
 
     return new Promise<boolean>((resolve) => {
       const win = new BrowserWindow({
@@ -295,10 +260,11 @@ export function registerIpcHandlers(): void {
         } catch (_) {}
       };
 
-      const closeAndResolve = () => {
+      const closeAndResolve = async () => {
         if (isClosed) return;
         isClosed = true;
         clearInterval(timer);
+        await session.defaultSession.cookies.flushStore().catch(() => {});
         providerManager.getProvider().setActiveMirror(mirror);
         db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
         if (!win.isDestroyed()) {
@@ -329,9 +295,11 @@ export function registerIpcHandlers(): void {
                 document.querySelector('#challenge-running') ||
                 document.querySelector('.cf-browser-verification') ||
                 document.querySelector('#cf-wrapper') ||
+                document.querySelector('iframe[src*="challenges.cloudflare.com"]') ||
                 (document.title && (
                   document.title.includes('Проверяем, что вы не бот') ||
                   document.title.includes('Just a moment') ||
+                  document.title.includes('Один момент') ||
                   document.title.includes('Attention Required')
                 ))
               );
@@ -427,16 +395,18 @@ export function registerIpcHandlers(): void {
         setTimeout(checkState, 500);
       });
 
-      win.on('closed', () => {
+      win.on('closed', async () => {
         if (!isClosed) {
           isClosed = true;
           clearInterval(timer);
+          await session.defaultSession.cookies.flushStore().catch(() => {});
           providerManager.getProvider().setActiveMirror(mirror);
           db.saveSettings({ app: { ...db.getSettings().app, activeMirror: mirror } });
           resolve(true);
         }
       });
 
+      win.webContents.setUserAgent(BROWSER_USER_AGENT);
       win.loadURL(loadUrl).catch(() => {});
     });
   });

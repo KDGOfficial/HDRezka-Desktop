@@ -7,6 +7,7 @@ interface SettingsState {
   mirrorsStatus: MirrorStatus[];
   isCheckingMirrors: boolean;
   isFindingMirrors: boolean;
+  verificationEpoch: number;
 
   // Auto-Update State
   updateInfo: UpdateInfo | null;
@@ -18,6 +19,7 @@ interface SettingsState {
   updateSettings: (newSettings: Partial<UserSettings>) => Promise<void>;
   checkMirrors: () => Promise<void>;
   findOnlineMirrors: () => Promise<number>;
+  verifyMirror: (targetUrl?: string) => Promise<boolean>;
   setActiveMirror: (mirror: string) => Promise<void>;
   removeCustomMirror: (mirror: string) => Promise<void>;
 
@@ -32,6 +34,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   mirrorsStatus: [],
   isCheckingMirrors: false,
   isFindingMirrors: false,
+  verificationEpoch: 0,
 
   updateInfo: null,
   isCheckingUpdate: false,
@@ -92,6 +95,20 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       console.error('Failed to find online mirrors:', err);
       set({ isFindingMirrors: false });
       return 0;
+    }
+  },
+
+  verifyMirror: async (targetUrl?: string) => {
+    if (!window.api?.verifyMirror) return false;
+    try {
+      const ok = await window.api.verifyMirror(targetUrl);
+      const s = await window.api.getSettings();
+      set((state) => ({ settings: s, verificationEpoch: state.verificationEpoch + 1 }));
+      await get().checkMirrors();
+      return ok;
+    } catch (err) {
+      console.error('Failed to verify mirror:', err);
+      return false;
     }
   },
 

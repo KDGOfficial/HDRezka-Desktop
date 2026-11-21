@@ -1,6 +1,7 @@
 import { BrowserWindow, shell, session } from 'electron';
 import path from 'path';
 import { ProviderManager } from '../core/providers/manager';
+import { BROWSER_USER_AGENT } from '../shared/constants';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -66,8 +67,7 @@ export function createMainWindow(): BrowserWindow {
     if (isStreamOrApi && (url.includes('voidboost') || url.includes('stream.') || url.includes('hdrezka') || url.includes('rezka') || url.includes('.m3u8') || url.includes('.mp4') || url.includes('.vtt'))) {
       details.requestHeaders['Referer'] = activeMirror + '/';
       details.requestHeaders['Origin'] = activeMirror;
-      details.requestHeaders['User-Agent'] =
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+      details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
     }
     callback({ requestHeaders: details.requestHeaders });
   });

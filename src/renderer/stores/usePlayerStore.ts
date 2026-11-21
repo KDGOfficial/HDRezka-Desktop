@@ -36,6 +36,8 @@ interface PlayerState {
   retryPlayback: () => Promise<void>;
 }
 
+let playRequestSeq = 0;
+
 export const usePlayerStore = create<PlayerState>((set, get) => ({
   isOpen: false,
   mediaDetails: null,
@@ -55,6 +57,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   trailerUrl: undefined,
 
   openPlayer: async ({ details, translatorId, seasonId, episodeId, startTime = 0 }) => {
+    const seq = ++playRequestSeq;
     set({
       isOpen: true,
       mediaDetails: details,
@@ -74,6 +77,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       let startPosition = startTime;
       if (startPosition === 0 && window.api) {
         const prog = await window.api.getProgress(details.id, seasonId || 0, episodeId || 0);
+        if (seq !== playRequestSeq) return;
         if (prog && prog.currentTime > 10 && prog.currentTime < prog.duration - 30) {
           startPosition = prog.currentTime;
         }
@@ -95,6 +99,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         isAds: tr?.ads,
         isDirector: tr?.director,
       });
+      if (seq !== playRequestSeq) return;
 
       if (!stream || !stream.streams || stream.streams.length === 0) {
         throw new Error('Потоки для данного перевода временно недоступны.');
@@ -118,6 +123,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         isLoading: false,
       });
     } catch (err: any) {
+      if (seq !== playRequestSeq) return;
       console.error('[usePlayerStore] Open error:', err);
       let message = err?.message || 'Ошибка воспроизведения видео';
       // Clean up internal Electron IPC prefixes
@@ -143,6 +149,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   },
 
   closePlayer: () => {
+    ++playRequestSeq;
     set({
       isOpen: false,
       mediaDetails: null,

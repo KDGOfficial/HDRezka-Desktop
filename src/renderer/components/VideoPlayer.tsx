@@ -23,9 +23,11 @@ import {
   Move,
   Scaling,
   Globe,
+  ShieldCheck,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
 import { formatDuration } from '../../shared/utils';
 
@@ -71,6 +73,7 @@ export const VideoPlayer: React.FC = () => {
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
   const [isUiLocked, setIsUiLocked] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
+  const [isVerifying, setIsVerifying] = useState(false);
   const [showScaleMenu, setShowScaleMenu] = useState(false);
   const [videoFit, setVideoFit] = useState<'contain' | 'cover' | 'fill'>('contain');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -240,7 +243,7 @@ export const VideoPlayer: React.FC = () => {
     }
   }, [isOpen, currentStreamUrl]);
 
-  // Loading watchdog: abort infinite freeze if loading exceeds 14 seconds
+  // Loading watchdog: abort infinite freeze if loading exceeds 25 seconds
   useEffect(() => {
     if (!isLoading) return;
     const stallTimer = setTimeout(() => {
@@ -248,7 +251,7 @@ export const VideoPlayer: React.FC = () => {
         isLoading: false,
         error: 'Подключение к видеопотоку превысило лимит ожидания. Попробуйте выбрать другое зеркало или озвучку.',
       });
-    }, 14000);
+    }, 25000);
     return () => clearTimeout(stallTimer);
   }, [isLoading]);
 
@@ -666,6 +669,41 @@ export const VideoPlayer: React.FC = () => {
             </div>
           )}
           <div className="flex flex-wrap items-center justify-center gap-3">
+            {window.api?.verifyMirror && (() => {
+              const needsVerifyHighlight = Boolean(
+                error &&
+                (error.includes('не бот') ||
+                  error.includes('сесси') ||
+                  error.includes('проверку') ||
+                  error.includes('лимит ожидания') ||
+                  error.includes('недоступен'))
+              );
+              return (
+                <button
+                  disabled={isVerifying}
+                  onClick={async () => {
+                    setIsVerifying(true);
+                    try {
+                      await useSettingsStore.getState().verifyMirror(mediaDetails?.url || undefined);
+                      await retryPlayback();
+                    } catch (_) {
+                    } finally {
+                      setIsVerifying(false);
+                    }
+                  }}
+                  className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
+                    isVerifying
+                      ? 'bg-amber-500/50 text-black/60 cursor-not-allowed'
+                      : needsVerifyHighlight
+                      ? 'bg-amber-500 text-black hover:bg-amber-400 shadow-glow active:scale-95'
+                      : 'bg-white/10 text-white font-medium hover:bg-white/20'
+                  }`}
+                >
+                  <ShieldCheck className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} />
+                  <span>{isVerifying ? 'Идет проверка...' : 'Пройти проверку'}</span>
+                </button>
+              );
+            })()}
             <button
               onClick={retryPlayback}
               className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-brand-red text-white font-bold hover:bg-brand-redHover shadow-glow transition-all cursor-pointer"

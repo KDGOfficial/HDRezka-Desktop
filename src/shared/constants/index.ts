@@ -1,8 +1,10 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.33';
+export const APP_VERSION = '0.0.34';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
+export const BROWSER_USER_AGENT =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
 
 export const BAD_MIRROR_PATTERNS = [
   'hdrezka.ag',

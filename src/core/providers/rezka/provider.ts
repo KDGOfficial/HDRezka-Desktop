@@ -13,7 +13,7 @@ import {
   ContentType,
   Translator,
 } from '../../../shared/types';
-import { DEFAULT_MIRRORS, isBadMirrorUrl } from '../../../shared/constants';
+import { DEFAULT_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../../shared/constants';
 import { parseStreamData } from './decoder';
 import {
   FALLBACK_HERO,
@@ -22,83 +22,21 @@ import {
   getFallbackDetails,
 } from './fallbackData';
 
-async function solveAnubisChallenge(mirrorOrUrl: string, html: string): Promise<boolean> {
-  const challengeMatch = html.match(/id="anubis_challenge"[^>]*>([\s\S]*?)<\/script>/i);
-  if (!challengeMatch) return false;
-  try {
-    const challengeData = JSON.parse(challengeMatch[1]);
-    const { randomData, id } = challengeData.challenge || {};
-    const difficulty = challengeData.rules?.difficulty ?? 2;
-    if (!randomData || !id) return false;
-
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const crypto = require('crypto');
-    const p = Math.floor(difficulty / 2);
-    const u = difficulty % 2 !== 0;
-
-    const t0 = Date.now();
-    let nonce = 0;
-    let foundHash = '';
-    while (true) {
-      const hash = crypto.createHash('sha256').update(randomData + nonce).digest();
-      let ok = true;
-      for (let s = 0; s < p; s++) {
-        if (hash[s] !== 0) { ok = false; break; }
-      }
-      if (ok && u && (hash[p] >> 4) !== 0) { ok = false; }
-      if (ok) {
-        foundHash = hash.toString('hex');
-        break;
-      }
-      nonce++;
-      if (nonce > 500000) break;
-    }
-    if (!foundHash) return false;
-    const elapsed = Date.now() - t0;
-
-    const parsed = new URL(mirrorOrUrl);
-    const origin = parsed.origin;
-    const passUrl = `${origin}/.within.website/x/cmd/anubis/api/pass-challenge?id=${encodeURIComponent(id)}&response=${encodeURIComponent(foundHash)}&nonce=${nonce}&redir=%2F&elapsedTime=${elapsed}`;
-
-    let electron: any;
-    try { electron = require('electron'); } catch (_) {}
-
-    let cookieVerification = '';
-    if (electron?.session?.defaultSession?.cookies) {
-      try {
-        const existing = await electron.session.defaultSession.cookies.get({ url: origin });
-        for (const c of existing) {
-          if (c.name.includes('cookie-verification')) {
-            cookieVerification = `${c.name}=${c.value}`;
-            break;
-          }
-        }
-      } catch (_) {}
-    }
-
-    const headers: Record<string, string> = {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-      'Referer': `${origin}/`,
-    };
-    if (cookieVerification) {
-      headers['Cookie'] = cookieVerification;
-    }
-
-    const passRes = await globalThis.fetch(passUrl, {
-      headers,
-      redirect: 'manual',
-    });
-
-    return passRes.status === 302 || passRes.status === 200;
-  } catch (_) {
-    return false;
-  }
-}
-
 export async function clearStaleAnubisCookies(targetUrlOrHost?: string): Promise<void> {
   let electron: any;
   try { electron = require('electron'); } catch (_) {}
   if (!electron?.session?.defaultSession?.cookies) return;
+
+  let targetHost = '';
+  if (targetUrlOrHost) {
+    try {
+      targetHost = targetUrlOrHost.startsWith('http')
+        ? new URL(targetUrlOrHost).hostname.toLowerCase()
+        : targetUrlOrHost.replace(/^www\./, '').toLowerCase();
+    } catch (_) {
+      targetHost = targetUrlOrHost.toLowerCase();
+    }
+  }
 
   try {
     const allCookies = await electron.session.defaultSession.cookies.get({}).catch(() => []);
@@ -111,7 +49,15 @@ export async function clearStaleAnubisCookies(targetUrlOrHost?: string): Promise
         name.includes('_vc_id') ||
         name.includes('challenge')
       ) {
-        const domain = c.domain?.startsWith('.') ? c.domain.slice(1) : (c.domain || 'rezka.ag');
+        const domain = (c.domain?.startsWith('.') ? c.domain.slice(1) : (c.domain || 'rezka.ag')).toLowerCase();
+        if (
+          targetHost &&
+          domain !== targetHost &&
+          !targetHost.endsWith('.' + domain) &&
+          !domain.endsWith('.' + targetHost)
+        ) {
+          continue;
+        }
         for (const u of [`https://${domain}${c.path || '/'}`, `http://${domain}${c.path || '/'}`]) {
           await electron.session.defaultSession.cookies.remove(u, c.name).catch(() => {});
         }
@@ -120,7 +66,7 @@ export async function clearStaleAnubisCookies(targetUrlOrHost?: string): Promise
   } catch (_) {}
 }
 
-async function appFetch(input: string | URL | Request, init?: RequestInit & { skipAutoSolve?: boolean; skipCookies?: boolean }): Promise<Response> {
+async function appFetch(input: string | URL | Request, init?: RequestInit & { skipCookies?: boolean }): Promise<Response> {
   const urlStr = typeof input === 'string' ? input : (input as any).url || input.toString();
   let electron: any;
   try {
@@ -130,28 +76,8 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
   const makeReq = async (forceSkipCookies = false) => {
     if (electron && electron.net && typeof electron.net.fetch === 'function') {
       const headers = new Headers(init?.headers || {});
-
-      // Only attach session cookies when not explicitly skipped (and never attach toxic anubis auth cookies that crash upstream Express)
-      if (!init?.skipCookies && !forceSkipCookies && electron.session?.defaultSession?.cookies) {
-        try {
-          const cookies = await electron.session.defaultSession.cookies.get({ url: urlStr });
-          if (cookies && cookies.length > 0) {
-            const validCookies = cookies.filter(
-              (c: any) => c.value && c.value.length > 0 && !c.name.toLowerCase().includes('anubis')
-            );
-            if (validCookies.length > 0) {
-              const cookieHeader = validCookies.map((c: any) => `${c.name}=${c.value}`).join('; ');
-              headers.set('Cookie', cookieHeader);
-            }
-          }
-        } catch (_) {}
-      }
-
       if (!headers.has('User-Agent')) {
-        headers.set(
-          'User-Agent',
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
-        );
+        headers.set('User-Agent', BROWSER_USER_AGENT);
       }
 
       const credentialsMode = (init?.skipCookies || forceSkipCookies) ? 'omit' : 'include';
@@ -162,7 +88,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 
   const res = await makeReq();
 
-  // If server returns HTTP 500 (stale / poisoned auth cookie crash), immediately purge stale cookies and retry clean
+  // If server returns HTTP 500 (stale / poisoned auth cookie crash), immediately purge host cookies and retry clean
   if (res.status === 500 && !init?.skipCookies) {
     await clearStaleAnubisCookies(urlStr);
     try {
@@ -173,30 +99,13 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
     } catch (_) {}
   }
 
-  // If Anubis PoW challenge page was encountered, automatically solve it and retry once
-  if (!init?.skipAutoSolve && res.status === 200 && res.clone) {
-    try {
-      const clone = res.clone();
-      const text = await clone.text();
-      if (text.includes('id="anubis_challenge"') && text.includes('anubis')) {
-        const solved = await solveAnubisChallenge(urlStr, text);
-        if (solved) {
-          const retried = await makeReq();
-          if (retried.ok) {
-            return retried;
-          }
-        }
-      }
-    } catch (_) {}
-  }
-
   return res;
 }
 
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.33';
+  public version = '0.0.34';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -245,7 +154,7 @@ export class RezkaProvider implements IProvider {
 
   private getHeaders(referer?: string): Record<string, string> {
     return {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+      'User-Agent': BROWSER_USER_AGENT,
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
       ...(referer ? { 'X-Requested-With': 'XMLHttpRequest' } : {}),
@@ -280,87 +189,52 @@ export class RezkaProvider implements IProvider {
 
   public async checkMirrors(mirrorsToCheck?: string[]): Promise<MirrorStatus[]> {
     const list = mirrorsToCheck && mirrorsToCheck.length > 0 ? mirrorsToCheck : this.mirrors;
-    const results: MirrorStatus[] = [];
 
-    for (const mirror of list) {
-      const cleanUrl = mirror.replace(/\/$/, '');
-      if (isBadMirrorUrl(cleanUrl)) {
-        results.push({
-          url: cleanUrl,
-          isAvailable: false,
-          latencyMs: 9999,
-          lastChecked: Date.now(),
-          needsVerification: false,
-        });
-        continue;
-      }
-
-      const t0 = Date.now();
-      try {
-        // 1. Fast live ping via search API endpoint: checks real database & streaming connectivity without bot interstitial
-        const searchCheckUrl = `${cleanUrl}/engine/ajax/search.php?q=spider`;
-        const res = await appFetch(searchCheckUrl, {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36',
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-          signal: AbortSignal.timeout(4000),
-          skipAutoSolve: true,
-          skipCookies: true,
-        });
-
-        if (res.ok) {
-          const latency = Date.now() - t0;
-          const text = await res.text();
-          const isFakeLogin = text.includes('Вход на HDrezka') || text.includes('card-face');
-          if (!isFakeLogin && (text.includes('b-search__section_list') || text.includes('b-search') || text.includes('spider'))) {
-            results.push({
-              url: cleanUrl,
-              isAvailable: true,
-              latencyMs: latency,
-              lastChecked: Date.now(),
-              needsVerification: false,
-            });
-            continue;
-          }
+    return Promise.all(
+      list.map(async (mirror): Promise<MirrorStatus> => {
+        const cleanUrl = mirror.replace(/\/$/, '');
+        if (isBadMirrorUrl(cleanUrl)) {
+          return {
+            url: cleanUrl,
+            isAvailable: false,
+            latencyMs: 9999,
+            lastChecked: Date.now(),
+            needsVerification: false,
+          };
         }
 
-        // 2. Fallback root check
         const rootT0 = Date.now();
-        const rootRes = await appFetch(cleanUrl, {
-          headers: this.getHeaders(cleanUrl),
-          signal: AbortSignal.timeout(5000),
-          skipAutoSolve: true,
-          skipCookies: true,
-        });
-        const latency = Date.now() - rootT0;
-        const text = await rootRes.text();
-        const isBlocked = this.isAntiBot(text);
-        const hasRezkaContent = text.includes('b-content') || text.includes('b-post') || text.includes('b-top');
-        const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
-        const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
-        const isLiveSite = isLiveRezka && text.length > 200;
-        const isAvail = (rootRes.ok || rootRes.status === 403) && isLiveSite;
-        results.push({
-          url: cleanUrl,
-          isAvailable: isAvail,
-          latencyMs: isAvail ? latency : 9999,
-          lastChecked: Date.now(),
-          needsVerification: isAvail && isBlocked && !hasRezkaContent,
-        });
-      } catch {
-        results.push({
-          url: cleanUrl,
-          isAvailable: false,
-          latencyMs: 9999,
-          lastChecked: Date.now(),
-          needsVerification: false,
-        });
-      }
-    }
-
-    return results;
+        try {
+          const rootRes = await appFetch(cleanUrl, {
+            headers: this.getHeaders(cleanUrl),
+            signal: AbortSignal.timeout(5000),
+          });
+          const latency = Date.now() - rootT0;
+          const text = await rootRes.text();
+          const isBlocked = this.isAntiBot(text);
+          const hasRezkaContent = text.includes('b-content') || text.includes('b-post') || text.includes('b-top');
+          const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
+          const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
+          const isLiveSite = isLiveRezka && text.length > 200;
+          const isAvail = (rootRes.ok || rootRes.status === 403) && isLiveSite;
+          return {
+            url: cleanUrl,
+            isAvailable: isAvail,
+            latencyMs: isAvail ? latency : 9999,
+            lastChecked: Date.now(),
+            needsVerification: isAvail && isBlocked && !hasRezkaContent,
+          };
+        } catch {
+          return {
+            url: cleanUrl,
+            isAvailable: false,
+            latencyMs: 9999,
+            lastChecked: Date.now(),
+            needsVerification: false,
+          };
+        }
+      })
+    );
   }
 
   public async selectBestMirror(): Promise<string> {
@@ -428,7 +302,6 @@ export class RezkaProvider implements IProvider {
           const res = await appFetch(src, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) HDRezka-Desktop' },
             signal: AbortSignal.timeout(4000),
-            skipAutoSolve: true,
           });
           if (res.ok) {
             const text = await res.text();
@@ -456,7 +329,6 @@ export class RezkaProvider implements IProvider {
           const res = await appFetch(url, {
             headers: this.getHeaders(),
             signal: AbortSignal.timeout(4500),
-            skipAutoSolve: true,
           });
           const text = await res.text();
           const isAlive = (res.ok || res.status === 403) && (
@@ -829,11 +701,13 @@ export class RezkaProvider implements IProvider {
     if (!mediaId) return [];
     const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
     const primaryMirrors = mirrorsToTry.slice(0, 2);
+    const blockedMirrors = new Set<string>();
     const action = isMovie ? 'get_movie' : 'get_episodes';
     const trIds = Object.keys(RezkaProvider.POPULAR_TRANSLATORS).map(Number);
 
     const checkTr = async (trId: number, act: string): Promise<Translator | null> => {
       for (const mirror of primaryMirrors) {
+        if (blockedMirrors.has(mirror)) continue;
         try {
           const formData = new URLSearchParams();
           formData.append('id', mediaId);
@@ -846,7 +720,7 @@ export class RezkaProvider implements IProvider {
               'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
               'X-Requested-With': 'XMLHttpRequest',
               'Referer': pageUrl?.replace(/^https?:\/\/[^/]+/, mirror) || `${mirror}/`,
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              'User-Agent': BROWSER_USER_AGENT,
             },
             body: formData.toString(),
             signal: AbortSignal.timeout(2500),
@@ -854,7 +728,12 @@ export class RezkaProvider implements IProvider {
 
           if (!res.ok) continue;
           const text = await res.text();
-          if (!text || text.trim().startsWith('<') || text.includes('<!doctype') || text.includes('<!DOCTYPE')) continue;
+          if (!text || text.trim().startsWith('<') || text.includes('<!doctype') || text.includes('<!DOCTYPE')) {
+            if (this.isAntiBot(text)) {
+              blockedMirrors.add(mirror);
+            }
+            continue;
+          }
           const json = JSON.parse(text);
           if (json && json.success) {
             return {
@@ -871,6 +750,7 @@ export class RezkaProvider implements IProvider {
     const results: Translator[] = [];
     const chunkSize = 6;
     for (let i = 0; i < trIds.length; i += chunkSize) {
+      if (blockedMirrors.size >= primaryMirrors.length) break;
       const chunk = trIds.slice(i, i + chunkSize);
       const chunkRes = await Promise.all(chunk.map((id) => checkTr(id, action)));
       for (const item of chunkRes) {
@@ -878,9 +758,10 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    if (results.length === 0) {
+    if (results.length === 0 && blockedMirrors.size < primaryMirrors.length) {
       const altAction = isMovie ? 'get_episodes' : 'get_movie';
       for (let i = 0; i < trIds.length; i += chunkSize) {
+        if (blockedMirrors.size >= primaryMirrors.length) break;
         const chunk = trIds.slice(i, i + chunkSize);
         const chunkRes = await Promise.all(chunk.map((id) => checkTr(id, altAction)));
         for (const item of chunkRes) {
@@ -951,19 +832,34 @@ export class RezkaProvider implements IProvider {
         urlPath = targetUrl.replace(/^https?:\/\/[^/]+/, '');
       }
 
-      // Try all mirrors to find one not behind anti-bot
-      const mirrorsToTry = [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
+      // Try active mirror first, then up to 3 backup mirrors in parallel to find one not behind anti-bot
       let html = '';
-      let usedMirror = this.activeMirror;
-      for (const mirror of mirrorsToTry) {
-        try {
-          const tryUrl = urlPath ? `${mirror}${urlPath}` : targetUrl;
-          html = await this.fetchHtml(tryUrl);
-          if (!this.isAntiBot(html)) {
-            usedMirror = mirror;
-            break;
+      try {
+        const activeTryUrl = urlPath ? `${this.activeMirror}${urlPath}` : targetUrl;
+        html = await this.fetchHtml(activeTryUrl, 0);
+      } catch {}
+
+      if (!html || this.isAntiBot(html)) {
+        const backupMirrors = this.mirrors.filter((m) => m !== this.activeMirror).slice(0, 3);
+        if (backupMirrors.length > 0) {
+          const results = await Promise.allSettled(
+            backupMirrors.map(async (mirror) => {
+              const tryUrl = urlPath ? `${mirror}${urlPath}` : targetUrl;
+              const res = await appFetch(tryUrl, {
+                headers: this.getHeaders(mirror),
+                signal: AbortSignal.timeout(4000),
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const body = await res.text();
+              if (!body || this.isAntiBot(body)) throw new Error('Anti-bot');
+              return body;
+            })
+          );
+          const good = results.find((r): r is PromiseFulfilledResult<string> => r.status === 'fulfilled');
+          if (good) {
+            html = good.value;
           }
-        } catch {}
+        }
       }
 
       if (this.isAntiBot(html) || !html) {
@@ -1255,8 +1151,8 @@ export class RezkaProvider implements IProvider {
             headers: {
               'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
               'X-Requested-With': 'XMLHttpRequest',
-            'Referer': this.mediaUrlCache.get(mediaId)?.replace(/^https?:\/\/[^/]+/, mirror) || `${mirror}/`,
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              'Referer': this.mediaUrlCache.get(mediaId)?.replace(/^https?:\/\/[^/]+/, mirror) || `${mirror}/`,
+              'User-Agent': BROWSER_USER_AGENT,
             },
             body: formData.toString(),
             signal: AbortSignal.timeout(this.timeoutMs),
@@ -1337,7 +1233,7 @@ export class RezkaProvider implements IProvider {
         const sRes = await appFetch(`https://kinobase.org/search?query=${encodeURIComponent(q)}`, {
           signal: AbortSignal.timeout(3500),
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'User-Agent': BROWSER_USER_AGENT,
           },
         });
         if (!sRes.ok) continue;
@@ -1349,7 +1245,7 @@ export class RezkaProvider implements IProvider {
         const filmRes = await appFetch(`https://kinobase.org${filmPath}`, {
           signal: AbortSignal.timeout(3500),
           headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+            'User-Agent': BROWSER_USER_AGENT,
           },
         });
         if (!filmRes.ok) continue;
@@ -1365,7 +1261,7 @@ export class RezkaProvider implements IProvider {
           const embedRes = await appFetch(`https://api.delivembed.cc/embed/kp/${kpId}`, {
             signal: AbortSignal.timeout(4000),
             headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+              'User-Agent': BROWSER_USER_AGENT,
             },
           });
           if (embedRes.ok) {
@@ -1419,10 +1315,10 @@ export class RezkaProvider implements IProvider {
       (!cachedItem.type || cachedItem.type === 'films')
     );
 
-    // Fast path for unreleased future titles: don't loop 120 times through doomed mirrors
+    // Fast path for unreleased future titles: don't loop through doomed mirrors
     const mirrorsToTry = isUnreleasedMovie
       ? [this.activeMirror]
-      : [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror)];
+      : [this.activeMirror, ...this.mirrors.filter((m) => m !== this.activeMirror).slice(0, 3)];
 
     const translatorsToTry: number[] = [];
 
@@ -1438,8 +1334,8 @@ export class RezkaProvider implements IProvider {
           if (!translatorsToTry.includes(t.id)) translatorsToTry.push(t.id);
         }
       }
-      // Also include 0 for original/Russian tracks and standard popular IDs
-      for (const popId of [0, 56, 1, 238, 430]) {
+      // Also include 0 for original/Russian tracks and core fallbacks
+      for (const popId of [0, 56, 1]) {
         if (!translatorsToTry.includes(popId)) translatorsToTry.push(popId);
       }
     } else if (!translatorsToTry.includes(0)) {
@@ -1459,7 +1355,9 @@ export class RezkaProvider implements IProvider {
     let lastActiveMirrorMessage = '';
 
     for (const mirror of mirrorsToTry) {
+      let mirrorFailed = false;
       for (const trId of translatorsToTry) {
+        if (mirrorFailed) break;
         if (trId === undefined || trId === null) continue;
         for (const act of actionsToTry) {
           try {
@@ -1499,31 +1397,38 @@ export class RezkaProvider implements IProvider {
                 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
                 'X-Requested-With': 'XMLHttpRequest',
                 'Referer': referer,
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+                'User-Agent': BROWSER_USER_AGENT,
               },
               body: formData.toString(),
-              signal: AbortSignal.timeout(isUnreleasedMovie ? 2500 : this.timeoutMs),
+              signal: AbortSignal.timeout(isUnreleasedMovie ? 2500 : Math.min(this.timeoutMs, 4000)),
             });
 
-            if (!res.ok) continue;
+            if (!res.ok) {
+              mirrorFailed = true;
+              break;
+            }
             const text = await res.text();
             if (!text || text.trim().startsWith('<') || text.includes('<!doctype') || text.includes('<!DOCTYPE')) {
               // Only mark anti-bot challenge if the ACTIVE mirror requested it
               if (mirror === this.activeMirror && this.isAntiBot(text)) {
                 hadAntiBotOrSession = true;
               }
-              continue;
+              mirrorFailed = true;
+              break;
             }
             let json: any;
             try {
               json = JSON.parse(text);
             } catch {
-              continue;
+              mirrorFailed = true;
+              break;
             }
             if (json && !json.success) {
               if (mirror === this.activeMirror) {
                 if (this.isAntiBot(json.message || '')) {
                   hadAntiBotOrSession = true;
+                  mirrorFailed = true;
+                  break;
                 } else if (json.message) {
                   lastActiveMirrorMessage = json.message;
                 }
@@ -1534,7 +1439,8 @@ export class RezkaProvider implements IProvider {
               return parseStreamData(json.url, json.subtitle, json.thumbnails);
             }
           } catch (err: any) {
-            // ignore and try next mirror/translator
+            mirrorFailed = true;
+            break;
           }
         }
       }

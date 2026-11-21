@@ -212,3 +212,64 @@ test('getStream falls back to alternative stream online when HDRezka has no stre
     globalThis.fetch = origFetch;
   }
 });
+
+test('getStream bails out on first anti-bot response per mirror and throws verification prompt', async () => {
+  const provider = new RezkaProvider('https://hdrezka-home.tv', [
+    'https://hdrezka-home.tv',
+    'https://rezka-tv.org',
+  ]);
+
+  let fetchCount = 0;
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    fetchCount++;
+    return new Response(
+      '<!doctype html><html><head><title>Проверяем, что вы не бот!</title><script id="anubis_challenge"></script></head></html>',
+      { status: 200, headers: { 'Content-Type': 'text/html' } }
+    );
+  };
+
+  try {
+    await assert.rejects(
+      async () => {
+        await provider.getStream({ mediaId: '91072', translatorId: 56 });
+      },
+      (err) => {
+        assert.ok(
+          err.message.includes('Я не бот') || err.message.includes('Пройти проверку'),
+          `Expected verification prompt, got: ${err.message}`
+        );
+        return true;
+      }
+    );
+    assert.ok(fetchCount <= 2, `Expected at most 1 fetch per mirror (<= 2), got ${fetchCount}`);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('checkMirrors detects root anti-bot instead of being fooled by search.php', async () => {
+  const provider = new RezkaProvider('https://hdrezka-home.tv', ['https://hdrezka-home.tv']);
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const urlStr = String(url);
+    if (urlStr.includes('search.php')) {
+      return new Response('<ul class="b-search__section_list"><li>spider</li></ul>', { status: 200 });
+    }
+    return new Response(
+      '<!doctype html><html><head><title>Проверяем, что вы не бот!</title></head><body><div class="within.website">' +
+        'x'.repeat(300) +
+        '</div></body></html>',
+      { status: 200 }
+    );
+  };
+
+  try {
+    const statuses = await provider.checkMirrors();
+    assert.equal(statuses[0].isAvailable, true);
+    assert.equal(statuses[0].needsVerification, true, 'Must detect root anti-bot challenge');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

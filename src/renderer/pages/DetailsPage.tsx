@@ -12,10 +12,12 @@ import {
   Film,
   User,
   Tv,
+  AlertCircle,
 } from 'lucide-react';
 import { MediaDetails, Season, MediaItem } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { usePlayerStore } from '../stores/usePlayerStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { MediaSlider } from '../components/MediaSlider';
 import { getRatingColor } from '../../shared/utils';
 import { useTranslation } from '../i18n';
@@ -108,6 +110,18 @@ export const DetailsPage: React.FC = () => {
     navigator.clipboard.writeText(url);
     setIsCopied(true);
     setTimeout(() => setIsCopied(false), 2000);
+  };
+
+  const handleVerifyMirror = async () => {
+    try {
+      await useSettingsStore.getState().verifyMirror(details?.url || details?.id);
+    } catch (err) {
+      console.warn('[Details] verifyMirror error:', err);
+    } finally {
+      if (selectedMediaId) {
+        loadMediaDetails(selectedMediaId);
+      }
+    }
   };
 
   if (loading && !details) {
@@ -279,6 +293,22 @@ export const DetailsPage: React.FC = () => {
                 {isCopied ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
               </button>
             </div>
+
+            {/* Anti-bot notice if mirror was challenged */}
+            {details.antiBot && (
+              <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-300 mb-4 max-w-xl">
+                <div className="flex items-center space-x-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400" />
+                  <span>{t.details.antiBotWarning}</span>
+                </div>
+                <button
+                  onClick={handleVerifyMirror}
+                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold border border-amber-500/40 text-xs transition-colors flex-shrink-0 cursor-pointer"
+                >
+                  {t.details.passVerification}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
