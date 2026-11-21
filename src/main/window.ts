@@ -53,8 +53,13 @@ export function createMainWindow(): BrowserWindow {
 
     const url = details.url.toLowerCase();
 
-    // Never interfere with bot challenge / Anubis internal API verification requests
-    if (url.includes('within.website') || url.includes('pass-challenge') || url.includes('anubis')) {
+    // Never interfere with bot challenge / Techaro Anubis internal verification requests
+    if (
+      url.includes('within.website') ||
+      url.includes('techaro.lol') ||
+      url.includes('pass-challenge') ||
+      url.includes('anubis')
+    ) {
       return callback({ requestHeaders: details.requestHeaders });
     }
 

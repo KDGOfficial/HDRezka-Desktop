@@ -29,10 +29,10 @@ const {
   pickBetterQualityStream,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('v0.0.47 version synchronization across constants and provider', () => {
+test('v0.0.48 version synchronization across constants and provider', () => {
   const provider = new RezkaProvider();
-  assert.equal(APP_VERSION, '0.0.47');
-  assert.equal(provider.version, '0.0.47');
+  assert.equal(APP_VERSION, '0.0.48');
+  assert.equal(provider.version, '0.0.48');
 });
 
 test('parseHlsMasterVariants handles cinema 1920x800 1080p, picks highest bitrate per quality, and never invents fake 1080p', () => {
@@ -507,4 +507,27 @@ test('usePlayerStore.setQuality resets stale initialTime when switching quality 
   usePlayerStore.getState().setQuality('1080p', 0);
   assert.equal(usePlayerStore.getState().initialTime, 0);
   assert.equal(usePlayerStore.getState().currentQuality, '1080p');
+});
+
+test('Techaro Anubis (anubis.techaro.lol) challenges are detected across 200/401/403/429/503 and respected by visible verify window', async () => {
+  const provider = new RezkaProvider('https://hdrezka.me', ['https://hdrezka.me']);
+  const anubisHtml = `<!doctype html><html><head><title>Making sure you're not a bot!</title></head><body><script id="anubis_version" type="application/json">"v1.18.0"</script><p>Protected by <a href="https://anubis.techaro.lol/">Anubis</a></p><div id="anubis-main">${' '.repeat(220)}</div></body></html>`;
+
+  const origFetch = globalThis.fetch;
+  try {
+    for (const status of [200, 401, 403, 429, 503]) {
+      globalThis.fetch = async () => new Response(anubisHtml, { status });
+      const [st] = await provider.checkMirrors(['https://hdrezka.me']);
+      assert.equal(st.isAvailable, true, `HTTP ${status} Techaro Anubis page must be detected as reachable`);
+      assert.equal(st.needsVerification, true, `HTTP ${status} Techaro Anubis page must set needsVerification=true`);
+    }
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+
+  const windowTs = fs.readFileSync(path.resolve(__dirname, '../src/main/window.ts'), 'utf8');
+  const ipcTs = fs.readFileSync(path.resolve(__dirname, '../src/main/ipc/index.ts'), 'utf8');
+  assert.match(windowTs, /techaro\.lol/);
+  assert.match(ipcTs, /anubis\.techaro\.lol/);
+  assert.match(ipcTs, /Making sure you're not a bot/);
 });

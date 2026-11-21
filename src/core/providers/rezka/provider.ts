@@ -47,6 +47,7 @@ export async function clearStaleAnubisCookies(targetUrlOrHost?: string): Promise
       const name = c.name.toLowerCase();
       if (
         name.includes('anubis') ||
+        name.includes('techaro') ||
         name.includes('cookie-verification') ||
         name.includes('cf_clearance') ||
         name.includes('_vc_id') ||
@@ -286,7 +287,7 @@ export function pickBetterQualityStream(
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.47';
+  public version = '0.0.48';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -328,6 +329,13 @@ export class RezkaProvider implements IProvider {
     if (!html) return false;
     return (
       html.includes('anubis_challenge') ||
+      html.includes('anubis_version') ||
+      html.includes('anubis_base_prefix') ||
+      html.includes('anubis.techaro.lol') ||
+      html.includes('techaro.lol') ||
+      html.includes('/.within.website/x/cmd/anubis/') ||
+      html.includes("Making sure you're not a bot") ||
+      html.includes('Making sure you&#39;re not a bot') ||
       html.includes('Проверяем, что вы не бот') ||
       html.includes('cf-browser-verification') ||
       html.includes('challenge-running') ||
@@ -431,7 +439,10 @@ export class RezkaProvider implements IProvider {
           const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
           const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
           const isLiveSite = isLiveRezka && text.length > 200;
-          const isAvail = (rootRes.ok || rootRes.status === 403) && isLiveSite;
+          const isChallengeStatus =
+            isBlocked &&
+            (rootRes.status === 401 || rootRes.status === 403 || rootRes.status === 429 || rootRes.status === 503);
+          const isAvail = (rootRes.ok || isChallengeStatus) && isLiveSite;
           return {
             url: cleanUrl,
             isAvailable: isAvail,

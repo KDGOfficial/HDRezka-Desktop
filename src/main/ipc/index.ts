@@ -344,12 +344,17 @@ export function registerIpcHandlers(): void {
               const isChallengeActive = !!(
                 document.querySelector('#anubis_challenge') ||
                 document.querySelector('#anubis-main') ||
+                document.querySelector('#anubis_version') ||
+                document.querySelector('#anubis_base_prefix') ||
+                document.querySelector('a[href*="anubis.techaro.lol"]') ||
+                document.querySelector('script[src*="anubis"]') ||
                 document.querySelector('#challenge-running') ||
                 document.querySelector('.cf-browser-verification') ||
                 document.querySelector('#cf-wrapper') ||
                 document.querySelector('iframe[src*="challenges.cloudflare.com"]') ||
                 (document.title && (
                   document.title.includes('Проверяем, что вы не бот') ||
+                  document.title.includes("Making sure you're not a bot") ||
                   document.title.includes('Just a moment') ||
                   document.title.includes('Один момент') ||
                   document.title.includes('Attention Required')
