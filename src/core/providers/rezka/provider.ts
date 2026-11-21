@@ -14,8 +14,9 @@ import {
   Translator,
   VideoQualityStream,
   SubtitleTrack,
+  MediaReview,
 } from '../../../shared/types';
-import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, isBadMirrorUrl, isCamRipText, BROWSER_USER_AGENT } from '../../../shared/constants';
+import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, HDREZKA_MIRRORS, isBadMirrorUrl, isCamRipText, BROWSER_USER_AGENT } from '../../../shared/constants';
 import { parseStreamData } from './decoder';
 import {
   FALLBACK_HERO,
@@ -107,7 +108,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.36';
+  public version = '0.0.37';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -300,20 +301,26 @@ export class RezkaProvider implements IProvider {
     return this.activeMirror;
   }
 
-  /** Remove protected (anti-bot) and unreachable mirrors whenever >= 1 clean open mirror is online. */
+  /** Remove protected (anti-bot) and unreachable mirrors when >= 1 open mirror works, promoting unblocked HDRezka mirrors first. */
   public async pruneProtectedMirrors(mirrorsToCheck?: string[]): Promise<string> {
     const targetList =
       mirrorsToCheck && mirrorsToCheck.length > 0
         ? mirrorsToCheck.map((m) => m.replace(/\/$/, ''))
         : [...this.mirrors];
     const statuses = await this.checkMirrors(targetList);
+    const isRezkaOpen = (url: string) => !this.isKinobase(url) && !this.isKinogo(url);
     const clean = statuses
       .filter((s) => s.isAvailable && !s.needsVerification)
-      .sort((a, b) => a.latencyMs - b.latencyMs);
+      .sort((a, b) => {
+        const aRezka = isRezkaOpen(a.url) ? 0 : 1;
+        const bRezka = isRezkaOpen(b.url) ? 0 : 1;
+        if (aRezka !== bRezka) return aRezka - bRezka;
+        return a.latencyMs - b.latencyMs;
+      });
 
     if (clean.length > 0) {
       this.mirrors = clean.map((s) => s.url);
-      if (!this.mirrors.includes(this.activeMirror)) {
+      if (isRezkaOpen(clean[0].url) || !this.mirrors.includes(this.activeMirror)) {
         this.activeMirror = clean[0].url;
       }
       return this.activeMirror;
@@ -331,7 +338,7 @@ export class RezkaProvider implements IProvider {
   }
 
   public async findOnlineMirrors(): Promise<{ added: string[]; all: string[] }> {
-    const candidateUrls = new Set<string>(OPEN_MIRROR_SEEDS);
+    const candidateUrls = new Set<string>([...OPEN_MIRROR_SEEDS, ...HDREZKA_MIRRORS]);
 
     // Seed list of known mirror candidates (excluding dead/hangup domains)
     const seeds = [
@@ -918,17 +925,43 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    const sampleFile = episodeFiles.values().next().value || '';
-    const sampleParsed = this.parseKinobaseFileString(sampleFile);
+    const allEpisodeFiles = Array.from(episodeFiles.values());
+    const sampleFile = allEpisodeFiles[0] || '';
+    const unifiedTranslators: Translator[] = [];
+    const translatorNameById = new Map<number, string>();
+    const seenTrNames = new Set<string>();
+
+    for (const epStr of allEpisodeFiles.slice(0, 5)) {
+      const parsedEp = this.parseKinobaseFileString(epStr);
+      for (const tr of parsedEp.translators) {
+        const key = tr.name.toLowerCase();
+        if (!seenTrNames.has(key)) {
+          seenTrNames.add(key);
+          const nextId = unifiedTranslators.length + 1;
+          unifiedTranslators.push({ ...tr, id: nextId });
+          translatorNameById.set(nextId, tr.name);
+        }
+      }
+    }
 
     return {
-      translators: sampleParsed.translators,
+      translators: unifiedTranslators,
       seasons: seasons.length > 0 ? seasons : undefined,
       subtitles,
       getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number) => {
         const targetKey = `${seasonId || seasons[0]?.id || 1}_${episodeId || 1}`;
         const epFile = episodeFiles.get(targetKey) || sampleFile;
         if (!epFile) return [];
+        const parsedEp = this.parseKinobaseFileString(epFile);
+        const requestedName = translatorId ? translatorNameById.get(translatorId) : undefined;
+        if (requestedName) {
+          const matchedTr = parsedEp.translators.find(
+            (t) => t.name.toLowerCase() === requestedName.toLowerCase()
+          );
+          if (matchedTr && parsedEp.streamsByTranslator.has(matchedTr.id)) {
+            return parsedEp.streamsByTranslator.get(matchedTr.id)!;
+          }
+        }
         return this.parseKinobaseFileString(epFile, translatorId).defaultStreams;
       },
     };
@@ -1277,11 +1310,38 @@ export class RezkaProvider implements IProvider {
         ? this.parseKinobaseSeriesAndTranslators(playerData.file, playerData.subtitle)
         : { translators: [], seasons: undefined };
 
-      const translators: Translator[] = this.filterCamRipTranslators(
+      // Enrich voiceovers & viewer comments from Kinogo + critic reviews from Wikipedia in parallel
+      const [kinogoEnrichRes, criticReviewsRes] = await Promise.allSettled([
+        (async () => {
+          const gUrl = await this.resolveKinogoUrl('', { title, origTitle, year });
+          if (!gUrl) return null;
+          const gHtml = await this.fetchKinogoPage(gUrl, 3000);
+          if (!gHtml) return null;
+          const [tree, comments] = await Promise.all([
+            this.extractKinogoPlayerTree(gUrl, gHtml),
+            Promise.resolve(this.parseKinogoComments(gHtml)),
+          ]);
+          return { translators: tree?.translators || [], comments };
+        })(),
+        this.fetchCriticReviews(title, year, { ratingRezka, ratingImdb, ratingKp, genres, directors }),
+      ]);
+
+      const kinogoEnrich = kinogoEnrichRes.status === 'fulfilled' ? kinogoEnrichRes.value : null;
+      const criticReviews = criticReviewsRes.status === 'fulfilled' ? criticReviewsRes.value : [];
+
+      const baseTranslators: Translator[] = this.filterCamRipTranslators(
         parsedMedia.translators.length > 0
           ? parsedMedia.translators
           : [{ id: 1, name: 'Дубляж / Оригинал', premium: false }]
       );
+      const translators = kinogoEnrich?.translators?.length
+        ? this.mergeCrossMirrorTranslators(baseTranslators, kinogoEnrich.translators, 1000)
+        : baseTranslators;
+
+      const reviews: MediaReview[] = [
+        ...criticReviews,
+        ...(kinogoEnrich?.comments || []),
+      ];
 
       return {
         id,
@@ -1305,6 +1365,8 @@ export class RezkaProvider implements IProvider {
         currentTranslatorId: translators[0]?.id ?? 1,
         seasons: parsedMedia.seasons,
         similar: [],
+        reviews,
+        url: filmUrl,
         antiBot: false,
       };
     } catch {
@@ -1698,7 +1760,22 @@ export class RezkaProvider implements IProvider {
       const ratingKp = kpMatch ? parseFloat(kpMatch[1]) : undefined;
       const description = $('.fullStory p').first().text().trim() || $('.excerpt').first().text().trim() || '';
 
-      const tree = await this.extractKinogoPlayerTree(filmUrl, html);
+      const [treeRes, criticReviewsRes, kbEnrichRes] = await Promise.allSettled([
+        this.extractKinogoPlayerTree(filmUrl, html),
+        this.fetchCriticReviews(title, year, { ratingRezka: ratingKp || meta?.rating, ratingKp, genres, directors }),
+        (async () => {
+          const kbUrl = await this.resolveKinobaseUrl('', { title, year });
+          if (!kbUrl) return [];
+          const pd = await this.extractKinobasePlayerData(kbUrl);
+          return pd?.file ? this.parseKinobaseSeriesAndTranslators(pd.file).translators : [];
+        })(),
+      ]);
+
+      const tree = treeRes.status === 'fulfilled' ? treeRes.value : null;
+      const criticReviews = criticReviewsRes.status === 'fulfilled' ? criticReviewsRes.value : [];
+      const kbTranslators = kbEnrichRes.status === 'fulfilled' ? kbEnrichRes.value : [];
+      const userComments = this.parseKinogoComments(html);
+
       const isSeries = Boolean(tree?.seasons && tree.seasons.length > 0) || genres.some((g) => /сериал/i.test(g));
       const type: ContentType = isSeries
         ? 'series'
@@ -1708,7 +1785,10 @@ export class RezkaProvider implements IProvider {
             ? 'cartoons'
             : meta?.type || 'films';
 
-      const translators = tree?.translators || [{ id: 1, name: 'Дубляж', premium: false }];
+      const baseTranslators = tree?.translators || [{ id: 1, name: 'Дубляж', premium: false }];
+      const translators = kbTranslators.length > 0
+        ? this.mergeCrossMirrorTranslators(baseTranslators, kbTranslators, 2000)
+        : baseTranslators;
 
       return {
         id,
@@ -1731,6 +1811,7 @@ export class RezkaProvider implements IProvider {
         currentTranslatorId: translators[0]?.id ?? 1,
         seasons: tree?.seasons,
         similar: [],
+        reviews: [...criticReviews, ...userComments],
         url: filmUrl,
         antiBot: false,
       };
@@ -2442,6 +2523,12 @@ export class RezkaProvider implements IProvider {
       }
     }
 
+    const [criticReviewsRes] = await Promise.allSettled([
+      this.fetchCriticReviews(title, year, { ratingRezka, ratingImdb, ratingKp, genres, directors }),
+    ]);
+    const criticReviews = criticReviewsRes.status === 'fulfilled' ? criticReviewsRes.value : [];
+    const rezkaComments = this.parseRezkaComments(html);
+
     return {
       id,
       title,
@@ -2464,6 +2551,7 @@ export class RezkaProvider implements IProvider {
       currentTranslatorId,
       seasons,
       similar,
+      reviews: [...criticReviews, ...rezkaComments],
       url: targetUrl,
     };
   } catch (err) {
@@ -2597,6 +2685,196 @@ export class RezkaProvider implements IProvider {
     return [];
   }
 
+  private mergeCrossMirrorTranslators(
+    primary: Translator[],
+    secondary: Translator[],
+    offset: number
+  ): Translator[] {
+    const cleanSecondary = this.filterCamRipTranslators(secondary);
+    const isGenericSingle =
+      primary.length === 1 && /\/ Оригинал|^Дубляж$/i.test(primary[0].name.trim());
+    const base = isGenericSingle && cleanSecondary.length > 0 ? [] : [...primary];
+    const norm = (s: string) => s.toLowerCase().replace(/\s*\([^)]*\)/g, '').trim();
+    const existingNames = new Set(base.map((t) => norm(t.name)));
+
+    for (const tr of cleanSecondary) {
+      if (!existingNames.has(norm(tr.name))) {
+        existingNames.add(norm(tr.name));
+        base.push({ ...tr, id: offset + tr.id });
+      }
+    }
+    return base.length > 0 ? base : primary;
+  }
+
+  private classifySentiment(text: string): 'positive' | 'neutral' | 'negative' {
+    const low = text.toLowerCase();
+    const pos = ['шедевр', 'крутой', 'отличный', 'класс', 'супер', 'топ', 'понравил', 'огонь', 'браво', 'рекомендую'].filter((w) => low.includes(w)).length;
+    const neg = ['шлак', 'ужас', 'скучн', 'плох', 'разочаров', 'провал', 'отврат', 'бред', 'мусор'].filter((w) => low.includes(w)).length;
+    if (pos > neg) return 'positive';
+    if (neg > pos) return 'negative';
+    return 'neutral';
+  }
+
+  public parseKinogoComments(html: string): MediaReview[] {
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const reviews: MediaReview[] = [];
+    const seen = new Set<string>();
+
+    $('li.comments-tree-item').each((idx, el) => {
+      const id = $(el).attr('id') || `kg-${idx}`;
+      if (seen.has(id)) return;
+      seen.add(id);
+
+      const author = $(el).find('.cBodyHeader b').first().text().trim() || 'Зритель';
+      const dateSpans = $(el)
+        .find('.cBodyHeader span')
+        .map((_, s) => $(s).text().trim())
+        .get()
+        .filter((s) => s && !s.startsWith('|') && !s.includes('Комментариев'));
+      const date = dateSpans.find((s) => /\d{4}/.test(s)) || dateSpans[0] || '';
+
+      const bodyNode = $(el).find('[id^="comm-id-"], .cBodyText').first().clone();
+      bodyNode.find('br').replaceWith('\n');
+      const text = bodyNode
+        .text()
+        .replace(/^Цитата:\s*[^\n]+/i, (m) => `${m}\n`)
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+
+      if (text.length < 6) return;
+      const isEssay = text.length >= 350;
+      reviews.push({
+        id,
+        author,
+        date: date || undefined,
+        text,
+        type: isEssay ? 'critic' : 'user',
+        source: isEssay ? 'Рецензия КиноГо' : 'КиноГо',
+        sentiment: this.classifySentiment(text),
+      });
+    });
+
+    return reviews;
+  }
+
+  public parseRezkaComments(html: string): MediaReview[] {
+    if (!html) return [];
+    const $ = cheerio.load(html);
+    const reviews: MediaReview[] = [];
+
+    $('.b-comment').each((idx, el) => {
+      const author = $(el).find('.author, .name').first().text().trim() || 'Пользователь';
+      const date = $(el).find('.date').first().text().trim();
+      const bodyNode = $(el).find('.text, .b-comment__text').first().clone();
+      bodyNode.find('br').replaceWith('\n');
+      const text = bodyNode.text().trim();
+      if (text.length < 6) return;
+      const isEssay = text.length >= 350;
+      reviews.push({
+        id: $(el).attr('data-id') || `rezka-${idx}`,
+        author,
+        date: date || undefined,
+        text,
+        type: isEssay ? 'critic' : 'user',
+        source: isEssay ? 'Рецензия HDRezka' : 'HDRezka',
+        sentiment: this.classifySentiment(text),
+      });
+    });
+
+    return reviews;
+  }
+
+  private async fetchCriticReviews(
+    title: string,
+    year?: number,
+    meta?: {
+      ratingRezka?: number;
+      ratingImdb?: number;
+      ratingKp?: number;
+      genres?: string[];
+      directors?: string[];
+    }
+  ): Promise<MediaReview[]> {
+    const reviews: MediaReview[] = [];
+    const cleanTitle = (title || '').replace(/\s*\(\d{4}\).*$/, '').trim();
+
+    if (cleanTitle) {
+      try {
+        const searchQuery = year ? `${cleanTitle} ${year} фильм` : `${cleanTitle} фильм`;
+        const srRes = await appFetch(
+          `https://ru.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(searchQuery)}&format=json`,
+          { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2500) }
+        );
+        if (srRes.ok) {
+          const srJson: any = await srRes.json();
+          const pageId = srJson?.query?.search?.[0]?.pageid;
+          if (pageId) {
+            const exRes = await appFetch(
+              `https://ru.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&pageids=${pageId}&format=json`,
+              { headers: { 'User-Agent': 'HDRezkaDesktop/1.0' }, signal: AbortSignal.timeout(2500) }
+            );
+            if (exRes.ok) {
+              const exJson: any = await exRes.json();
+              const extract: string = exJson?.query?.pages?.[pageId]?.extract || '';
+              const critMatch = extract.match(/==\s*(?:Критика|Отзывы|Восприятие|Реакция|Оценки)[^=]*==\s*([\s\S]{80,2200}?)(?=\n==[^=]|$)/i);
+              if (critMatch?.[1]) {
+                const paras = critMatch[1]
+                  .split(/\n+/)
+                  .map((p) => p.trim())
+                  .filter((p) => p.length > 70 && !p.startsWith('=='));
+                paras.slice(0, 3).forEach((p, idx) => {
+                  reviews.push({
+                    id: `wiki-critic-${pageId}-${idx}`,
+                    author: 'Обзор прессы и критиков',
+                    text: p,
+                    type: 'critic',
+                    source: 'Кинокритика',
+                    sentiment: this.classifySentiment(p),
+                  });
+                });
+              }
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const scoreParts: string[] = [];
+    if (meta?.ratingKp) scoreParts.push(`КиноПоиск ${meta.ratingKp.toFixed(1)}`);
+    if (meta?.ratingImdb) scoreParts.push(`IMDb ${meta.ratingImdb.toFixed(1)}`);
+    if (meta?.ratingRezka && !meta?.ratingKp) scoreParts.push(`Рейтинг ${meta.ratingRezka.toFixed(1)}`);
+
+    if (reviews.length === 0 || scoreParts.length > 0) {
+      const avgScore = meta?.ratingImdb || meta?.ratingKp || meta?.ratingRezka;
+      const verdict = avgScore
+        ? avgScore >= 7.5
+          ? 'Преимущественно восторженные отзывы критиков и зрителей.'
+          : avgScore >= 6.0
+            ? 'Сдержанно-положительные оценки прессы.'
+            : 'Смешанные отклики критиков.'
+        : 'Сводный рейтинг критиков формируется.';
+      const infoBits = [
+        scoreParts.length > 0 ? `Оценки: ${scoreParts.join(' • ')}.` : '',
+        meta?.directors?.length ? `Режиссёр: ${meta.directors.slice(0, 2).join(', ')}.` : '',
+        meta?.genres?.length ? `Жанр: ${meta.genres.slice(0, 3).join(', ')}.` : '',
+        verdict,
+      ].filter(Boolean);
+
+      reviews.push({
+        id: 'critic-consensus',
+        author: 'Консенсус критиков и рейтингов',
+        text: infoBits.join(' '),
+        type: 'critic',
+        source: 'Агрегатор оценок',
+        rating: avgScore ? `${avgScore.toFixed(1)}/10` : undefined,
+        sentiment: avgScore && avgScore >= 6.5 ? 'positive' : 'neutral',
+      });
+    }
+
+    return reviews;
+  }
+
   public async findAlternativeStream(params: {
     mediaId: string;
     title?: string;
@@ -2614,10 +2892,18 @@ export class RezkaProvider implements IProvider {
       year: params.year || cachedItem?.year,
     };
 
-    if (this.isKinogo() || this.isKinogo(params.mediaId) || this.isKinogo(cachedItem?.url)) {
+    const forceKinogoByOffset = params.translatorId !== undefined && params.translatorId >= 1000 && params.translatorId < 2000;
+    const forceKinobaseByOffset = params.translatorId !== undefined && params.translatorId >= 2000;
+    const normalizedTrId = forceKinobaseByOffset
+      ? params.translatorId! - 2000
+      : forceKinogoByOffset
+        ? params.translatorId! - 1000
+        : params.translatorId;
+
+    if (!forceKinobaseByOffset && (forceKinogoByOffset || this.isKinogo() || this.isKinogo(params.mediaId) || this.isKinogo(cachedItem?.url))) {
       const kinogoUrl = await this.resolveKinogoUrl(params.mediaId, metaForResolve);
       if (kinogoUrl) {
-        const gStream = await this.getKinogoStream(kinogoUrl, params);
+        const gStream = await this.getKinogoStream(kinogoUrl, { ...params, translatorId: normalizedTrId });
         if (gStream && gStream.streams.length > 0) return gStream;
       }
     }
@@ -2627,7 +2913,7 @@ export class RezkaProvider implements IProvider {
 
     if (pd?.file) {
       const parsed = this.parseKinobaseSeriesAndTranslators(pd.file, pd.subtitle);
-      const streams = parsed.getEpisodeStreams(params.translatorId, params.season, params.episode);
+      const streams = parsed.getEpisodeStreams(forceKinobaseByOffset ? normalizedTrId : params.translatorId, params.season, params.episode);
       if (streams.length > 0) {
         return {
           streams,
@@ -2648,7 +2934,7 @@ export class RezkaProvider implements IProvider {
 
     const kinogoFallbackUrl = await this.resolveKinogoUrl(params.mediaId, metaForResolve);
     if (kinogoFallbackUrl) {
-      const gStream = await this.getKinogoStream(kinogoFallbackUrl, params);
+      const gStream = await this.getKinogoStream(kinogoFallbackUrl, { ...params, translatorId: normalizedTrId });
       if (gStream && gStream.streams.length > 0) return gStream;
     }
 

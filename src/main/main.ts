@@ -98,6 +98,22 @@ if (!gotTheLock) {
     // 2. Register all IPC handlers
     registerIpcHandlers();
 
+    // Configure built-in cinema browser webview: match desktop UA and keep valid links inside webview while blocking ad popups
+    app.on('web-contents-created', (_, contents) => {
+      if (contents.getType() === 'webview') {
+        contents.setUserAgent(BROWSER_USER_AGENT);
+        contents.setWindowOpenHandler(({ url }) => {
+          if (
+            /^https?:\/\//i.test(url) &&
+            !/(?:1xbet|mostbet|pinup|vulcan|casino|bet|poker|doubleclick|popunder)/i.test(url)
+          ) {
+            contents.loadURL(url).catch(() => {});
+          }
+          return { action: 'deny' };
+        });
+      }
+    });
+
     // 3. Create window
     createMainWindow();
 

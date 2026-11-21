@@ -85,6 +85,8 @@ export const VideoPlayer: React.FC = () => {
   const resizeStartRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
 
   const subtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
+  const activeTranslator =
+    mediaDetails?.translators?.find((tr) => tr.id === translatorId) || mediaDetails?.translators?.[0];
   const effectiveVolume = isMuted ? 0 : volume;
   const effectivePercent = Math.round(effectiveVolume * 100);
 
@@ -766,12 +768,10 @@ export const VideoPlayer: React.FC = () => {
                     {t.details.season} {seasonId}, {t.details.episode} {episodeId}
                   </span>
                 )}
-                {translatorId > 0 && (
+                {activeTranslator && (
                   <>
                     <span>•</span>
-                    <span className="text-zinc-300">
-                      {mediaDetails?.translators?.find((t) => t.id === translatorId)?.name || 'Оригинал'}
-                    </span>
+                    <span className="text-zinc-300">{activeTranslator.name}</span>
                   </>
                 )}
               </div>
@@ -1029,7 +1029,9 @@ export const VideoPlayer: React.FC = () => {
                   }`}
                 >
                   <Sliders className="w-3.5 h-3.5" />
-                  <span>Озвучка</span>
+                  <span className="max-w-[140px] truncate">
+                    {activeTranslator ? `Озвучка: ${activeTranslator.name}` : 'Озвучка'}
+                  </span>
                 </button>
               )}
 

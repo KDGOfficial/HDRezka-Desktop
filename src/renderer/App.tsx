@@ -21,6 +21,7 @@ import { FavoritesPage } from './pages/FavoritesPage';
 import { CollectionsPage } from './pages/CollectionsPage';
 import { HistoryPage } from './pages/HistoryPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { BrowserPage } from './pages/BrowserPage';
 
 export const App: React.FC = () => {
   const { currentPage, loadFavorites, loadWatchHistory } = useMediaStore();
@@ -86,6 +87,8 @@ export const App: React.FC = () => {
         return <HistoryPage />;
       case 'search':
         return <SearchPage />;
+      case 'browser':
+        return <BrowserPage />;
       case 'settings':
         return <SettingsPage />;
       case 'details':

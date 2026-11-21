@@ -59,6 +59,17 @@ export interface StreamData {
   trailerUrl?: string;
 }
 
+export interface MediaReview {
+  id: string;
+  author: string;
+  date?: string;
+  text: string;
+  type: 'user' | 'critic';
+  source?: string;
+  rating?: string;
+  sentiment?: 'positive' | 'neutral' | 'negative';
+}
+
 export interface MediaDetails {
   id: string;
   title: string;
@@ -81,6 +92,8 @@ export interface MediaDetails {
   currentTranslatorId?: number;
   seasons?: Season[];
   similar: MediaItem[];
+  reviews?: MediaReview[];
+  url?: string;
   antiBot?: boolean; // site page was behind the bot check; translators are unknown until the user passes it
 }
 

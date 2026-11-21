@@ -4,7 +4,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { spawn } from 'child_process';
-import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
+import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, HDREZKA_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
 import { getMainWindow } from '../window';
 import { ProviderManager } from '../../core/providers/manager';
 import { clearStaleAnubisCookies } from '../../core/providers/rezka/provider';
@@ -118,18 +118,24 @@ export function registerIpcHandlers(): void {
     const provider = providerManager.getProvider();
     const curSettings = db.getSettings();
     const cleanedMirrors = (curSettings.app?.mirrors || DEFAULT_MIRRORS).filter((m) => !isBadMirrorUrl(m));
-    const seededMirrors = Array.from(new Set([...OPEN_MIRROR_SEEDS, ...cleanedMirrors]));
+    const seededMirrors = Array.from(new Set([...OPEN_MIRROR_SEEDS, ...HDREZKA_MIRRORS, ...cleanedMirrors]));
     const statuses = await provider.checkMirrors(seededMirrors);
     const cleanStatuses = statuses.filter((s) => s.isAvailable && !s.needsVerification);
 
     if (cleanStatuses.length > 0) {
-      const prunedMirrors = cleanStatuses
-        .slice()
-        .sort((a, b) => a.latencyMs - b.latencyMs)
-        .map((s) => s.url);
-      const nextActive = prunedMirrors.includes(provider.getActiveMirror())
-        ? provider.getActiveMirror()
-        : prunedMirrors[0];
+      const isRezkaOpen = (url: string) => !url.includes('kinobase.org') && !url.includes('kinogo.');
+      const sortedClean = cleanStatuses.slice().sort((a, b) => {
+        const aRezka = isRezkaOpen(a.url) ? 0 : 1;
+        const bRezka = isRezkaOpen(b.url) ? 0 : 1;
+        if (aRezka !== bRezka) return aRezka - bRezka;
+        return a.latencyMs - b.latencyMs;
+      });
+      const prunedMirrors = sortedClean.map((s) => s.url);
+      const nextActive = isRezkaOpen(sortedClean[0].url)
+        ? sortedClean[0].url
+        : prunedMirrors.includes(provider.getActiveMirror())
+          ? provider.getActiveMirror()
+          : prunedMirrors[0];
       provider.setMirrors(prunedMirrors);
       provider.setActiveMirror(nextActive);
       if (
@@ -144,7 +150,7 @@ export function registerIpcHandlers(): void {
           },
         });
       }
-      return cleanStatuses;
+      return sortedClean;
     }
 
     if (

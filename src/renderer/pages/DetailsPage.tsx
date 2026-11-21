@@ -13,6 +13,8 @@ import {
   User,
   Tv,
   AlertCircle,
+  MessageSquare,
+  Award,
 } from 'lucide-react';
 import { MediaDetails, Season, MediaItem } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
@@ -23,7 +25,7 @@ import { getRatingColor } from '../../shared/utils';
 import { useTranslation } from '../i18n';
 
 export const DetailsPage: React.FC = () => {
-  const { selectedMediaId, selectedMediaDetails, favorites, toggleFavorite, openCollectionModal } = useMediaStore();
+  const { selectedMediaId, selectedMediaDetails, favorites, toggleFavorite, openCollectionModal, openBrowser } = useMediaStore();
   const { openPlayer } = usePlayerStore();
   const { t } = useTranslation();
 
@@ -34,6 +36,7 @@ export const DetailsPage: React.FC = () => {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
+  const [reviewFilter, setReviewFilter] = useState<'all' | 'critic' | 'user'>('all');
 
   useEffect(() => {
     if (selectedMediaId) {
@@ -292,6 +295,15 @@ export const DetailsPage: React.FC = () => {
               >
                 {isCopied ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
               </button>
+
+              <button
+                onClick={() => openBrowser(`${details.title}${details.year ? ` ${details.year}` : ''}`)}
+                className="flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold transition-all active:scale-95 cursor-pointer"
+                title="Найти альтернативу в интернете"
+              >
+                <Globe className="w-4 h-4 text-brand-red" />
+                <span>Найти в сети</span>
+              </button>
             </div>
 
             {/* Anti-bot notice if mirror was challenged */}
@@ -447,6 +459,91 @@ export const DetailsPage: React.FC = () => {
           )}
         </div>
       </div>
+
+      {/* Critic Reviews & User Comments */}
+      {details.reviews && details.reviews.length > 0 && (
+        <div className="mb-10 p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-3 border-b border-white/5">
+            <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center space-x-2">
+              <span className="w-1.5 h-3.5 rounded-full bg-brand-red" />
+              <MessageSquare className="w-4 h-4 text-brand-red" />
+              <span>Комментарии и рецензии критиков</span>
+            </h2>
+
+            <div className="flex items-center space-x-1.5">
+              {([
+                { id: 'all', label: `Все (${details.reviews.length})` },
+                { id: 'critic', label: `Критики (${details.reviews.filter((r) => r.type === 'critic').length})` },
+                { id: 'user', label: `Зрители (${details.reviews.filter((r) => r.type === 'user').length})` },
+              ] as const).map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setReviewFilter(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    reviewFilter === tab.id
+                      ? 'bg-brand-red text-white shadow-glow-sm'
+                      : 'bg-white/5 text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-3 max-h-[520px] overflow-y-auto pr-1">
+            {details.reviews
+              .filter((r) => reviewFilter === 'all' || r.type === reviewFilter)
+              .map((rev) => {
+                const isCritic = rev.type === 'critic';
+                const accent =
+                  rev.sentiment === 'positive'
+                    ? 'border-l-emerald-500'
+                    : rev.sentiment === 'negative'
+                      ? 'border-l-red-500'
+                      : isCritic
+                        ? 'border-l-amber-400'
+                        : 'border-l-white/20';
+                return (
+                  <div
+                    key={rev.id}
+                    className={`p-4 rounded-2xl bg-[#0b0c12] border border-white/5 border-l-4 ${accent} space-y-2`}
+                  >
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase ${
+                            isCritic
+                              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                              : 'bg-white/10 text-zinc-300'
+                          }`}
+                        >
+                          {isCritic && <Award className="w-3 h-3" />}
+                          {isCritic ? 'Критик' : 'Зритель'}
+                        </span>
+                        <span className="text-xs font-bold text-white">{rev.author}</span>
+                        {rev.source && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 text-zinc-400">
+                            {rev.source}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-zinc-500">
+                        {rev.rating && (
+                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold">
+                            {rev.rating}
+                          </span>
+                        )}
+                        {rev.date && <span>{rev.date}</span>}
+                      </div>
+                    </div>
+                    <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line">{rev.text}</p>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       {/* Similar Titles Slider */}
       {details.similar && details.similar.length > 0 && (

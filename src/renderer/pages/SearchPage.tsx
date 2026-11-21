@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Search, History, Trash2, X, Star } from 'lucide-react';
+import { Search, History, Trash2, X, Star, Globe } from 'lucide-react';
 import { MediaCard } from '../components/MediaCard';
 import { MediaItem, SearchHistoryEntry } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
 
 export const SearchPage: React.FC = () => {
-  const { searchQuery, setSearchQuery } = useMediaStore();
+  const { searchQuery, setSearchQuery, openBrowser } = useMediaStore();
   const { t } = useTranslation();
   const [query, setQuery] = useState(searchQuery);
   const [results, setResults] = useState<MediaItem[]>([]);
@@ -179,22 +179,46 @@ export const SearchPage: React.FC = () => {
             {searchQuery ? t.search.noResults : t.search.startTyping}
           </p>
           {searchQuery && (
-            <p className="text-xs text-zinc-500 mt-1 max-w-sm text-center leading-relaxed">
-              {t.search.noResultsDesc}
-            </p>
+            <>
+              <p className="text-xs text-zinc-500 mt-1 max-w-sm text-center leading-relaxed">
+                {t.search.noResultsDesc}
+              </p>
+              <button
+                onClick={() => openBrowser(searchQuery)}
+                className="mt-5 flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-black shadow-glow transition-all active:scale-95 cursor-pointer"
+              >
+                <Globe className="w-4 h-4" />
+                <span>Найти «{searchQuery}» в интернете (кино-браузер)</span>
+              </button>
+            </>
           )}
         </div>
       )}
 
       {/* Results Grid */}
       {!loading && results.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
-          {results.map((item, idx) => (
-            <div key={item.id ? `${item.id}-${idx}` : idx} className="flex justify-center">
-              <MediaCard item={item} />
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
+            {results.map((item, idx) => (
+              <div key={item.id ? `${item.id}-${idx}` : idx} className="flex justify-center">
+                <MediaCard item={item} />
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-8 p-4 rounded-2xl bg-[#12131a] border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-zinc-400">
+              Не нашли нужный фильм, сериал или озвучку в списке выше?
             </div>
-          ))}
-        </div>
+            <button
+              onClick={() => openBrowser(query.trim() || searchQuery)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-brand-red/20 border border-white/10 hover:border-brand-red/40 text-xs font-bold text-white transition-all cursor-pointer flex-shrink-0"
+            >
+              <Globe className="w-3.5 h-3.5 text-brand-red" />
+              <span>Найти в интернете (встроенный браузер)</span>
+            </button>
+          </div>
+        </>
       )}
 
       {/* Load More Button */}

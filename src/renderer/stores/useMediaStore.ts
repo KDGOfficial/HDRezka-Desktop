@@ -12,6 +12,7 @@ export type AppPage =
   | 'favorites'
   | 'history'
   | 'search'
+  | 'browser'
   | 'settings'
   | 'details';
 
@@ -20,12 +21,15 @@ interface MediaState {
   selectedMediaId: string | null;
   selectedMediaDetails: MediaDetails | null;
   searchQuery: string;
+  browserQuery: string;
+  browserUrl: string;
   favorites: FavoriteItem[];
   watchHistory: WatchHistoryEntry[];
   collectionModalItem: MediaItem | null;
 
   setPage: (page: AppPage) => void;
   openDetails: (mediaId: string, preloaded?: Partial<MediaItem | MediaDetails>) => void;
+  openBrowser: (queryOrUrl?: string) => void;
   setSelectedMediaDetails: (details: MediaDetails | null) => void;
   setSearchQuery: (query: string) => void;
   setFavorites: (favorites: FavoriteItem[]) => void;
@@ -41,11 +45,27 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   selectedMediaId: null,
   selectedMediaDetails: null,
   searchQuery: '',
+  browserQuery: '',
+  browserUrl: 'https://kinobase.org/',
   favorites: [],
   watchHistory: [],
   collectionModalItem: null,
 
   setPage: (page) => set({ currentPage: page }),
+
+  openBrowser: (queryOrUrl) => {
+    const raw = (queryOrUrl || '').trim();
+    if (!raw) {
+      set({ currentPage: 'browser' });
+      return;
+    }
+    if (/^https?:\/\//i.test(raw)) {
+      set({ browserUrl: raw, currentPage: 'browser' });
+      return;
+    }
+    const targetUrl = `https://yandex.ru/search/?text=${encodeURIComponent(`${raw} смотреть онлайн бесплатно в хорошем качестве HD`)}`;
+    set({ browserQuery: raw, browserUrl: targetUrl, currentPage: 'browser' });
+  },
 
   openDetails: (mediaId, preloaded) => {
     let preloadedDetails: MediaDetails | null = null;

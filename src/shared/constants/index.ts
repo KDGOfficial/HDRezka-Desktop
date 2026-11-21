@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.36';
+export const APP_VERSION = '0.0.37';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const BROWSER_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36';
@@ -30,6 +30,18 @@ export const OPEN_MIRROR_SEEDS = [
   'https://kinobase.org',
   'https://www.kinobase.org',
   'https://kinogo.film',
+];
+
+export const HDREZKA_MIRRORS = [
+  'https://rezka.ag',
+  'https://hdrezka.me',
+  'https://hdrezka.club',
+  'https://rezka-tv.org',
+  'https://hdrezka.sh',
+  'https://rezka.pub',
+  'https://hdrezka.kim',
+  'https://hdrezka-home.tv',
+  'https://rezka-ua.org',
 ];
 
 export const DEFAULT_MIRRORS = [

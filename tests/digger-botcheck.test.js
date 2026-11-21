@@ -387,3 +387,55 @@ test('Anti-CamRip filter removes TS / CAMRip / Экранка releases from item
     globalThis.fetch = origFetch;
   }
 });
+
+test('findOnlineMirrors automatically re-enables and activates unblocked HDRezka mirror', async () => {
+  const provider = new RezkaProvider('https://kinobase.org', ['https://kinobase.org']);
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('hdrezka.club')) {
+      return new Response('<div class="b-content"><div class="b-post">' + 'x'.repeat(300) + '</div></div>', { status: 200 });
+    }
+    if (u.includes('kinobase.org')) {
+      return new Response('<div class="container">kinobase ' + 'x'.repeat(300) + '</div>', { status: 200 });
+    }
+    if (u.includes('github') || u.includes('t.me')) {
+      return new Response('', { status: 404 });
+    }
+    return new Response('<title>Проверяем, что вы не бот!</title>' + 'x'.repeat(300), { status: 200 });
+  };
+
+  try {
+    const res = await provider.findOnlineMirrors();
+    assert.ok(res.added.includes('https://hdrezka.club'), 'findOnlineMirrors must re-discover unblocked HDRezka mirror');
+    assert.ok(res.all.includes('https://hdrezka.club'), 'Re-discovered HDRezka mirror must stay in active list');
+    assert.equal(provider.getActiveMirror(), 'https://hdrezka.club', 'Active mirror should auto-switch to unblocked HDRezka mirror');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('parseKinogoComments extracts viewer comments and classifies long critiques', () => {
+  const provider = new RezkaProvider('https://kinogo.film', ['https://kinogo.film']);
+  const sampleHtml = `
+    <ol class="comments-tree-list">
+      <li class="comments-tree-item" id="comments-tree-item-1">
+        <div class="cBodyHeader"><b>Алексей</b> | <span></span><span></span><span>12 ноября 2026</span></div>
+        <div class="cBodyText"><div id="comm-id-1">Отличный фильм, картинка супер и дубляж огонь!</div></div>
+      </li>
+      <li class="comments-tree-item" id="comments-tree-item-2">
+        <div class="cBodyHeader"><b>Киновед</b> | <span></span><span></span><span>15 ноября 2026</span></div>
+        <div class="cBodyText"><div id="comm-id-2">${'Глубокий философский разбор символизма, постановки кадра, визуальных эффектов и саунд-дизайна картины. '.repeat(5)}</div></div>
+      </li>
+    </ol>
+  `;
+
+  const reviews = provider.parseKinogoComments(sampleHtml);
+  assert.equal(reviews.length, 2);
+  assert.equal(reviews[0].author, 'Алексей');
+  assert.equal(reviews[0].type, 'user');
+  assert.equal(reviews[0].sentiment, 'positive');
+  assert.equal(reviews[1].author, 'Киновед');
+  assert.equal(reviews[1].type, 'critic');
+});

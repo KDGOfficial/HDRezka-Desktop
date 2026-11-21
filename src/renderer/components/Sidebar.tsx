@@ -39,6 +39,7 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'favorites', key: 'favorites', icon: Heart, section: 'library' },
   { id: 'history', key: 'history', icon: History, section: 'library' },
   { id: 'search', key: 'search', icon: Search, section: 'library' },
+  { id: 'browser', key: 'browser', icon: Globe, section: 'library' },
 
   { id: 'settings', key: 'settings', icon: Settings, section: 'system' },
 ];
