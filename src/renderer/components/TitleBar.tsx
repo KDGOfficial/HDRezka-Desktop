@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Minus, Square, Copy, X, Sparkles, Globe, Pin } from 'lucide-react';
+import { Minus, Square, Copy, X, Sparkles, Pin } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useMediaStore } from '../stores/useMediaStore';
 import appLogo from '../assets/logo.png';
@@ -92,105 +92,135 @@ export const TitleBar: React.FC = () => {
     }
   };
 
-  // Active mirror status
-  const currentMirror = settings.app.activeMirror || 'https://hdrezka-home.tv';
+  const currentMirror = settings.app.activeMirror || 'https://kinobase.org';
   const mirrorStatus = mirrorsStatus.find((m) => m.url === currentMirror);
   const isAvailable = mirrorStatus ? mirrorStatus.isAvailable : true;
   const needsVerification = Boolean(mirrorStatus?.isAvailable && mirrorStatus?.needsVerification);
   const cleanMirror = currentMirror.replace(/^https?:\/\//, '').replace(/\/$/, '');
 
   return (
-    <div className="h-9 w-full bg-[#0a0b10] border-b border-white/5 flex items-center justify-between px-3 select-none drag-region z-50">
-      {/* Brand & Mirror Status */}
-      <div className="flex items-center space-x-3 no-drag">
-        <div className="flex items-center space-x-2 cursor-pointer" onClick={() => setPage('home')}>
-          <img
-            src={appLogo}
-            alt="HDRezka Desktop"
-            className="w-5 h-5 rounded-md object-cover shadow-[0_0_10px_rgba(229,9,20,0.5)] border border-brand-red/30"
-          />
-          <span className="text-xs font-black tracking-widest text-white">HDREZKA</span>
-          <span className="text-[9px] px-1.5 py-0.2 rounded bg-gradient-to-r from-brand-red to-orange-500 text-white font-extrabold tracking-wider uppercase">
-            Desktop
-          </span>
-        </div>
+    <div className="h-10 w-full bg-[#070507]/95 border-b border-white/[0.06] flex items-center justify-between px-3.5 select-none drag-region z-50 relative">
+      {/* Subtle neon ember hairline along very top */}
+      <div
+        className="absolute top-0 left-0 right-0 h-[1.5px] opacity-65 pointer-events-none"
+        style={{ background: 'linear-gradient(90deg, transparent 5%, #FF124F 35%, #FF7A00 65%, transparent 95%)' }}
+      />
 
-        {/* Mirror indicator pill */}
+      {/* Left: Brand Signature matching logo.png */}
+      <div className="flex items-center gap-3 no-drag">
         <button
+          type="button"
+          onClick={() => setPage('home')}
+          className="flex items-center gap-2 group cursor-pointer rounded-lg py-0.5 pr-1"
+          aria-label="HDREZKA Desktop Home"
+        >
+          <span className="logo-ring rounded-full flex-shrink-0">
+            <img
+              src={appLogo}
+              alt=""
+              className="w-5 h-5 rounded-full object-cover block"
+            />
+          </span>
+          <span className="font-display text-[12px] font-black tracking-[0.12em] text-white">
+            HD<span className="text-ember-gradient">REZKA</span>
+          </span>
+          <span className="logo-pill inline-flex items-center gap-1 px-2 py-[1px] rounded-full text-[9px] font-display font-extrabold tracking-wider text-white">
+            <svg className="w-2.5 h-2.5 text-white/90" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+              <rect x="0.5" y="1" width="4.8" height="4.4" rx="0.4" />
+              <rect x="6.2" y="0.5" width="5.3" height="4.9" rx="0.4" />
+              <rect x="0.5" y="6.3" width="4.8" height="4.4" rx="0.4" />
+              <rect x="6.2" y="6.3" width="5.3" height="5.2" rx="0.4" />
+            </svg>
+            <span>PC</span>
+          </span>
+        </button>
+
+        {/* Active Mirror Status Pill */}
+        <button
+          type="button"
           onClick={() => setPage('settings')}
           title="Настройки зеркала"
-          className="flex items-center space-x-1.5 px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 text-[10px] text-zinc-400 hover:text-zinc-200 transition-colors"
+          className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.08] text-[10px] text-zinc-300 hover:text-white cursor-pointer"
         >
           <span
-            className={`w-1.5 h-1.5 rounded-full ${
+            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
               !isAvailable
-                ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]'
+                ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.85)]'
                 : needsVerification
-                ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]'
-                : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
+                ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.85)]'
+                : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)]'
             }`}
           />
-          <span className="truncate max-w-[130px] font-mono">{cleanMirror}</span>
+          <span className="truncate max-w-[140px] font-mono text-[10px]">{cleanMirror}</span>
           {mirrorStatus && mirrorStatus.latencyMs < 9000 && (
-            <span className="text-zinc-500 font-mono text-[9px]">{mirrorStatus.latencyMs}ms</span>
+            <span className="text-zinc-500 font-mono text-[9px] tabular-nums">{mirrorStatus.latencyMs}ms</span>
           )}
         </button>
 
         {/* Update available mini-pill */}
         {updateInfo?.hasUpdate && (
           <button
+            type="button"
             onClick={() => setUpdateModalOpen(true)}
-            className="flex items-center space-x-1 px-2 py-0.5 rounded-full bg-brand-red/20 hover:bg-brand-red/30 border border-brand-red/40 text-[10px] text-brand-red hover:text-white font-bold transition-all shadow-glow"
+            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full btn-ember text-[10px] font-extrabold cursor-pointer"
           >
-            <Sparkles className="w-3 h-3 text-orange-400 animate-pulse" />
+            <Sparkles className="w-3 h-3 text-[#FFE29A] animate-pulse" aria-hidden="true" />
             <span>v{updateInfo.latestVersion}</span>
           </button>
         )}
       </div>
 
-      {/* Window Controls & Actions */}
-      <div className="flex items-center no-drag space-x-0.5">
-        {/* Zoom reset indicator if zoomed */}
+      {/* Right: Desktop Window Controls */}
+      <div className="flex items-center no-drag gap-1">
         {zoomFactor !== 100 && (
           <button
+            type="button"
             onClick={handleResetZoom}
-            className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-white/10 hover:bg-white/20 text-zinc-300 transition-colors mr-1"
+            className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/10 hover:bg-white/20 text-zinc-200 mr-1 cursor-pointer"
             title="Сбросить масштаб (Ctrl+0)"
           >
             {zoomFactor}%
           </button>
         )}
 
-        {/* Pin (Always on top) button */}
         <button
+          type="button"
           onClick={handleTogglePin}
-          className={`w-8 h-7 flex items-center justify-center rounded transition-colors mr-0.5 ${
+          aria-label={isPinned ? 'Открепить окно' : 'Закрепить поверх всех окон'}
+          aria-pressed={isPinned}
+          className={`w-8 h-7 flex items-center justify-center rounded-lg cursor-pointer ${
             isPinned
-              ? 'text-brand-red bg-brand-red/15 hover:bg-brand-red/25 border border-brand-red/30'
-              : 'text-zinc-400 hover:text-white hover:bg-white/10'
+              ? 'text-brand-orange bg-brand-crimson/20 border border-brand-ember/40'
+              : 'text-zinc-400 hover:text-white hover:bg-white/[0.08]'
           }`}
           title={isPinned ? 'Открепить окно (поверх всех)' : 'Закрепить поверх всех окон'}
         >
-          <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-brand-red rotate-45' : ''}`} />
+          <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-brand-orange rotate-45' : ''}`} />
         </button>
 
         <button
+          type="button"
           onClick={handleMinimize}
-          className="w-8 h-7 flex items-center justify-center rounded text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+          aria-label="Свернуть"
+          className="w-8 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.08] cursor-pointer"
           title="Свернуть"
         >
           <Minus className="w-3.5 h-3.5" />
         </button>
         <button
+          type="button"
           onClick={handleMaximize}
-          className="w-8 h-7 flex items-center justify-center rounded text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+          aria-label={isMax ? 'Восстановить' : 'Развернуть'}
+          className="w-8 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.08] cursor-pointer"
           title={isMax ? 'Восстановить' : 'Развернуть'}
         >
           {isMax ? <Copy className="w-3 h-3 rotate-180" /> : <Square className="w-3 h-3" />}
         </button>
         <button
+          type="button"
           onClick={handleClose}
-          className="w-8 h-7 flex items-center justify-center rounded text-zinc-400 hover:text-white hover:bg-brand-red transition-colors"
+          aria-label="Закрыть"
+          className="w-8 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-brand-crimson cursor-pointer"
           title="Закрыть"
         >
           <X className="w-3.5 h-3.5" />

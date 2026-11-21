@@ -7,22 +7,22 @@ import {
   CheckCircle2,
   Star,
   Clock,
-  Calendar,
   Globe,
   Film,
   User,
-  Tv,
   AlertCircle,
   MessageSquare,
   Award,
+  Mic2,
+  Tv,
 } from 'lucide-react';
-import { MediaDetails, Season, MediaItem } from '../../shared/types';
+import { MediaDetails, Season } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { MediaSlider } from '../components/MediaSlider';
-import { getRatingColor } from '../../shared/utils';
 import { useTranslation } from '../i18n';
+import appLogo from '../assets/logo.png';
 
 export const DetailsPage: React.FC = () => {
   const { selectedMediaId, selectedMediaDetails, favorites, toggleFavorite, openCollectionModal, openBrowser } = useMediaStore();
@@ -96,9 +96,10 @@ export const DetailsPage: React.FC = () => {
   const handleWatch = (seasonId?: number, episodeId?: number) => {
     if (!details) return;
     const isSeriesLike = details.type === 'series' || details.type === 'animation' || (seasons && seasons.length > 0);
-    const effectiveTranslatorId = (typeof selectedTranslatorId === 'number')
-      ? selectedTranslatorId
-      : (details.translators?.[0]?.id ?? details.currentTranslatorId ?? 0);
+    const effectiveTranslatorId =
+      typeof selectedTranslatorId === 'number'
+        ? selectedTranslatorId
+        : details.translators?.[0]?.id ?? details.currentTranslatorId ?? 0;
     openPlayer({
       details,
       translatorId: effectiveTranslatorId,
@@ -129,9 +130,12 @@ export const DetailsPage: React.FC = () => {
 
   if (loading && !details) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[500px]">
-        <div className="w-12 h-12 border-4 border-brand-red/20 border-t-brand-red rounded-full animate-spin mb-4" />
-        <span className="text-zinc-400 text-xs font-semibold">{t.home.loadingCatalog}</span>
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[540px]">
+        <div className="relative w-20 h-20 mb-5 flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
+          <img src={appLogo} alt="" className="w-12 h-12 rounded-full object-cover shadow-glow" />
+        </div>
+        <span className="text-zinc-300 text-xs font-bold tracking-wider uppercase">{t.home.loadingCatalog}</span>
       </div>
     );
   }
@@ -145,91 +149,105 @@ export const DetailsPage: React.FC = () => {
 
   return (
     <div className="w-full pb-20 text-left select-none animate-fadeIn">
-      {/* Backdrop Header */}
-      <div className="relative w-full rounded-3xl overflow-hidden mb-8 border border-white/10 shadow-elevated bg-[#0e0f16]">
-        {/* Backdrop Image */}
+      {/* Full-Bleed Theater Backdrop Stage */}
+      <section className="relative -mx-7 lg:-mx-9 -mt-6 mb-9 overflow-hidden border-b border-white/[0.06] bg-dark-void">
         {(details.backdrop || details.poster) && (
           <img
             src={details.backdrop || details.poster}
-            alt={details.title}
-            className="absolute inset-0 w-full h-full object-cover filter brightness-[0.35] blur-sm scale-105"
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover filter brightness-[0.38] blur-xl scale-110 saturate-125 pointer-events-none"
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-t from-[#08080c] via-[#08080c]/80 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#08080c] via-transparent to-transparent w-2/3" />
+        <div
+          className="absolute -top-20 right-12 w-[420px] h-[420px] rounded-full opacity-30 blur-3xl pointer-events-none"
+          style={{ background: 'radial-gradient(circle, rgba(255,122,0,0.5) 0%, rgba(255,18,79,0.4) 55%, transparent 75%)' }}
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#0B070A] via-[#0B070A]/78 to-[#070507]/35 pointer-events-none" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#0B070A] via-[#0B070A]/65 to-transparent pointer-events-none" />
 
-        {/* Content Container */}
-        <div className="relative z-10 p-6 md:p-10 flex flex-col md:flex-row gap-8 items-start">
-          {/* Left: Poster */}
-          <div className="w-52 md:w-64 flex-shrink-0 rounded-2xl overflow-hidden border border-white/10 shadow-glow group relative">
-            <img
-              src={details.poster}
-              alt={details.title}
-              className="w-full h-auto object-cover group-hover:scale-105 transition-transform duration-500"
-            />
-          </div>
+        <div className="relative z-10 px-7 lg:px-12 py-10 flex flex-col md:flex-row gap-8 lg:gap-10 items-start">
+          {/* Poster Card with Ember Rim */}
+          <button
+            type="button"
+            onClick={() => handleWatch()}
+            aria-label={`${t.details.watch} ${details.title}`}
+            className="w-52 md:w-64 flex-shrink-0 group relative cursor-pointer rounded-[22px] p-[2px] bg-gradient-to-br from-white/25 via-brand-ember/55 to-brand-crimson/55 shadow-[0_24px_60px_rgba(0,0,0,0.9)]"
+          >
+            <div className="relative rounded-[20px] overflow-hidden bg-dark-surface">
+              <img
+                src={details.poster}
+                alt={details.title}
+                className="w-full h-auto aspect-[2/3] object-cover group-hover:scale-105 transition-transform duration-500 block"
+              />
+              <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <div className="w-16 h-16 rounded-[18px] play-squircle flex items-center justify-center">
+                  <Play className="w-7 h-7 fill-white text-white ml-0.5" aria-hidden="true" />
+                </div>
+              </div>
+            </div>
+          </button>
 
-          {/* Right: Info */}
-          <div className="flex-1 min-w-0">
-            {/* Title */}
-            <h1 className="text-2xl md:text-4xl font-black text-white tracking-tight mb-1.5 drop-shadow">
+          {/* Editorial Title & Actions */}
+          <div className="flex-1 min-w-0 pt-1">
+            <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight mb-1.5 drop-shadow">
               {details.title}
             </h1>
             {details.origTitle && (
-              <p className="text-sm md:text-base text-zinc-400 font-medium italic mb-4">
+              <p className="text-sm md:text-base text-zinc-400 font-medium mb-5">
                 {details.origTitle}
               </p>
             )}
 
-            {/* Badges Cluster */}
+            {/* Ratings & Metadata Pill Cluster */}
             <div className="flex items-center flex-wrap gap-2 mb-5">
               {details.ratingRezka && (
-                <span className="flex items-center px-2.5 py-1 rounded-xl bg-brand-red/20 border border-brand-red/40 text-brand-red text-xs font-black shadow-glow-sm">
-                  <span className="mr-1">HDRezka</span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full btn-ember text-xs font-display font-black tabular-nums">
+                  <span>HDRezka</span>
                   <span>{details.ratingRezka.toFixed(1)}</span>
                 </span>
               )}
               {details.ratingImdb && (
-                <span className="flex items-center px-2.5 py-1 rounded-xl bg-amber-950/40 border border-amber-500/30 text-amber-400 text-xs font-black">
-                  <Star className="w-3.5 h-3.5 fill-amber-400 mr-1" />
+                <span className="logo-pill inline-flex items-center gap-1 px-3 py-1 rounded-full text-brand-gold text-xs font-extrabold tabular-nums">
+                  <Star className="w-3.5 h-3.5 fill-brand-gold" aria-hidden="true" />
                   <span>IMDb {details.ratingImdb.toFixed(1)}</span>
                 </span>
               )}
               {details.ratingKp && (
-                <span className="flex items-center px-2.5 py-1 rounded-xl bg-orange-950/40 border border-orange-500/30 text-orange-400 text-xs font-black">
+                <span className="logo-pill inline-flex items-center px-3 py-1 rounded-full text-brand-orange text-xs font-extrabold tabular-nums">
                   <span>{t.details.kpRating} {details.ratingKp.toFixed(1)}</span>
                 </span>
               )}
               {details.year && (
-                <span className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-zinc-300 text-xs font-bold">
+                <span className="logo-pill px-3 py-1 rounded-full text-zinc-200 text-xs font-bold tabular-nums">
                   {details.year}
                 </span>
               )}
               {details.country && (
-                <span className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-zinc-300 text-xs font-medium">
+                <span className="logo-pill px-3 py-1 rounded-full text-zinc-300 text-xs font-semibold">
                   {details.country}
                 </span>
               )}
               {details.duration && (
-                <span className="px-2.5 py-1 rounded-xl bg-white/5 border border-white/10 text-zinc-300 text-xs font-medium flex items-center">
-                  <Clock className="w-3 h-3 mr-1 text-zinc-400" />
+                <span className="logo-pill px-3 py-1 rounded-full text-zinc-300 text-xs font-semibold inline-flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-brand-orange" aria-hidden="true" />
                   <span>{details.duration}</span>
                 </span>
               )}
               {details.ageRating && (
-                <span className="px-2 py-0.5 rounded-lg bg-zinc-800 text-zinc-400 text-[11px] font-bold">
+                <span className="px-2.5 py-1 rounded-full bg-white/[0.08] border border-white/15 text-zinc-200 text-[11px] font-extrabold">
                   {details.ageRating}
                 </span>
               )}
             </div>
 
-            {/* Genres Chips */}
+            {/* Genres */}
             {details.genres && details.genres.length > 0 && (
-              <div className="flex items-center flex-wrap gap-1.5 mb-6">
+              <div className="flex items-center flex-wrap gap-1.5 mb-7">
                 {details.genres.map((g, idx) => (
                   <span
                     key={idx}
-                    className="px-2.5 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 text-[11px] font-semibold text-zinc-400"
+                    className="px-3 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-[11px] font-semibold text-zinc-300"
                   >
                     {g}
                   </span>
@@ -238,16 +256,18 @@ export const DetailsPage: React.FC = () => {
             )}
 
             {/* Action Buttons */}
-            <div className="flex items-center space-x-3 mb-6 flex-wrap gap-y-2">
+            <div className="flex items-center flex-wrap gap-3 mb-5">
               <button
+                type="button"
                 onClick={() => handleWatch()}
-                className="flex items-center space-x-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-brand-red via-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white font-black text-xs shadow-glow transition-all active:scale-95"
+                className="flex items-center gap-2.5 px-7 py-3.5 rounded-full btn-ember text-white font-display font-black text-xs uppercase tracking-wider active:scale-95 cursor-pointer"
               >
-                <Play className="w-4 h-4 fill-white" />
+                <Play className="w-4 h-4 fill-white" aria-hidden="true" />
                 <span>{t.details.watch}</span>
               </button>
 
               <button
+                type="button"
                 onClick={() =>
                   toggleFavorite({
                     id: details.id,
@@ -260,17 +280,19 @@ export const DetailsPage: React.FC = () => {
                     url: details.id,
                   })
                 }
-                className={`flex items-center space-x-2 px-4 py-3 rounded-2xl border transition-all active:scale-95 text-xs font-bold ${
+                aria-pressed={isFav}
+                className={`flex items-center gap-2 px-5 py-3.5 rounded-full border active:scale-95 text-xs font-bold cursor-pointer ${
                   isFav
-                    ? 'bg-brand-red/15 border-brand-red/50 text-brand-red'
-                    : 'bg-white/5 hover:bg-white/10 border-white/10 text-zinc-300'
+                    ? 'bg-brand-crimson/20 border-brand-crimson/60 text-brand-crimson shadow-glow-sm'
+                    : 'bg-white/[0.07] hover:bg-white/[0.13] border-white/[0.12] text-zinc-200'
                 }`}
               >
-                <Heart className={`w-4 h-4 ${isFav ? 'fill-brand-red' : ''}`} />
+                <Heart className={`w-4 h-4 ${isFav ? 'fill-brand-crimson' : ''}`} />
                 <span>{isFav ? t.details.inFavorites : t.details.addToFavorites}</span>
               </button>
 
               <button
+                type="button"
                 onClick={() =>
                   openCollectionModal({
                     id: details.id,
@@ -282,40 +304,45 @@ export const DetailsPage: React.FC = () => {
                     url: details.id,
                   })
                 }
-                className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 transition-all active:scale-95"
+                aria-label={t.details.addToCollection}
+                className="p-3.5 rounded-full bg-white/[0.07] hover:bg-white/[0.13] border border-white/[0.12] text-zinc-200 active:scale-95 cursor-pointer"
                 title={t.details.addToCollection}
               >
                 <Plus className="w-4 h-4" />
               </button>
 
               <button
+                type="button"
                 onClick={handleCopyLink}
-                className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 transition-all active:scale-95"
+                aria-label={isCopied ? t.details.linkCopied : t.details.copyLink}
+                className="p-3.5 rounded-full bg-white/[0.07] hover:bg-white/[0.13] border border-white/[0.12] text-zinc-200 active:scale-95 cursor-pointer"
                 title={isCopied ? t.details.linkCopied : t.details.copyLink}
               >
                 {isCopied ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Share2 className="w-4 h-4" />}
               </button>
 
               <button
+                type="button"
                 onClick={() => openBrowser(`${details.title}${details.year ? ` ${details.year}` : ''}`)}
-                className="flex items-center space-x-1.5 px-4 py-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-300 hover:text-white text-xs font-bold transition-all active:scale-95 cursor-pointer"
-                title="Найти альтернативу в интернете"
+                className="flex items-center gap-2 px-5 py-3.5 rounded-full bg-white/[0.07] hover:bg-white/[0.13] border border-white/[0.12] text-zinc-200 hover:text-white text-xs font-bold active:scale-95 cursor-pointer"
+                title="Найти альтернативу в Google"
               >
-                <Globe className="w-4 h-4 text-brand-red" />
+                <Globe className="w-4 h-4 text-brand-orange" aria-hidden="true" />
                 <span>Найти в сети</span>
               </button>
             </div>
 
-            {/* Anti-bot notice if mirror was challenged */}
+            {/* Anti-bot notice */}
             {details.antiBot && (
-              <div className="p-3.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-300 mb-4 max-w-xl">
-                <div className="flex items-center space-x-2">
+              <div className="p-3.5 rounded-2xl bg-amber-950/35 border border-amber-500/35 flex items-center justify-between gap-3 text-xs text-amber-200 max-w-xl">
+                <div className="flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 flex-shrink-0 text-amber-400" />
                   <span>{t.details.antiBotWarning}</span>
                 </div>
                 <button
+                  type="button"
                   onClick={handleVerifyMirror}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-bold border border-amber-500/40 text-xs transition-colors flex-shrink-0 cursor-pointer"
+                  className="px-3.5 py-1.5 rounded-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs flex-shrink-0 cursor-pointer"
                 >
                   {t.details.passVerification}
                 </button>
@@ -323,13 +350,17 @@ export const DetailsPage: React.FC = () => {
             )}
           </div>
         </div>
-      </div>
+      </section>
 
       {/* Voice Acting / Translators Selector */}
       {details.translators && details.translators.length > 0 && (
-        <div className="mb-8 p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card">
-          <h2 className="text-sm font-black text-white uppercase tracking-wider mb-3.5 flex items-center space-x-2">
-            <span className="w-1.5 h-3.5 rounded-full bg-brand-red" />
+        <section className="mb-8 p-6 rounded-3xl cinema-panel">
+          <h2 className="font-display text-sm font-black text-white uppercase tracking-wider mb-4 flex items-center gap-2.5">
+            <span
+              className="w-1.5 h-4 rounded-full"
+              style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
+            />
+            <Mic2 className="w-4 h-4 text-brand-orange" aria-hidden="true" />
             <span>{t.details.audioTranslation}</span>
           </h2>
           <div className="flex items-center flex-wrap gap-2">
@@ -338,41 +369,48 @@ export const DetailsPage: React.FC = () => {
               return (
                 <button
                   key={tr.id}
+                  type="button"
+                  aria-pressed={isActive}
                   onClick={() => handleTranslatorChange(tr.id)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold transition-all ${
+                  className={`px-4 py-2 rounded-full text-xs font-bold cursor-pointer ${
                     isActive
-                      ? 'bg-gradient-to-r from-brand-red to-orange-600 text-white shadow-glow'
-                      : 'bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/5'
+                      ? 'btn-ember text-white'
+                      : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white border border-white/[0.08]'
                   }`}
                 >
                   {tr.name}
-                  {tr.camrip && <span className="ml-1 text-[10px] text-amber-400 font-normal">(CamRip)</span>}
+                  {tr.camrip && <span className="ml-1.5 text-[10px] text-amber-300 font-semibold">(CamRip)</span>}
                 </button>
               );
             })}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Seasons & Episodes Grid (for Series / Animation) */}
+      {/* Seasons & Episodes Grid */}
       {isSeriesLike && seasons.length > 0 && (
-        <div className="mb-8 p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
-            <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center space-x-2">
-              <span className="w-1.5 h-3.5 rounded-full bg-brand-red" />
+        <section className="mb-8 p-6 rounded-3xl cinema-panel">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-5 pb-4 border-b border-white/[0.06]">
+            <h2 className="font-display text-sm font-black text-white uppercase tracking-wider flex items-center gap-2.5">
+              <span
+                className="w-1.5 h-4 rounded-full"
+                style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
+              />
+              <Tv className="w-4 h-4 text-brand-orange" aria-hidden="true" />
               <span>{t.details.seasonsAndEpisodes}</span>
             </h2>
 
-            {/* Season tabs */}
-            <div className="flex items-center space-x-1.5 overflow-x-auto">
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
               {seasons.map((s) => (
                 <button
                   key={s.id}
+                  type="button"
+                  aria-pressed={selectedSeasonId === s.id}
                   onClick={() => setSelectedSeasonId(s.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap cursor-pointer ${
                     selectedSeasonId === s.id
-                      ? 'bg-brand-red text-white shadow-glow-sm'
-                      : 'bg-white/5 text-zinc-400 hover:text-white'
+                      ? 'btn-ember text-white'
+                      : 'bg-white/[0.05] text-zinc-400 hover:text-white hover:bg-white/[0.1]'
                   }`}
                 >
                   {s.title || `${t.details.season} ${s.id}`}
@@ -381,9 +419,8 @@ export const DetailsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Episodes */}
           {loadingEpisodes ? (
-            <div className="py-8 text-center text-xs text-zinc-500 animate-pulse">
+            <div className="py-10 text-center text-xs text-zinc-400 animate-pulse font-semibold">
               {t.details.loadingEpisodes}
             </div>
           ) : currentSeason && currentSeason.episodes?.length > 0 ? (
@@ -391,10 +428,11 @@ export const DetailsPage: React.FC = () => {
               {currentSeason.episodes.map((ep) => (
                 <button
                   key={ep.id}
+                  type="button"
                   onClick={() => handleWatch(selectedSeasonId, ep.episodeId)}
-                  className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white/5 hover:bg-brand-red hover:text-white border border-white/5 hover:border-brand-red text-zinc-300 text-xs font-bold transition-all group active:scale-95 shadow-sm"
+                  className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-white/[0.04] hover:bg-gradient-to-br hover:from-brand-crimson hover:to-brand-orange border border-white/[0.07] hover:border-white/25 text-zinc-200 hover:text-white text-xs font-bold group active:scale-95 cursor-pointer"
                 >
-                  <span className="text-[10px] text-zinc-500 group-hover:text-white/80 uppercase font-mono">
+                  <span className="text-[10px] text-zinc-400 group-hover:text-white/85 uppercase font-mono">
                     {t.details.episode} {ep.episodeId}
                   </span>
                   <span className="truncate w-full text-center mt-1 text-white">
@@ -404,38 +442,38 @@ export const DetailsPage: React.FC = () => {
               ))}
             </div>
           ) : (
-            <div className="py-8 text-center text-xs text-zinc-500">
-              {t.details.noEpisodes}
-            </div>
+            <div className="py-8 text-center text-xs text-zinc-500">{t.details.noEpisodes}</div>
           )}
-        </div>
+        </section>
       )}
 
-      {/* Description & Details Info */}
+      {/* Description & Cast */}
       <div className="mb-10 grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Description */}
-        <div className="md:col-span-2 p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card">
-          <h2 className="text-sm font-black text-white uppercase tracking-wider mb-3 flex items-center space-x-2">
-            <span className="w-1.5 h-3.5 rounded-full bg-brand-red" />
-            <span>{t.details.description}</span>
+        <section className="md:col-span-2 p-6 rounded-3xl cinema-panel">
+          <h2 className="font-display text-sm font-black text-white uppercase tracking-wider mb-3.5 flex items-center gap-2.5">
+            <span
+              className="w-1.5 h-4 rounded-full"
+              style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
+            />
+            <span>{t.details.aboutTitle}</span>
           </h2>
-          <p className="text-xs md:text-sm text-zinc-300 leading-relaxed font-normal whitespace-pre-line">
+          <p className="text-xs md:text-sm text-zinc-300 leading-relaxed whitespace-pre-line">
             {details.description || 'Описание временно недоступно.'}
           </p>
-        </div>
+        </section>
 
-        {/* Cast & Crew */}
-        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-4">
+        <section className="p-6 rounded-3xl cinema-panel space-y-5">
           {details.directors && details.directors.length > 0 && (
             <div>
-              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-1.5">
-                <User className="w-3.5 h-3.5" />
+              <h3 className="text-[11px] font-extrabold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <User className="w-3.5 h-3.5 text-brand-orange" aria-hidden="true" />
                 <span>{t.details.director}</span>
               </h3>
               <div className="flex flex-wrap gap-1.5">
                 {details.directors.map((d, i) => (
-                  <span key={i} className="text-xs text-zinc-300 font-semibold">
-                    {d}{i < details.directors.length - 1 ? ', ' : ''}
+                  <span key={i} className="text-xs text-zinc-200 font-semibold">
+                    {d}
+                    {i < details.directors.length - 1 ? ', ' : ''}
                   </span>
                 ))}
               </div>
@@ -443,34 +481,38 @@ export const DetailsPage: React.FC = () => {
           )}
 
           {details.actors && details.actors.length > 0 && (
-            <div className="pt-2 border-t border-white/5">
-              <h3 className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 flex items-center space-x-1.5">
-                <Film className="w-3.5 h-3.5" />
+            <div className="pt-3 border-t border-white/[0.06]">
+              <h3 className="text-[11px] font-extrabold text-zinc-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Film className="w-3.5 h-3.5 text-brand-orange" aria-hidden="true" />
                 <span>{t.details.cast}</span>
               </h3>
               <div className="flex flex-wrap gap-1.5">
                 {details.actors.slice(0, 10).map((a, i) => (
                   <span key={i} className="text-xs text-zinc-300">
-                    {a}{i < Math.min(details.actors.length, 10) - 1 ? ', ' : ''}
+                    {a}
+                    {i < Math.min(details.actors.length, 10) - 1 ? ', ' : ''}
                   </span>
                 ))}
               </div>
             </div>
           )}
-        </div>
+        </section>
       </div>
 
       {/* Critic Reviews & User Comments */}
       {details.reviews && details.reviews.length > 0 && (
-        <div className="mb-10 p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-3 border-b border-white/5">
-            <h2 className="text-sm font-black text-white uppercase tracking-wider flex items-center space-x-2">
-              <span className="w-1.5 h-3.5 rounded-full bg-brand-red" />
-              <MessageSquare className="w-4 h-4 text-brand-red" />
+        <section className="mb-10 p-6 rounded-3xl cinema-panel">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5 pb-4 border-b border-white/[0.06]">
+            <h2 className="font-display text-sm font-black text-white uppercase tracking-wider flex items-center gap-2.5">
+              <span
+                className="w-1.5 h-4 rounded-full"
+                style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
+              />
+              <MessageSquare className="w-4 h-4 text-brand-orange" aria-hidden="true" />
               <span>Комментарии и рецензии критиков</span>
             </h2>
 
-            <div className="flex items-center space-x-1.5">
+            <div className="flex items-center gap-1.5 bg-black/40 p-1 rounded-full border border-white/[0.08]">
               {([
                 { id: 'all', label: `Все (${details.reviews.length})` },
                 { id: 'critic', label: `Критики (${details.reviews.filter((r) => r.type === 'critic').length})` },
@@ -478,11 +520,13 @@ export const DetailsPage: React.FC = () => {
               ] as const).map((tab) => (
                 <button
                   key={tab.id}
+                  type="button"
+                  aria-pressed={reviewFilter === tab.id}
                   onClick={() => setReviewFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold cursor-pointer ${
                     reviewFilter === tab.id
-                      ? 'bg-brand-red text-white shadow-glow-sm'
-                      : 'bg-white/5 text-zinc-400 hover:text-white'
+                      ? 'btn-ember text-white'
+                      : 'text-zinc-400 hover:text-white'
                   }`}
                 >
                   {tab.label}
@@ -498,39 +542,39 @@ export const DetailsPage: React.FC = () => {
                 const isCritic = rev.type === 'critic';
                 const accent =
                   rev.sentiment === 'positive'
-                    ? 'border-l-emerald-500'
+                    ? 'border-l-emerald-400'
                     : rev.sentiment === 'negative'
-                      ? 'border-l-red-500'
-                      : isCritic
-                        ? 'border-l-amber-400'
-                        : 'border-l-white/20';
+                    ? 'border-l-rose-500'
+                    : isCritic
+                    ? 'border-l-brand-gold'
+                    : 'border-l-white/25';
                 return (
-                  <div
+                  <article
                     key={rev.id}
-                    className={`p-4 rounded-2xl bg-[#0b0c12] border border-white/5 border-l-4 ${accent} space-y-2`}
+                    className={`p-4 rounded-2xl bg-[#0D080B]/90 border border-white/[0.06] border-l-4 ${accent} space-y-2`}
                   >
                     <div className="flex items-center justify-between flex-wrap gap-2">
                       <div className="flex items-center gap-2">
                         <span
-                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase ${
+                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
                             isCritic
-                              ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
-                              : 'bg-white/10 text-zinc-300'
+                              ? 'bg-brand-gold/15 text-brand-gold border border-brand-gold/35'
+                              : 'bg-white/[0.08] text-zinc-200'
                           }`}
                         >
-                          {isCritic && <Award className="w-3 h-3" />}
+                          {isCritic && <Award className="w-3 h-3" aria-hidden="true" />}
                           {isCritic ? 'Критик' : 'Зритель'}
                         </span>
                         <span className="text-xs font-bold text-white">{rev.author}</span>
                         {rev.source && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-white/5 text-zinc-400">
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.06] text-zinc-400">
                             {rev.source}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-2 text-[11px] text-zinc-500">
                         {rev.rating && (
-                          <span className="px-2 py-0.5 rounded-lg bg-emerald-500/10 text-emerald-400 font-bold">
+                          <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 font-bold">
                             {rev.rating}
                           </span>
                         )}
@@ -538,14 +582,14 @@ export const DetailsPage: React.FC = () => {
                       </div>
                     </div>
                     <p className="text-xs text-zinc-300 leading-relaxed whitespace-pre-line">{rev.text}</p>
-                  </div>
+                  </article>
                 );
               })}
           </div>
-        </div>
+        </section>
       )}
 
-      {/* Similar Titles Slider */}
+      {/* Similar Titles */}
       {details.similar && details.similar.length > 0 && (
         <MediaSlider title={t.details.similar} items={details.similar} />
       )}

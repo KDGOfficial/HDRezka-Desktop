@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Heart } from 'lucide-react';
 import { MediaCard } from '../components/MediaCard';
 import { useMediaStore } from '../stores/useMediaStore';
-import { ContentType, MediaItem } from '../../shared/types';
+import { MediaItem } from '../../shared/types';
 import { useTranslation } from '../i18n';
 
 export const FavoritesPage: React.FC = () => {
@@ -30,27 +30,31 @@ export const FavoritesPage: React.FC = () => {
   return (
     <div className="w-full pb-16 text-left select-none animate-fadeIn">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-5 border-b border-white/5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8 pb-5 border-b border-white/[0.06]">
         <div>
-          <h1 className="text-2xl font-black text-white flex items-center">
-            <Heart className="w-6 h-6 text-brand-red fill-brand-red mr-2.5" />
-            {t.favorites.title}
+          <h1 className="font-display text-2xl md:text-3xl font-black text-white flex items-center gap-3">
+            <span className="w-9 h-9 rounded-2xl play-squircle flex items-center justify-center flex-shrink-0">
+              <Heart className="w-4 h-4 text-white fill-white" />
+            </span>
+            <span>{t.favorites.title}</span>
           </h1>
-          <p className="text-xs text-zinc-400 mt-1">
+          <p className="text-xs text-zinc-400 mt-1.5">
             {favorites.length} {t.favorites.savedCount}
           </p>
         </div>
 
-        {/* Filter tabs */}
-        <div className="flex items-center space-x-1.5 overflow-x-auto pb-1">
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {filterTabs.map((tab) => (
             <button
               key={tab.id}
+              type="button"
+              aria-pressed={filterType === tab.id}
               onClick={() => setFilterType(tab.id)}
-              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              className={`px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap cursor-pointer ${
                 filterType === tab.id
-                  ? 'bg-gradient-to-r from-brand-red to-orange-600 text-white shadow-glow'
-                  : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
+                  ? 'btn-ember text-white'
+                  : 'bg-white/[0.05] text-zinc-300 hover:text-white hover:bg-white/[0.1] border border-white/[0.08]'
               }`}
             >
               {tab.label}
@@ -62,9 +66,11 @@ export const FavoritesPage: React.FC = () => {
       {/* Grid */}
       {filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-28 text-zinc-500">
-          <Heart className="w-16 h-16 text-zinc-700 mb-3" />
-          <p className="text-base font-bold text-zinc-400">{t.favorites.emptyTitle}</p>
-          <p className="text-xs text-zinc-500 mt-1 max-w-sm text-center leading-relaxed">
+          <div className="w-16 h-16 rounded-3xl cinema-panel flex items-center justify-center mb-4">
+            <Heart className="w-7 h-7 text-brand-crimson" />
+          </div>
+          <p className="font-display text-base font-black text-zinc-200">{t.favorites.emptyTitle}</p>
+          <p className="text-xs text-zinc-400 mt-1.5 max-w-sm text-center leading-relaxed">
             {t.favorites.emptyDesc}
           </p>
         </div>

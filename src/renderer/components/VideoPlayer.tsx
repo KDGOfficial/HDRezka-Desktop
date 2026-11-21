@@ -30,6 +30,7 @@ import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
 import { formatDuration } from '../../shared/utils';
+import appLogo from '../assets/logo.png';
 
 export const VideoPlayer: React.FC = () => {
   const { t } = useTranslation();
@@ -89,6 +90,8 @@ export const VideoPlayer: React.FC = () => {
     mediaDetails?.translators?.find((tr) => tr.id === translatorId) || mediaDetails?.translators?.[0];
   const effectiveVolume = isMuted ? 0 : volume;
   const effectivePercent = Math.round(effectiveVolume * 100);
+  const progressPercent = duration > 0 ? Math.min(100, (currentTime / duration) * 100) : 0;
+  const bufferedPercent = duration > 0 ? Math.min(100, (buffered / duration) * 100) : 0;
 
   // Sync window pin state on mount or open
   useEffect(() => {
@@ -123,7 +126,6 @@ export const VideoPlayer: React.FC = () => {
     if (window.api?.setAlwaysOnTop) {
       const next = !isPinned;
       if (next) {
-        // Exit fullscreen and unmaximize so the pinned player can be moved and scaled freely
         if (document.fullscreenElement) {
           try {
             await document.exitFullscreen();
@@ -133,7 +135,6 @@ export const VideoPlayer: React.FC = () => {
         if (window.api.unmaximize) {
           await window.api.unmaximize();
         }
-        // Set a convenient floating default size (854x480) if window was full screen / maximized
         if (window.api.getBounds && window.api.setBounds) {
           const b = await window.api.getBounds();
           if (b && (b.width > 1200 || b.height > 750)) {
@@ -208,10 +209,9 @@ export const VideoPlayer: React.FC = () => {
   // Dynamically inserted <track default> is not always shown by Chromium; force it on
   useEffect(() => {
     const tracks = videoRef.current?.textTracks;
-    if (tracks) for (const t of Array.from(tracks)) t.mode = 'showing';
+    if (tracks) for (const track of Array.from(tracks)) track.mode = 'showing';
   }, [subtitleTrack?.url]);
 
-  // Auto-hide controls
   const resetHideTimer = () => {
     if (isUiLocked) return;
     setShowControls(true);
@@ -234,7 +234,6 @@ export const VideoPlayer: React.FC = () => {
     };
   }, [isPlaying, activeMenu, isUiLocked]);
 
-  // Clear video element canvas on close or when there is no active stream
   useEffect(() => {
     if (!isOpen || !currentStreamUrl) {
       if (videoRef.current) {
@@ -245,7 +244,6 @@ export const VideoPlayer: React.FC = () => {
     }
   }, [isOpen, currentStreamUrl]);
 
-  // Loading watchdog: abort infinite freeze if loading exceeds 25 seconds
   useEffect(() => {
     if (!isLoading) return;
     const stallTimer = setTimeout(() => {
@@ -270,7 +268,7 @@ export const VideoPlayer: React.FC = () => {
 
     const video = videoRef.current;
     video.volume = volume;
-    video.defaultPlaybackRate = playbackSpeed; // survives source changes, unlike playbackRate
+    video.defaultPlaybackRate = playbackSpeed;
 
     if (streamData?.isAlternative) {
       showToast('Воспроизведение через альтернативный онлайн-источник');
@@ -301,7 +299,6 @@ export const VideoPlayer: React.FC = () => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR: {
-              // Try unblocked CDN mirror rewrite if Voidboost is blocked
               if (currentStreamUrl.includes('voidboost') || currentStreamUrl.includes('ukrtelcdn')) {
                 const unblocked = currentStreamUrl
                   .replace(/https?:\/\/stream\.voidboost\.(?:cc|top|club|link)/i, 'https://femeretes.org')
@@ -313,7 +310,6 @@ export const VideoPlayer: React.FC = () => {
                   return;
                 }
               }
-              // Try MP4 fallback if HLS network fails
               const altMp4 = streamData?.streams?.find((s) => s.mp4 && s.mp4 !== currentStreamUrl)?.mp4;
               if (altMp4 && videoRef.current) {
                 hls.destroy();
@@ -339,7 +335,6 @@ export const VideoPlayer: React.FC = () => {
         }
       });
     } else {
-      // Direct MP4 or native HLS
       video.src = currentStreamUrl;
       video.load();
       if (initialTime > 0) {
@@ -366,10 +361,8 @@ export const VideoPlayer: React.FC = () => {
         const dur = videoRef.current.duration;
         const percent = (time / dur) * 100;
 
-        // Save progress
         window.api.saveProgress(mediaDetails.id, seasonId || 0, episodeId || 0, time, dur);
 
-        // Save watch history
         window.api.saveWatchHistory({
           id: `${mediaDetails.id}_${seasonId || 0}_${episodeId || 0}`,
           mediaId: mediaDetails.id,
@@ -563,7 +556,6 @@ export const VideoPlayer: React.FC = () => {
     useMediaStore.getState().setPage('settings');
   };
 
-  // Find next episode
   const currentSeason = mediaDetails?.seasons?.find((s) => s.id === seasonId);
   const currentEpIndex = currentSeason?.episodes.findIndex((e) => e.episodeId === episodeId) ?? -1;
   const nextEpisode = currentSeason?.episodes[currentEpIndex + 1];
@@ -583,7 +575,7 @@ export const VideoPlayer: React.FC = () => {
     >
       {/* On-screen Toast Notification */}
       {toastMessage && (
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full bg-black/85 backdrop-blur-md border border-white/20 text-white text-sm font-semibold shadow-2xl flex items-center space-x-2.5 pointer-events-none animate-fade-in transition-all">
+        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full logo-pill backdrop-blur-xl text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 pointer-events-none animate-fade-in">
           <span>{toastMessage}</span>
         </div>
       )}
@@ -624,96 +616,116 @@ export const VideoPlayer: React.FC = () => {
         )}
       </video>
 
-      {/* Loading Spinner */}
+      {/* Cinema Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black z-20 pointer-events-none">
-          <div className="w-12 h-12 border-4 border-brand-red border-t-transparent rounded-full animate-spin mb-4" />
-          <span className="text-white text-sm font-semibold tracking-wide">{t.player.loading}</span>
-          <span className="text-zinc-500 text-xs mt-2">Поиск доступного потока в сети...</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#070507] z-20 pointer-events-none">
+          <div className="relative w-20 h-20 mb-5 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
+            <img src={appLogo} alt="" className="w-12 h-12 rounded-full object-cover shadow-glow" />
+          </div>
+          <span className="font-display text-white text-sm font-black tracking-wide">{t.player.loading}</span>
+          <span className="text-zinc-500 text-xs mt-1.5">Поиск доступного потока в сети...</span>
         </div>
       )}
 
       {/* Error State */}
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 p-6 z-30">
-          <AlertCircle className="w-16 h-16 text-brand-red mb-4" />
-          <h3 className="text-xl font-bold text-white mb-2">Не удалось воспроизвести видео</h3>
-          <p className="text-sm text-zinc-400 max-w-md text-center mb-6">{error}</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#070507]/96 p-6 z-30">
+          <div className="w-16 h-16 rounded-3xl bg-brand-crimson/15 border border-brand-ember/40 flex items-center justify-center text-brand-orange mb-4 shadow-glow-sm">
+            <AlertCircle className="w-9 h-9" />
+          </div>
+          <h3 className="font-display text-xl font-black text-white mb-2">Не удалось воспроизвести видео</h3>
+          <p className="text-sm text-zinc-400 max-w-md text-center mb-6 leading-relaxed">{error}</p>
+
           {(streamData?.trailerUrl || usePlayerStore.getState().trailerUrl) && (
             <div className="mb-6">
               <button
+                type="button"
                 onClick={() => {
                   const tr = streamData?.trailerUrl || usePlayerStore.getState().trailerUrl;
                   if (tr && window.api?.openExternalUrl) {
                     window.api.openExternalUrl(tr);
                   }
                 }}
-                className="flex items-center space-x-2 px-6 py-3 rounded-xl bg-brand-red text-white font-bold hover:bg-brand-redHover shadow-glow transition-all cursor-pointer"
+                className="flex items-center gap-2 px-6 py-3 rounded-full btn-ember text-white font-display font-black text-xs uppercase tracking-wider cursor-pointer active:scale-95"
               >
-                <Play className="w-5 h-5 fill-current" />
-                <span>🎬 Смотреть официальный трейлер онлайн</span>
+                <Play className="w-4 h-4 fill-current" />
+                <span>Смотреть официальный трейлер онлайн</span>
               </button>
             </div>
           )}
+
           {mediaDetails?.translators && mediaDetails.translators.length > 1 && (
             <div className="flex flex-wrap justify-center gap-2 max-w-2xl mb-5" aria-label="Выбор озвучки">
-              <span className="w-full text-center text-sm text-zinc-400">Попробовать другую озвучку</span>
+              <span className="w-full text-center text-xs font-bold text-zinc-400 uppercase tracking-wider">
+                Попробовать другую озвучку
+              </span>
               {mediaDetails.translators.map((tr) => (
                 <button
                   key={tr.id}
+                  type="button"
                   onClick={() => switchTranslator(tr.id)}
                   aria-pressed={translatorId === tr.id}
-                  className={`px-3 py-2 rounded-lg text-sm font-semibold ${translatorId === tr.id ? 'bg-brand-red text-white' : 'bg-white/10 text-zinc-200 hover:bg-white/20'}`}
+                  className={`px-3.5 py-2 rounded-full text-xs font-bold cursor-pointer ${
+                    translatorId === tr.id
+                      ? 'btn-ember text-white'
+                      : 'bg-white/[0.08] text-zinc-200 hover:bg-white/[0.16] border border-white/10'
+                  }`}
                 >
                   {tr.name}
                 </button>
               ))}
             </div>
           )}
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            {window.api?.verifyMirror && (() => {
-              const needsVerifyHighlight = Boolean(
-                error &&
-                (error.includes('не бот') ||
-                  error.includes('сесси') ||
-                  error.includes('проверку') ||
-                  error.includes('лимит ожидания') ||
-                  error.includes('недоступен'))
-              );
-              return (
-                <button
-                  disabled={isVerifying}
-                  onClick={async () => {
-                    setIsVerifying(true);
-                    try {
-                      await useSettingsStore.getState().verifyMirror(mediaDetails?.url || undefined);
-                      await retryPlayback();
-                    } catch (_) {
-                    } finally {
-                      setIsVerifying(false);
-                    }
-                  }}
-                  className={`flex items-center space-x-2 px-5 py-2.5 rounded-xl font-bold transition-all cursor-pointer ${
-                    isVerifying
-                      ? 'bg-amber-500/50 text-black/60 cursor-not-allowed'
-                      : needsVerifyHighlight
-                      ? 'bg-amber-500 text-black hover:bg-amber-400 shadow-glow active:scale-95'
-                      : 'bg-white/10 text-white font-medium hover:bg-white/20'
-                  }`}
-                >
-                  <ShieldCheck className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} />
-                  <span>{isVerifying ? 'Идет проверка...' : 'Пройти проверку'}</span>
-                </button>
-              );
-            })()}
+
+          <div className="flex flex-wrap items-center justify-center gap-2.5">
+            {window.api?.verifyMirror &&
+              (() => {
+                const needsVerifyHighlight = Boolean(
+                  error &&
+                    (error.includes('не бот') ||
+                      error.includes('сесси') ||
+                      error.includes('проверку') ||
+                      error.includes('лимит ожидания') ||
+                      error.includes('недоступен'))
+                );
+                return (
+                  <button
+                    type="button"
+                    disabled={isVerifying}
+                    onClick={async () => {
+                      setIsVerifying(true);
+                      try {
+                        await useSettingsStore.getState().verifyMirror(mediaDetails?.url || undefined);
+                        await retryPlayback();
+                      } catch (_) {
+                      } finally {
+                        setIsVerifying(false);
+                      }
+                    }}
+                    className={`flex items-center gap-2 px-5 py-2.5 rounded-full text-xs font-extrabold cursor-pointer ${
+                      isVerifying
+                        ? 'bg-amber-500/50 text-black/60 cursor-not-allowed'
+                        : needsVerifyHighlight
+                        ? 'bg-amber-400 text-black hover:bg-amber-300 shadow-glow active:scale-95'
+                        : 'bg-white/[0.08] text-white hover:bg-white/[0.16] border border-white/10'
+                    }`}
+                  >
+                    <ShieldCheck className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} />
+                    <span>{isVerifying ? 'Идет проверка...' : 'Пройти проверку'}</span>
+                  </button>
+                );
+              })()}
             <button
+              type="button"
               onClick={retryPlayback}
-              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-brand-red text-white font-bold hover:bg-brand-redHover shadow-glow transition-all cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full btn-ember text-white text-xs font-extrabold cursor-pointer active:scale-95"
             >
               <RefreshCw className="w-4 h-4" />
               <span>Повторить</span>
             </button>
             <button
+              type="button"
               onClick={async () => {
                 showToast('Поиск рабочих зеркал в сети...');
                 if (window.api?.findOnlineMirrors) {
@@ -721,21 +733,23 @@ export const VideoPlayer: React.FC = () => {
                 }
                 retryPlayback();
               }}
-              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white/10 text-white font-medium hover:bg-white/20 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.08] text-white text-xs font-bold hover:bg-white/[0.16] border border-white/10 cursor-pointer"
             >
-              <Globe className="w-4 h-4" />
+              <Globe className="w-4 h-4 text-brand-orange" />
               <span>Зеркала в сети</span>
             </button>
             <button
+              type="button"
               onClick={handleOpenSettings}
-              className="flex items-center space-x-2 px-5 py-2.5 rounded-xl bg-white/10 text-white font-medium hover:bg-white/20 transition-all cursor-pointer"
+              className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.08] text-white text-xs font-bold hover:bg-white/[0.16] border border-white/10 cursor-pointer"
             >
               <Settings className="w-4 h-4" />
               <span>Настройки</span>
             </button>
             <button
+              type="button"
               onClick={handleClose}
-              className="px-5 py-2.5 rounded-xl bg-white/10 text-white font-medium hover:bg-white/20 transition-all cursor-pointer"
+              className="px-5 py-2.5 rounded-full bg-white/[0.08] text-white text-xs font-bold hover:bg-white/[0.16] border border-white/10 cursor-pointer"
             >
               Назад
             </button>
@@ -743,119 +757,112 @@ export const VideoPlayer: React.FC = () => {
         </div>
       )}
 
-      {/* Controls Overlay */}
+      {/* Cinema OSD Controls Overlay */}
       <div
         className={`absolute inset-0 flex flex-col justify-between p-6 pointer-events-none transition-opacity duration-300 ${
           showControls && !error ? 'opacity-100' : 'opacity-0'
         }`}
       >
-        {/* Top bar with drag-region for native window dragging */}
-        <div className="flex items-center justify-between pointer-events-auto bg-gradient-to-b from-black/80 via-black/40 to-transparent p-4 -m-6 mb-0 drag-region">
-          <div className="flex items-center space-x-3 no-drag">
+        {/* Top Floating Glass Bar */}
+        <div className="flex items-center justify-between pointer-events-auto bg-gradient-to-b from-[#070507]/90 via-[#070507]/50 to-transparent p-5 -m-6 mb-0 drag-region">
+          <div className="flex items-center gap-3.5 no-drag min-w-0">
             <button
+              type="button"
               onClick={handleClose}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-colors"
+              aria-label={t.player.back}
+              className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-white backdrop-blur-xl cursor-pointer active:scale-95"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
-            <div>
-              <h2 className="text-base font-bold text-white leading-tight">
+            <div className="min-w-0">
+              <h2 className="font-display text-base font-black text-white leading-tight truncate">
                 {mediaDetails?.title}
               </h2>
-              <div className="flex items-center space-x-2 text-xs text-zinc-400">
+              <div className="flex items-center gap-2 text-xs text-zinc-300 mt-0.5">
                 {seasonId !== undefined && episodeId !== undefined && (
-                  <span>
+                  <span className="font-semibold text-brand-orange">
                     {t.details.season} {seasonId}, {t.details.episode} {episodeId}
                   </span>
                 )}
                 {activeTranslator && (
                   <>
-                    <span>•</span>
-                    <span className="text-zinc-300">{activeTranslator.name}</span>
+                    {seasonId !== undefined && <span className="text-zinc-500">·</span>}
+                    <span className="text-zinc-300 truncate">{activeTranslator.name}</span>
                   </>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Top Bar Quick Action Controls */}
-          <div className="flex items-center space-x-2 no-drag">
-            {/* If pinned, show Move handle and Window Size Presets */}
+          {/* Top Bar Quick Actions */}
+          <div className="flex items-center gap-2 no-drag flex-shrink-0">
             {isPinned && (
               <>
                 <div
-                  className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/10 text-zinc-300 text-xs font-semibold select-none cursor-grab active:cursor-grabbing border border-white/10 drag-region"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] text-zinc-200 text-xs font-semibold select-none cursor-grab active:cursor-grabbing border border-white/15 drag-region"
                   title={t.player.pinnedDragTip}
                 >
-                  <Move className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="hidden sm:inline text-[11px] font-medium">{t.player.moveWindow}</span>
+                  <Move className="w-3.5 h-3.5 text-brand-gold" />
+                  <span className="hidden sm:inline text-[11px] font-bold">{t.player.moveWindow}</span>
                 </div>
 
                 <div className="relative">
                   <button
+                    type="button"
                     onClick={() => setShowScaleMenu((prev) => !prev)}
-                    className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white backdrop-blur-md transition-colors text-[11px] font-bold border border-white/10"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-zinc-200 hover:text-white backdrop-blur-xl text-[11px] font-bold border border-white/15 cursor-pointer"
                     title={t.player.pinnedPresets}
                   >
-                    <Scaling className="w-3.5 h-3.5 text-orange-400" />
+                    <Scaling className="w-3.5 h-3.5 text-brand-orange" />
                     <span className="hidden sm:inline">{t.player.pinnedPresets}</span>
                   </button>
 
                   {showScaleMenu && (
-                    <div className="absolute right-0 top-full mt-2 w-44 rounded-2xl bg-[#12131d]/95 backdrop-blur-xl border border-white/15 p-1.5 shadow-2xl z-50 animate-fadeIn space-y-1">
-                      <div className="px-2.5 py-1 text-[10px] font-bold text-zinc-400 uppercase tracking-wider">
+                    <div className="absolute right-0 top-full mt-2 w-44 rounded-2xl cinema-glass p-1.5 shadow-elevated z-50 animate-fadeIn space-y-1">
+                      <div className="px-2.5 py-1 text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">
                         {t.player.pinnedPresets}
                       </div>
-                      <button
-                        onClick={() => handleResizePreset(480, 270)}
-                        className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-200 hover:bg-brand-red/20 hover:text-white flex items-center justify-between transition-colors"
-                      >
-                        <span>{t.player.sizeCompact}</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">16:9 S</span>
-                      </button>
-                      <button
-                        onClick={() => handleResizePreset(720, 405)}
-                        className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-200 hover:bg-brand-red/20 hover:text-white flex items-center justify-between transition-colors"
-                      >
-                        <span>{t.player.sizeMedium}</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">16:9 M</span>
-                      </button>
-                      <button
-                        onClick={() => handleResizePreset(960, 540)}
-                        className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-200 hover:bg-brand-red/20 hover:text-white flex items-center justify-between transition-colors"
-                      >
-                        <span>{t.player.sizeLarge}</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">16:9 L</span>
-                      </button>
-                      <button
-                        onClick={() => handleResizePreset(1280, 720)}
-                        className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-200 hover:bg-brand-red/20 hover:text-white flex items-center justify-between transition-colors"
-                      >
-                        <span>{t.player.sizeStandard}</span>
-                        <span className="text-[10px] text-zinc-500 font-mono">HD</span>
-                      </button>
+                      {[
+                        { w: 480, h: 270, label: t.player.sizeCompact, tag: '16:9 S' },
+                        { w: 720, h: 405, label: t.player.sizeMedium, tag: '16:9 M' },
+                        { w: 960, h: 540, label: t.player.sizeLarge, tag: '16:9 L' },
+                        { w: 1280, h: 720, label: t.player.sizeStandard, tag: 'HD' },
+                      ].map((p) => (
+                        <button
+                          key={p.tag}
+                          type="button"
+                          onClick={() => handleResizePreset(p.w, p.h)}
+                          className="w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold text-zinc-200 hover:bg-brand-crimson/25 hover:text-white flex items-center justify-between cursor-pointer"
+                        >
+                          <span>{p.label}</span>
+                          <span className="text-[10px] text-zinc-400 font-mono">{p.tag}</span>
+                        </button>
+                      ))}
                     </div>
                   )}
                 </div>
               </>
             )}
 
-            {/* UI Hide / Lock Shortcut button */}
             <button
+              type="button"
               onClick={toggleUiLock}
-              className="p-2 rounded-xl bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white backdrop-blur-md transition-colors"
+              aria-label={t.player.hideUi}
+              className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white backdrop-blur-xl cursor-pointer"
               title={t.player.hideUi}
             >
               <EyeOff className="w-4 h-4" />
             </button>
 
-            {/* Pin / Always On Top Button */}
             <button
+              type="button"
               onClick={handleTogglePin}
-              className={`p-2 rounded-xl backdrop-blur-md transition-colors ${
+              aria-label={isPinned ? t.player.unpinWindow : t.player.pinWindow}
+              aria-pressed={isPinned}
+              className={`p-2.5 rounded-full backdrop-blur-xl border cursor-pointer ${
                 isPinned
-                  ? 'bg-brand-red text-white shadow-glow'
-                  : 'bg-white/10 hover:bg-white/20 text-zinc-300 hover:text-white'
+                  ? 'btn-ember border-white/25 text-white'
+                  : 'bg-white/[0.1] hover:bg-white/[0.2] border-white/10 text-zinc-200 hover:text-white'
               }`}
               title={isPinned ? t.player.unpinWindow : t.player.pinWindow}
             >
@@ -864,65 +871,79 @@ export const VideoPlayer: React.FC = () => {
           </div>
         </div>
 
-        {/* Center Big Play Button (if paused) */}
+        {/* Center Glossy 3D Play Squircle (when paused) */}
         {!isPlaying && !isLoading && !error && (
-          <div
+          <button
+            type="button"
             onClick={togglePlay}
-            className="self-center pointer-events-auto w-20 h-20 rounded-full bg-brand-red/90 text-white flex items-center justify-center shadow-glow cursor-pointer hover:scale-110 active:scale-95 transition-all"
+            aria-label="Воспроизвести"
+            className="self-center pointer-events-auto w-20 h-20 rounded-[24px] play-squircle text-white flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-transform"
           >
-            <Play className="w-10 h-10 fill-white ml-1.5" />
-          </div>
+            <Play className="w-9 h-9 fill-white ml-1" aria-hidden="true" />
+          </button>
         )}
 
-        {/* Bottom Controls Bar */}
-        <div className="pointer-events-auto bg-gradient-to-t from-black/90 via-black/50 to-transparent p-4 -m-6 mt-0 space-y-3">
-          {/* Seekbar */}
-          <div className="relative group w-full flex items-center">
-            {/* Progress track */}
-            <div className="relative w-full h-1.5 group-hover:h-2.5 bg-white/20 rounded-full overflow-hidden cursor-pointer transition-all">
-              {/* Buffered bar */}
+        {/* Bottom Cinema Controls Dock */}
+        <div className="pointer-events-auto bg-gradient-to-t from-[#070507]/95 via-[#070507]/65 to-transparent px-6 pb-5 pt-10 -m-6 mt-0 space-y-3.5">
+          {/* Ember Gradient Seekbar */}
+          <div className="relative group w-full flex items-center py-1">
+            <div className="relative w-full h-1.5 group-hover:h-2 bg-white/20 rounded-full overflow-hidden cursor-pointer transition-all">
               <div
                 className="absolute top-0 left-0 bottom-0 bg-white/30"
-                style={{ width: `${duration > 0 ? (buffered / duration) * 100 : 0}%` }}
+                style={{ width: `${bufferedPercent}%` }}
               />
-              {/* Played bar */}
               <div
-                className="absolute top-0 left-0 bottom-0 bg-brand-red"
-                style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                className="absolute top-0 left-0 bottom-0 rounded-full"
+                style={{
+                  width: `${progressPercent}%`,
+                  background: 'linear-gradient(90deg, #FF124F 0%, #FF4D1A 55%, #FF8400 100%)',
+                }}
               />
             </div>
+            {/* Glowing Scrubber Thumb */}
+            <div
+              className="absolute w-3.5 h-3.5 rounded-full bg-white shadow-[0_0_12px_rgba(255,122,0,0.95)] pointer-events-none transform -translate-x-1/2 scale-0 group-hover:scale-100 transition-transform"
+              style={{ left: `${progressPercent}%` }}
+            />
             <input
               type="range"
               min={0}
               max={duration || 100}
               value={currentTime}
               onChange={handleSeek}
+              aria-label="Перемотка видео"
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
           </div>
 
-          {/* Action buttons */}
-          <div className="flex items-center justify-between text-white">
-            {/* Left buttons */}
-            <div className="flex items-center space-x-3">
+          {/* Action Row */}
+          <div className="flex items-center justify-between text-white gap-3">
+            {/* Left Transport Controls */}
+            <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={togglePlay}
-                className="p-2 rounded-lg hover:bg-white/10 text-white transition-colors"
+                aria-label={isPlaying ? 'Пауза' : 'Воспроизвести'}
+                className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-white cursor-pointer"
               >
                 {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 fill-white" />}
               </button>
 
               <button
+                type="button"
                 onClick={() => seekDelta(-10)}
-                className="p-2 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition-colors"
+                aria-label="10 секунд назад"
+                className="p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
                 title="10 сек. назад"
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
 
               <button
+                type="button"
                 onClick={() => seekDelta(10)}
-                className="p-2 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition-colors"
+                aria-label="10 секунд вперед"
+                className="p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
                 title="10 сек. вперед"
               >
                 <RotateCw className="w-4 h-4" />
@@ -930,8 +951,10 @@ export const VideoPlayer: React.FC = () => {
 
               {nextEpisode && (
                 <button
+                  type="button"
                   onClick={handleNextEpisode}
-                  className="p-2 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition-colors"
+                  aria-label="Следующая серия"
+                  className="p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
                   title="Следующая серия"
                 >
                   <SkipForward className="w-4 h-4" />
@@ -940,18 +963,19 @@ export const VideoPlayer: React.FC = () => {
 
               {/* Volume Control */}
               <div
-                className="flex items-center space-x-2 group relative py-1"
+                className="flex items-center gap-2 group relative py-1 ml-1"
                 onWheel={handleVolumeWheel}
                 title={`Громкость: ${effectivePercent}% (колесико мыши)`}
               >
                 <button
+                  type="button"
                   onClick={toggleMute}
-                  className="p-2 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition-colors cursor-pointer"
+                  className="p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
                   title={isMuted || volume === 0 ? 'Включить звук (M)' : 'Выключить звук (M)'}
                   aria-label="Тумблер звука"
                 >
                   {isMuted || volume === 0 ? (
-                    <VolumeX className="w-5 h-5 text-red-400" />
+                    <VolumeX className="w-5 h-5 text-brand-crimson" />
                   ) : volume < 0.5 ? (
                     <Volume1 className="w-5 h-5" />
                   ) : (
@@ -959,18 +983,16 @@ export const VideoPlayer: React.FC = () => {
                   )}
                 </button>
 
-                {/* Slider with styled filled track and thumb */}
                 <div className="relative flex items-center w-24 h-6">
-                  {/* Track background */}
                   <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
-                    {/* Active filled track */}
                     <div
-                      className="h-full bg-brand-red rounded-full transition-all duration-75"
-                      style={{ width: `${effectivePercent}%` }}
+                      className="h-full rounded-full transition-all duration-75"
+                      style={{
+                        width: `${effectivePercent}%`,
+                        background: 'linear-gradient(90deg, #FF124F 0%, #FF7A00 100%)',
+                      }}
                     />
                   </div>
-
-                  {/* Range input overlay for clicking and dragging */}
                   <input
                     type="range"
                     min={0}
@@ -981,36 +1003,32 @@ export const VideoPlayer: React.FC = () => {
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     aria-label="Регулировка громкости"
                   />
-
-                  {/* Thumb dot */}
                   <div
                     className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-md pointer-events-none transform -translate-x-1/2 transition-all duration-75"
                     style={{ left: `${effectivePercent}%` }}
                   />
                 </div>
 
-                {/* Percentage label */}
-                <span className="text-[11px] font-semibold text-zinc-400 w-8 select-none tabular-nums">
+                <span className="text-[11px] font-bold text-zinc-300 w-8 select-none tabular-nums font-mono">
                   {effectivePercent}%
                 </span>
               </div>
 
-              {/* Time display */}
-              <span className="text-xs font-medium text-zinc-300">
-                {formatDuration(currentTime)} / {formatDuration(duration)}
+              <span className="text-xs font-mono font-semibold text-zinc-300 tabular-nums ml-1">
+                {formatDuration(currentTime)} <span className="text-zinc-500">/</span> {formatDuration(duration)}
               </span>
             </div>
 
-            {/* Right buttons */}
-            <div className="flex items-center space-x-2 relative">
-              {/* Episodes Selector for series */}
+            {/* Right Cinema Controls */}
+            <div className="flex items-center gap-2 relative">
               {mediaDetails?.seasons && mediaDetails.seasons.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => setActiveMenu(activeMenu === 'episodes' ? 'none' : 'episodes')}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border cursor-pointer ${
                     activeMenu === 'episodes'
-                      ? 'bg-brand-red border-brand-red text-white'
-                      : 'bg-white/10 border-white/10 text-zinc-300 hover:text-white'
+                      ? 'btn-ember border-white/25 text-white'
+                      : 'bg-white/[0.08] border-white/15 text-zinc-200 hover:text-white hover:bg-white/[0.15]'
                   }`}
                 >
                   <Tv className="w-3.5 h-3.5" />
@@ -1018,29 +1036,30 @@ export const VideoPlayer: React.FC = () => {
                 </button>
               )}
 
-              {/* Translator / Voiceover Selector */}
               {mediaDetails?.translators && mediaDetails.translators.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => setActiveMenu(activeMenu === 'translator' ? 'none' : 'translator')}
-                  className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border cursor-pointer ${
                     activeMenu === 'translator'
-                      ? 'bg-brand-red border-brand-red text-white'
-                      : 'bg-white/10 border-white/10 text-zinc-300 hover:text-white'
+                      ? 'btn-ember border-white/25 text-white'
+                      : 'bg-white/[0.08] border-white/15 text-zinc-200 hover:text-white hover:bg-white/[0.15]'
                   }`}
                 >
-                  <Sliders className="w-3.5 h-3.5" />
-                  <span className="max-w-[140px] truncate">
-                    {activeTranslator ? `Озвучка: ${activeTranslator.name}` : 'Озвучка'}
+                  <Sliders className="w-3.5 h-3.5 text-brand-orange" />
+                  <span className="max-w-[145px] truncate">
+                    {activeTranslator ? activeTranslator.name : 'Озвучка'}
                   </span>
                 </button>
               )}
 
-              {/* Subtitles */}
               {streamData?.subtitles && streamData.subtitles.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => setActiveMenu(activeMenu === 'subtitles' ? 'none' : 'subtitles')}
-                  className={`p-2 rounded-lg hover:bg-white/10 transition-colors ${
-                    subtitleTrack ? 'text-brand-red' : 'text-zinc-300'
+                  aria-label="Субтитры"
+                  className={`p-2 rounded-full hover:bg-white/[0.15] cursor-pointer ${
+                    subtitleTrack ? 'text-brand-orange' : 'text-zinc-200'
                   }`}
                   title="Субтитры"
                 >
@@ -1048,35 +1067,36 @@ export const VideoPlayer: React.FC = () => {
                 </button>
               )}
 
-              {/* Quality */}
               <button
+                type="button"
                 onClick={() => setActiveMenu(activeMenu === 'quality' ? 'none' : 'quality')}
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold text-white border border-white/10 transition-colors"
+                className="px-3 py-1.5 rounded-full logo-pill text-xs font-display font-black text-white hover:border-brand-orange/60 cursor-pointer"
               >
                 {currentQuality}
               </button>
 
-              {/* Speed */}
               <button
+                type="button"
                 onClick={() => setActiveMenu(activeMenu === 'speed' ? 'none' : 'speed')}
-                className="px-2 py-1 rounded-lg hover:bg-white/10 text-xs font-medium text-zinc-300 hover:text-white transition-colors"
+                className="px-2.5 py-1.5 rounded-full hover:bg-white/[0.12] text-xs font-mono font-bold text-zinc-200 hover:text-white cursor-pointer"
               >
                 {playbackSpeed}x
               </button>
 
-              {/* Video Fit / Aspect Ratio Scale Toggle */}
               <button
+                type="button"
                 onClick={cycleVideoFit}
-                className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-xs font-bold text-zinc-300 hover:text-white border border-white/10 transition-colors"
+                className="px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-xs font-bold text-zinc-200 hover:text-white border border-white/15 cursor-pointer"
                 title={t.player.scale}
               >
                 {videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? 'Кадр' : 'Растянуть'}
               </button>
 
-              {/* Fullscreen */}
               <button
+                type="button"
                 onClick={toggleFullscreen}
-                className="p-2 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white transition-colors"
+                aria-label="Полный экран"
+                className="p-2 rounded-full hover:bg-white/[0.15] text-zinc-200 hover:text-white cursor-pointer"
                 title="Полный экран (F)"
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
@@ -1087,23 +1107,26 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Quality Menu Popup */}
         {activeMenu === 'quality' && streamData?.streams && (
-          <div className="absolute bottom-20 right-6 bg-dark-surface/95 border border-white/15 rounded-xl p-2 shadow-2xl backdrop-blur-md pointer-events-auto min-w-[140px] space-y-1">
-            <div className="text-[10px] uppercase font-bold text-zinc-500 px-2 py-1">Качество</div>
+          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[155px] space-y-1">
+            <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
+              Качество
+            </div>
             {streamData.streams.map((s) => (
               <button
                 key={s.quality}
+                type="button"
                 onClick={() => {
                   setQuality(s.quality);
                   setActiveMenu('none');
                 }}
-                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
                   currentQuality === s.quality
-                    ? 'bg-brand-red text-white'
-                    : 'text-zinc-300 hover:bg-white/10 hover:text-white'
+                    ? 'btn-ember text-white'
+                    : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
                 }`}
               >
                 <span>{s.quality}</span>
-                {s.isPremium && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">PRO</span>}
+                {s.isPremium && <span className="text-[9px] bg-brand-gold/20 text-brand-gold px-1.5 py-0.5 rounded-full">PRO</span>}
               </button>
             ))}
           </div>
@@ -1111,20 +1134,23 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Speed Menu Popup */}
         {activeMenu === 'speed' && (
-          <div className="absolute bottom-20 right-6 bg-dark-surface/95 border border-white/15 rounded-xl p-2 shadow-2xl backdrop-blur-md pointer-events-auto min-w-[120px] space-y-1">
-            <div className="text-[10px] uppercase font-bold text-zinc-500 px-2 py-1">Скорость</div>
+          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[140px] space-y-1">
+            <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
+              Скорость
+            </div>
             {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((spd) => (
               <button
                 key={spd}
+                type="button"
                 onClick={() => {
                   setPlaybackSpeed(spd);
                   if (videoRef.current) videoRef.current.playbackRate = videoRef.current.defaultPlaybackRate = spd;
                   setActiveMenu('none');
                 }}
-                className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
                   playbackSpeed === spd
-                    ? 'bg-brand-red text-white'
-                    : 'text-zinc-300 hover:bg-white/10 hover:text-white'
+                    ? 'btn-ember text-white'
+                    : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
                 }`}
               >
                 {spd}x {spd === 1.0 ? '(Обычная)' : ''}
@@ -1135,17 +1161,20 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Subtitles Menu Popup */}
         {activeMenu === 'subtitles' && streamData?.subtitles && (
-          <div className="absolute bottom-20 right-6 bg-dark-surface/95 border border-white/15 rounded-xl p-2 shadow-2xl backdrop-blur-md pointer-events-auto min-w-[150px] space-y-1">
-            <div className="text-[10px] uppercase font-bold text-zinc-500 px-2 py-1">Субтитры</div>
+          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[165px] space-y-1">
+            <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
+              Субтитры
+            </div>
             <button
+              type="button"
               onClick={() => {
                 setSubtitle('off');
                 setActiveMenu('none');
               }}
-              className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+              className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
                 currentSubtitle === 'off'
-                  ? 'bg-brand-red text-white'
-                  : 'text-zinc-300 hover:bg-white/10 hover:text-white'
+                  ? 'btn-ember text-white'
+                  : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
               }`}
             >
               Выключены
@@ -1153,14 +1182,15 @@ export const VideoPlayer: React.FC = () => {
             {streamData.subtitles.map((sub, i) => (
               <button
                 key={i}
+                type="button"
                 onClick={() => {
                   setSubtitle(sub.language);
                   setActiveMenu('none');
                 }}
-                className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
                   currentSubtitle === sub.language
-                    ? 'bg-brand-red text-white'
-                    : 'text-zinc-300 hover:bg-white/10 hover:text-white'
+                    ? 'btn-ember text-white'
+                    : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
                 }`}
               >
                 {sub.language}
@@ -1171,23 +1201,26 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Translator Menu Popup */}
         {activeMenu === 'translator' && mediaDetails?.translators && (
-          <div className="absolute bottom-20 right-6 bg-dark-surface/95 border border-white/15 rounded-xl p-2 shadow-2xl backdrop-blur-md pointer-events-auto min-w-[220px] max-h-72 overflow-y-auto space-y-1">
-            <div className="text-[10px] uppercase font-bold text-zinc-500 px-2 py-1">Выбор озвучки</div>
+          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[240px] max-h-72 overflow-y-auto space-y-1">
+            <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
+              Выбор озвучки
+            </div>
             {mediaDetails.translators.map((tr) => (
               <button
                 key={tr.id}
+                type="button"
                 onClick={() => {
                   switchTranslator(tr.id);
                   setActiveMenu('none');
                 }}
-                className={`w-full text-left px-3 py-2 rounded-lg text-xs font-medium transition-colors flex items-center justify-between ${
+                className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
                   translatorId === tr.id
-                    ? 'bg-brand-red text-white'
-                    : 'text-zinc-300 hover:bg-white/10 hover:text-white'
+                    ? 'btn-ember text-white'
+                    : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
                 }`}
               >
                 <span className="truncate pr-2">{tr.name}</span>
-                {tr.premium && <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1 rounded">PRO</span>}
+                {tr.premium && <span className="text-[9px] bg-brand-gold/20 text-brand-gold px-1.5 py-0.5 rounded-full">PRO</span>}
               </button>
             ))}
           </div>
@@ -1195,22 +1228,23 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Episodes Menu Popup */}
         {activeMenu === 'episodes' && currentSeason && currentSeason.episodes && (
-          <div className="absolute bottom-20 right-6 bg-dark-surface/95 border border-white/15 rounded-xl p-3 shadow-2xl backdrop-blur-md pointer-events-auto w-80 max-h-80 overflow-y-auto space-y-2">
-            <div className="text-xs font-bold text-white mb-2">Серии ({currentSeason.title})</div>
+          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-80 max-h-80 overflow-y-auto space-y-2.5">
+            <div className="font-display text-xs font-black text-white">Серии ({currentSeason.title})</div>
             <div className="grid grid-cols-4 gap-2">
               {currentSeason.episodes.map((ep) => (
                 <button
                   key={ep.episodeId}
+                  type="button"
                   onClick={() => {
                     if (seasonId !== undefined) {
                       switchEpisode(seasonId, ep.episodeId);
                       setActiveMenu('none');
                     }
                   }}
-                  className={`py-2 px-1 text-center rounded-lg text-xs font-semibold transition-all ${
+                  className={`py-2 px-1 text-center rounded-xl text-xs font-bold cursor-pointer ${
                     episodeId === ep.episodeId
-                      ? 'bg-brand-red text-white shadow-glow'
-                      : 'bg-white/10 hover:bg-white/20 text-zinc-300'
+                      ? 'btn-ember text-white'
+                      : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-200'
                   }`}
                 >
                   {ep.episodeId} сер.
@@ -1221,7 +1255,7 @@ export const VideoPlayer: React.FC = () => {
         )}
       </div>
 
-      {/* Persistent top drag handle when pinned (allows dragging window even when controls fade) */}
+      {/* Persistent top drag handle when pinned */}
       {isPinned && (
         <div
           className="absolute top-0 left-0 right-0 h-6 drag-region pointer-events-auto z-40 cursor-grab active:cursor-grabbing"
@@ -1229,16 +1263,17 @@ export const VideoPlayer: React.FC = () => {
         />
       )}
 
-      {/* Corner Resize Handle for Scaling Electron Window */}
+      {/* Corner Resize Handle */}
       <div
         onMouseDown={handleStartResize}
         className="absolute bottom-0 right-0 w-8 h-8 cursor-se-resize z-50 flex items-end justify-end p-2 opacity-40 hover:opacity-100 transition-opacity no-drag group"
         title={t.player.pinnedPresets}
       >
         <svg
-          className="w-4 h-4 text-white/70 group-hover:text-amber-400 drop-shadow transition-colors"
+          className="w-4 h-4 text-white/70 group-hover:text-brand-orange drop-shadow transition-colors"
           viewBox="0 0 16 16"
           fill="currentColor"
+          aria-hidden="true"
         >
           <circle cx="14" cy="14" r="1.5" />
           <circle cx="14" cy="9" r="1.5" />

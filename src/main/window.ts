@@ -12,7 +12,7 @@ export function createMainWindow(): BrowserWindow {
     minWidth: 320,
     minHeight: 180,
     frame: false,
-    backgroundColor: '#090a0f',
+    backgroundColor: '#070507',
     icon: path.join(__dirname, '../../resources/icon.ico'),
     show: false,
     webPreferences: {

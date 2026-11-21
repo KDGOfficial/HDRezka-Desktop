@@ -38,11 +38,11 @@ export function formatRelativeTime(timestamp: number): string {
 }
 
 export function getRatingColor(rating?: number): string {
-  if (!rating || rating <= 0) return 'text-zinc-400 bg-zinc-800';
-  if (rating >= 8.0) return 'text-emerald-400 bg-emerald-950/60 border border-emerald-500/30';
-  if (rating >= 6.5) return 'text-green-400 bg-green-950/60 border border-green-500/30';
-  if (rating >= 5.0) return 'text-amber-400 bg-amber-950/60 border border-amber-500/30';
-  return 'text-red-400 bg-red-950/60 border border-red-500/30';
+  if (!rating || rating <= 0) return 'text-zinc-300 bg-black/75 border border-white/15';
+  if (rating >= 8.0) return 'text-[#FFB830] bg-[#160D09]/85 border border-[#FFB830]/40';
+  if (rating >= 6.5) return 'text-emerald-300 bg-[#0B1712]/85 border border-emerald-400/35';
+  if (rating >= 5.0) return 'text-amber-300 bg-[#1A130A]/85 border border-amber-400/35';
+  return 'text-rose-300 bg-[#1B0C12]/85 border border-rose-400/35';
 }
 
 export function debounce<T extends (...args: any[]) => void>(fn: T, delay: number): (...args: Parameters<T>) => void {

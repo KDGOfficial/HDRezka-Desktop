@@ -6,6 +6,7 @@ import { MediaItem } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
+import appLogo from '../assets/logo.png';
 
 export const HomePage: React.FC = () => {
   const { setPage, watchHistory, loadWatchHistory } = useMediaStore();
@@ -45,7 +46,6 @@ export const HomePage: React.FC = () => {
     }
   };
 
-  // Map watch history to MediaItem with progress
   const continueWatchingItems: MediaItem[] = watchHistory.slice(0, 12).map((h) => ({
     id: h.mediaId,
     title: h.title,
@@ -62,14 +62,16 @@ export const HomePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[500px]">
-        <div className="relative w-14 h-14 mb-4">
-          <div className="w-14 h-14 border-4 border-brand-red/20 border-t-brand-red rounded-full animate-spin" />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <span className="w-3 h-3 rounded-full bg-brand-red shadow-glow" />
-          </div>
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[540px]">
+        <div className="relative w-20 h-20 mb-5 flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
+          <img
+            src={appLogo}
+            alt=""
+            className="w-12 h-12 rounded-full object-cover shadow-glow"
+          />
         </div>
-        <span className="text-zinc-400 text-xs font-semibold tracking-wide animate-pulse">
+        <span className="text-zinc-300 text-xs font-bold tracking-wider uppercase animate-pulse">
           {t.home.loadingCatalog}
         </span>
       </div>
@@ -80,25 +82,27 @@ export const HomePage: React.FC = () => {
 
   if (!hasAnyContent) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[460px] text-center p-6 animate-fadeIn">
-        <div className="w-16 h-16 rounded-3xl bg-[#14151e] border border-white/10 flex items-center justify-center text-brand-red mb-4 shadow-elevated">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[480px] text-center p-6 animate-fadeIn">
+        <div className="w-16 h-16 rounded-3xl cinema-panel flex items-center justify-center text-brand-orange mb-4 shadow-elevated">
           <AlertCircle className="w-8 h-8" />
         </div>
-        <h2 className="text-lg md:text-xl font-black text-white mb-2">{t.home.catalogUnavailable}</h2>
-        <p className="text-xs text-zinc-400 max-w-md mb-6 leading-relaxed font-normal">
+        <h2 className="font-display text-xl font-black text-white mb-2">{t.home.catalogUnavailable}</h2>
+        <p className="text-xs text-zinc-400 max-w-md mb-6 leading-relaxed">
           {t.home.catalogUnavailableDesc}
         </p>
-        <div className="flex items-center space-x-3">
+        <div className="flex items-center gap-3">
           <button
+            type="button"
             onClick={() => loadHomeData()}
-            className="flex items-center space-x-2 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-bold transition-all shadow-glow active:scale-95"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-full btn-ember text-white text-xs font-extrabold active:scale-95 cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>{t.home.retry}</span>
           </button>
           <button
+            type="button"
             onClick={() => setPage('settings')}
-            className="px-5 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-white text-xs font-semibold transition-all active:scale-95"
+            className="px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/10 text-white text-xs font-bold active:scale-95 cursor-pointer"
           >
             {t.home.mirrorSettings}
           </button>
@@ -113,27 +117,29 @@ export const HomePage: React.FC = () => {
     popular.length > 0 && popular.every((p) => p.poster?.includes('unsplash.com'));
   const showVerifyBanner = Boolean(activeMirrorStatus?.needsVerification) || hasPlaceholderPosters;
 
+  const heroSlides = [...popular.slice(0, 3), ...newReleases.slice(0, 2)].filter((x) => Boolean(x?.poster));
+
   return (
     <div className="w-full pb-16 animate-fadeIn">
+      {/* Full-Bleed Hero Showcase */}
+      {homeSections.hero && hero && <HeroBanner item={hero} slides={heroSlides} />}
+
       {showVerifyBanner && (
-        <div className="mb-6 p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3">
-          <div className="flex items-center space-x-2.5 min-w-0">
+        <div className="mb-8 p-4 rounded-2xl bg-amber-950/35 border border-amber-500/35 text-amber-200 text-xs flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
             <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
-            <span className="leading-snug">{t.details.antiBotWarning}</span>
+            <span className="leading-snug font-medium">{t.details.antiBotWarning}</span>
           </div>
           <button
+            type="button"
             onClick={() => verifyMirror(settings.app.activeMirror)}
-            className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
+            className="px-4 py-1.5 rounded-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
           >
             {t.details.passVerification}
           </button>
         </div>
       )}
 
-      {/* Hero Banner */}
-      {homeSections.hero && hero && <HeroBanner item={hero} />}
-
-      {/* Continue Watching Section */}
       {homeSections.continueWatching && continueWatchingItems.length > 0 && (
         <MediaSlider
           title={t.home.continueWatching}
@@ -143,7 +149,6 @@ export const HomePage: React.FC = () => {
         />
       )}
 
-      {/* Popular */}
       {homeSections.popular && popular.length > 0 && (
         <MediaSlider
           title={t.home.popular}
@@ -152,7 +157,6 @@ export const HomePage: React.FC = () => {
         />
       )}
 
-      {/* New Releases */}
       {homeSections.newReleases && newReleases.length > 0 && (
         <MediaSlider
           title={t.home.newReleases}
@@ -161,7 +165,6 @@ export const HomePage: React.FC = () => {
         />
       )}
 
-      {/* Top Movies */}
       {homeSections.topMovies && topMovies.length > 0 && (
         <MediaSlider
           title={t.home.topMovies}
@@ -170,7 +173,6 @@ export const HomePage: React.FC = () => {
         />
       )}
 
-      {/* Top Series */}
       {homeSections.topSeries && topSeries.length > 0 && (
         <MediaSlider
           title={t.home.topSeries}
@@ -179,20 +181,12 @@ export const HomePage: React.FC = () => {
         />
       )}
 
-      {/* Recommendations */}
       {homeSections.recommendations && recommendations.length > 0 && (
-        <MediaSlider
-          title={t.home.recommendations}
-          items={recommendations}
-        />
+        <MediaSlider title={t.home.recommendations} items={recommendations} />
       )}
 
-      {/* Expected */}
       {homeSections.expected && expected.length > 0 && (
-        <MediaSlider
-          title={t.home.expected}
-          items={expected}
-        />
+        <MediaSlider title={t.home.expected} items={expected} />
       )}
     </div>
   );

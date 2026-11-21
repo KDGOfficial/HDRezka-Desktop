@@ -93,9 +93,9 @@ export const BrowserPage: React.FC = () => {
       try {
         wv.insertCSS?.(`
           ::-webkit-scrollbar { width: 8px; height: 8px; }
-          ::-webkit-scrollbar-track { background: #0b0c12; }
-          ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 99px; }
-          ::-webkit-scrollbar-thumb:hover { background: #e50914; }
+          ::-webkit-scrollbar-track { background: #0B070A; }
+          ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.22); border-radius: 99px; }
+          ::-webkit-scrollbar-thumb:hover { background: #FF4D1A; }
         `);
       } catch {}
       syncState();
@@ -133,68 +133,77 @@ export const BrowserPage: React.FC = () => {
   const playable = isPlayableMediaPage(currentUrl);
 
   return (
-    <div className="w-full h-[calc(100vh-8rem)] min-h-[540px] flex flex-col rounded-3xl overflow-hidden bg-[#0e0f16] border border-white/10 shadow-elevated select-none animate-fadeIn">
+    <div className="w-full h-[calc(100vh-8rem)] min-h-[540px] flex flex-col rounded-3xl overflow-hidden cinema-panel shadow-elevated select-none animate-fadeIn">
       {/* Top Cinema Browser Toolbar */}
-      <div className="px-4 py-3 bg-[#12131a]/95 border-b border-white/10 space-y-2.5">
+      <div className="px-4 py-3 bg-[#140E12]/95 border-b border-white/[0.08] space-y-2.5">
         <div className="flex items-center gap-2">
-          {/* Navigation buttons */}
           <div className="flex items-center gap-1">
             <button
+              type="button"
               onClick={() => canGoBack && webviewRef.current?.goBack?.()}
               disabled={!canGoBack}
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-35 text-zinc-300 hover:text-white transition-all cursor-pointer"
+              aria-label="Назад"
+              className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] disabled:opacity-35 text-zinc-200 hover:text-white cursor-pointer"
               title="Назад"
             >
               <ArrowLeft className="w-4 h-4" />
             </button>
             <button
+              type="button"
               onClick={() => canGoForward && webviewRef.current?.goForward?.()}
               disabled={!canGoForward}
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-35 text-zinc-300 hover:text-white transition-all cursor-pointer"
+              aria-label="Вперёд"
+              className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] disabled:opacity-35 text-zinc-200 hover:text-white cursor-pointer"
               title="Вперёд"
             >
               <ArrowRight className="w-4 h-4" />
             </button>
             <button
+              type="button"
               onClick={() => (loading ? webviewRef.current?.stop?.() : webviewRef.current?.reload?.())}
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition-all cursor-pointer"
+              aria-label={loading ? 'Остановить' : 'Обновить'}
+              className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
               title={loading ? 'Остановить' : 'Обновить'}
             >
-              {loading ? <X className="w-4 h-4 text-brand-red" /> : <RotateCw className="w-4 h-4" />}
+              {loading ? <X className="w-4 h-4 text-brand-crimson" /> : <RotateCw className="w-4 h-4" />}
             </button>
             <button
+              type="button"
               onClick={() => navigateTo('https://kinobase.org/')}
-              className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 hover:text-white transition-all cursor-pointer"
+              aria-label="Домой"
+              className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
               title="Домой"
             >
               <Home className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Address & Search Bar */}
+          {/* Address & Google Search Bar */}
           <form onSubmit={handleSubmit} className="flex-1">
-            <div className="flex items-center bg-[#090a0f] border border-white/10 rounded-2xl px-3.5 py-1.5 focus-within:border-brand-red focus-within:ring-2 focus-within:ring-brand-red/25 transition-all">
-              <ShieldCheck className="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" />
+            <div className="flex items-center bg-[#0B070A] border border-white/[0.1] rounded-full px-4 py-1.5 focus-within:border-brand-ember focus-within:ring-2 focus-within:ring-brand-crimson/25">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 mr-2 flex-shrink-0" aria-hidden="true" />
               <input
                 type="text"
                 value={addressInput}
                 onChange={(e) => setAddressInput(e.target.value)}
                 onFocus={(e) => e.target.select()}
-                placeholder="Введите название фильма или URL сайта..."
+                aria-label="Адрес или поисковый запрос Google"
+                placeholder="Введите название фильма (поиск Google) или URL сайта..."
                 className="bg-transparent border-none outline-none text-xs text-white w-full placeholder-zinc-500 font-medium"
               />
               {addressInput && (
                 <button
                   type="button"
+                  aria-label="Очистить адрес"
                   onClick={() => setAddressInput('')}
-                  className="p-1 text-zinc-500 hover:text-white"
+                  className="p-1 text-zinc-500 hover:text-white cursor-pointer"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               )}
               <button
                 type="submit"
-                className="ml-1.5 px-3 py-1 rounded-xl bg-brand-red/90 hover:bg-brand-red text-white text-[11px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                className="ml-1.5 px-3.5 py-1 rounded-full btn-ember text-white text-[11px] font-extrabold flex items-center gap-1 cursor-pointer"
               >
                 <Search className="w-3 h-3" />
                 <span>Перейти</span>
@@ -202,32 +211,33 @@ export const BrowserPage: React.FC = () => {
             </div>
           </form>
 
-          {/* Direct Play in Native App Button when on movie page */}
           {playable && (
             <button
+              type="button"
               onClick={() => openDetails(currentUrl)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-black shadow-glow transition-all active:scale-95 flex-shrink-0 cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full btn-ember text-white text-xs font-display font-black uppercase tracking-wider active:scale-95 flex-shrink-0 cursor-pointer"
             >
               <Play className="w-3.5 h-3.5 fill-white" />
               <span>Открыть в плеере</span>
             </button>
           )}
 
-          {/* Open Externally Fallback */}
           <button
+            type="button"
             onClick={() => window.api?.openExternalUrl?.(currentUrl)}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-400 hover:text-white border border-white/5 transition-all cursor-pointer flex-shrink-0"
+            aria-label="Открыть в системном браузере"
+            className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-300 hover:text-white border border-white/[0.08] cursor-pointer flex-shrink-0"
             title="Открыть в системном браузере"
           >
             <ExternalLink className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Portal Shortcuts & Status Row */}
-        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5">
+        {/* Portal Shortcuts Row */}
+        <div className="flex items-center justify-between gap-2 overflow-x-auto pb-0.5 scrollbar-none">
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] font-bold text-zinc-500 flex items-center gap-1 mr-1 flex-shrink-0">
-              <Globe className="w-3.5 h-3.5 text-brand-red" />
+              <Globe className="w-3.5 h-3.5 text-brand-orange" />
               <span>Источники:</span>
             </span>
             {PORTALS.map((portal) => {
@@ -236,11 +246,12 @@ export const BrowserPage: React.FC = () => {
               return (
                 <button
                   key={portal.id}
+                  type="button"
                   onClick={() => navigateTo(target)}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap cursor-pointer ${
+                  className={`px-3 py-1 rounded-full text-[11px] font-bold whitespace-nowrap cursor-pointer ${
                     isSelected
-                      ? 'bg-brand-red text-white shadow-glow-sm'
-                      : 'bg-white/5 hover:bg-white/10 text-zinc-300 border border-white/5'
+                      ? 'btn-ember text-white'
+                      : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 border border-white/[0.08]'
                   }`}
                 >
                   {portal.label}
@@ -255,8 +266,13 @@ export const BrowserPage: React.FC = () => {
       </div>
 
       {/* Loading Progress Hairline */}
-      <div className="h-0.5 w-full bg-white/5 overflow-hidden">
-        {loading && <div className="h-full w-1/3 bg-gradient-to-r from-brand-red to-orange-500 animate-pulse" />}
+      <div className="h-[2px] w-full bg-white/[0.05] overflow-hidden">
+        {loading && (
+          <div
+            className="h-full w-1/3 animate-pulse"
+            style={{ background: 'linear-gradient(90deg, #FF124F 0%, #FF7A00 100%)' }}
+          />
+        )}
       </div>
 
       {/* Embedded Dark-Styled Chromium Webview */}
@@ -265,7 +281,7 @@ export const BrowserPage: React.FC = () => {
         src: browserUrl || 'https://kinobase.org/',
         allowpopups: 'true',
         useragent: BROWSER_USER_AGENT,
-        className: 'w-full flex-1 bg-[#08080c]',
+        className: 'w-full flex-1 bg-[#070507]',
       })}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Plus, Folder, Check } from 'lucide-react';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
@@ -11,11 +11,46 @@ export const CollectionModal: React.FC = () => {
   const [newColName, setNewColName] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
+  const dialogRef = useRef<HTMLDialogElement>(null);
 
   useEffect(() => {
     if (collectionModalItem && window.api) {
+      setAddedIds(new Set());
       loadCollections();
     }
+  }, [collectionModalItem]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (collectionModalItem) {
+      if (!dialog.open) dialog.showModal();
+    } else if (dialog.open) {
+      dialog.close();
+    }
+  }, [collectionModalItem]);
+
+  // Light-dismiss fallback when <dialog closedby="any"> is not natively supported
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog || 'closedBy' in HTMLDialogElement.prototype) return;
+    const isOutside = (e: PointerEvent) => {
+      const r = dialog.getBoundingClientRect();
+      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    };
+    let pressedOutside = false;
+    const onDown = (e: PointerEvent) => {
+      pressedOutside = isOutside(e);
+    };
+    const onUp = (e: PointerEvent) => {
+      if (pressedOutside && isOutside(e)) dialog.close();
+    };
+    dialog.addEventListener('pointerdown', onDown);
+    dialog.addEventListener('pointerup', onUp);
+    return () => {
+      dialog.removeEventListener('pointerdown', onDown);
+      dialog.removeEventListener('pointerup', onUp);
+    };
   }, [collectionModalItem]);
 
   const loadCollections = async () => {
@@ -61,96 +96,120 @@ export const CollectionModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md select-none p-4 animate-fadeIn">
-      <div className="w-full max-w-md bg-[#12131a] border border-white/10 rounded-3xl p-6 shadow-elevated relative text-left">
+    <dialog
+      ref={dialogRef}
+      {...({ closedby: 'any' } as any)}
+      aria-labelledby="collection-modal-title"
+      onClose={() => {
+        if (dialogRef.current) dialogRef.current.returnValue = '';
+        openCollectionModal(null);
+      }}
+      className="select-none"
+    >
+      <div className="w-full max-w-md mx-auto cinema-panel rounded-3xl p-6 shadow-elevated relative text-left overflow-hidden animate-fadeIn">
+        {/* Ambient ember glow */}
+        <div
+          className="absolute -top-24 -right-24 w-48 h-48 rounded-full opacity-25 blur-3xl pointer-events-none"
+          style={{ background: 'radial-gradient(circle, #FF124F 0%, #FF7A00 60%, transparent 75%)' }}
+        />
+
         {/* Header */}
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-white/5">
-          <div>
-            <h3 className="text-base font-bold text-white">{t.collections.modalTitle}</h3>
-            <p className="text-xs text-zinc-400 truncate max-w-xs">{collectionModalItem.title}</p>
+        <div className="flex items-center justify-between mb-4 pb-3.5 border-b border-white/[0.08] relative z-10">
+          <div className="min-w-0 pr-3">
+            <h2 id="collection-modal-title" className="font-display text-base font-black text-white">
+              {t.collections.modalTitle}
+            </h2>
+            <p className="text-xs text-zinc-400 truncate mt-0.5">{collectionModalItem.title}</p>
           </div>
           <button
+            type="button"
             onClick={() => openCollectionModal(null)}
-            className="p-1.5 rounded-xl text-zinc-400 hover:text-white hover:bg-white/10 transition-colors"
+            aria-label={t.collections.cancel}
+            className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-400 hover:text-white cursor-pointer flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Existing Collections */}
-        <div className="max-h-60 overflow-y-auto space-y-2 mb-4 pr-1">
+        {/* Collections List */}
+        <div className="max-h-60 overflow-y-auto space-y-2 mb-4 pr-1 relative z-10">
           {collections.length === 0 ? (
-            <div className="text-center py-6 text-zinc-500 text-xs">
-              {t.collections.emptyDesc}
-            </div>
+            <div className="text-center py-6 text-zinc-500 text-xs">{t.collections.emptyDesc}</div>
           ) : (
             collections.map((col) => {
               const isAdded = addedIds.has(col.id);
               return (
-                <div
+                <button
                   key={col.id}
+                  type="button"
                   onClick={() => !isAdded && handleAddToCollection(col.id)}
-                  className={`flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer ${
+                  className={`w-full flex items-center justify-between p-3.5 rounded-2xl border cursor-pointer text-left ${
                     isAdded
-                      ? 'bg-emerald-950/40 border-emerald-500/30 text-emerald-300'
-                      : 'bg-white/5 border-white/5 hover:border-brand-red/40 hover:bg-white/10 text-zinc-300'
+                      ? 'bg-emerald-950/35 border-emerald-500/35 text-emerald-300'
+                      : 'bg-white/[0.04] border-white/[0.07] hover:border-brand-ember/50 hover:bg-white/[0.08] text-zinc-200'
                   }`}
                 >
-                  <div className="flex items-center space-x-3">
-                    <Folder className="w-4 h-4 text-zinc-400" />
-                    <span className="text-xs font-semibold">{col.name}</span>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <Folder className={`w-4 h-4 flex-shrink-0 ${isAdded ? 'text-emerald-400' : 'text-brand-orange'}`} />
+                    <span className="text-xs font-bold truncate">{col.name}</span>
                   </div>
                   {isAdded ? (
-                    <span className="flex items-center text-xs text-emerald-400 font-bold">
+                    <span className="flex items-center text-xs text-emerald-400 font-bold flex-shrink-0 ml-2">
                       <Check className="w-3.5 h-3.5 mr-1" /> {t.collections.alreadyInCollection}
                     </span>
                   ) : (
-                    <span className="text-xs text-brand-red hover:underline font-bold">
-                      {t.home.addToCollection}
+                    <span className="text-xs text-brand-orange font-bold flex-shrink-0 ml-2">
+                      + {t.home.addToCollection}
                     </span>
                   )}
-                </div>
+                </button>
               );
             })
           )}
         </div>
 
-        {/* Create new collection section */}
-        {isCreating ? (
-          <div className="space-y-3 pt-2 border-t border-white/5">
-            <input
-              type="text"
-              value={newColName}
-              onChange={(e) => setNewColName(e.target.value)}
-              placeholder={t.collections.newPlaceholder}
-              className="w-full bg-dark-bg border border-white/10 rounded-xl px-3 py-2 text-xs text-white placeholder-zinc-500 outline-none focus:border-brand-red"
-              autoFocus
-            />
-            <div className="flex justify-end space-x-2">
-              <button
-                onClick={() => setIsCreating(false)}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
-              >
-                {t.collections.cancel}
-              </button>
-              <button
-                onClick={handleCreate}
-                className="px-4 py-1.5 rounded-xl text-xs font-bold bg-brand-red text-white hover:bg-brand-redHover shadow-glow transition-all"
-              >
-                {t.collections.create}
-              </button>
+        {/* Create New Collection */}
+        <div className="relative z-10">
+          {isCreating ? (
+            <div className="space-y-3 pt-3 border-t border-white/[0.08]">
+              <input
+                type="text"
+                value={newColName}
+                onChange={(e) => setNewColName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+                placeholder={t.collections.newPlaceholder}
+                className="w-full bg-[#0B070A] border border-white/[0.12] rounded-full px-4 py-2.5 text-xs text-white placeholder-zinc-500 outline-none focus:border-brand-ember"
+                autoFocus
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreating(false)}
+                  className="px-4 py-2 rounded-full text-xs font-bold text-zinc-400 hover:text-white hover:bg-white/[0.06] cursor-pointer"
+                >
+                  {t.collections.cancel}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreate}
+                  className="px-5 py-2 rounded-full text-xs font-extrabold btn-ember text-white cursor-pointer"
+                >
+                  {t.collections.create}
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setIsCreating(true)}
-            className="w-full flex items-center justify-center space-x-2 py-2.5 rounded-2xl border border-dashed border-white/15 text-zinc-400 hover:text-white hover:border-brand-red text-xs font-semibold transition-all hover:bg-white/5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>{t.collections.createBtn}</span>
-          </button>
-        )}
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsCreating(true)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-full border border-dashed border-white/[0.18] text-zinc-300 hover:text-white hover:border-brand-ember text-xs font-bold hover:bg-white/[0.04] cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-brand-orange" />
+              <span>{t.collections.createBtn}</span>
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+    </dialog>
   );
 };

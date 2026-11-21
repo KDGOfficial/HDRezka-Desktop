@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Search, History, Trash2, X, Star, Globe } from 'lucide-react';
+import { Search, History, X, Globe } from 'lucide-react';
 import { MediaCard } from '../components/MediaCard';
 import { MediaItem, SearchHistoryEntry } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
+import appLogo from '../assets/logo.png';
 
 export const SearchPage: React.FC = () => {
   const { searchQuery, setSearchQuery, openBrowser } = useMediaStore();
@@ -84,57 +85,60 @@ export const SearchPage: React.FC = () => {
 
   return (
     <div className="w-full pb-16 text-left select-none animate-fadeIn">
-      {/* Search Input Box */}
-      <div className="max-w-2xl mx-auto mb-8">
+      {/* Spotlight Search Hero */}
+      <div className="max-w-2xl mx-auto mb-9">
         <form onSubmit={handleSearchSubmit} className="relative">
-          <div className="flex items-center bg-[#12131a] border border-white/10 rounded-2xl p-2 shadow-card focus-within:border-brand-red focus-within:ring-2 focus-within:ring-brand-red/30 transition-all">
-            <Search className="w-5 h-5 text-zinc-400 ml-3 mr-3 flex-shrink-0" />
+          <div className="flex items-center cinema-panel rounded-full p-2 pl-5 focus-within:border-brand-ember focus-within:ring-2 focus-within:ring-brand-crimson/25">
+            <Search className="w-5 h-5 text-brand-orange mr-3 flex-shrink-0" aria-hidden="true" />
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              aria-label={t.search.placeholder}
               placeholder={t.search.placeholder}
-              className="bg-transparent border-none outline-none text-white w-full text-sm placeholder-zinc-500 font-medium"
+              className="bg-transparent border-none outline-none text-white w-full text-sm placeholder-zinc-500 font-semibold"
               autoFocus
             />
             {query && (
               <button
                 type="button"
+                aria-label="Очистить"
                 onClick={() => {
                   setQuery('');
                   setResults([]);
                 }}
-                className="p-1 rounded-lg text-zinc-400 hover:text-white mr-1"
+                className="p-1.5 rounded-full text-zinc-400 hover:text-white mr-1 cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             )}
             <button
               type="submit"
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white font-bold text-xs shadow-glow transition-all active:scale-95 flex-shrink-0"
+              className="px-6 py-2.5 rounded-full btn-ember text-white font-display font-black text-xs uppercase tracking-wider active:scale-95 flex-shrink-0 cursor-pointer"
             >
               {t.nav.search}
             </button>
           </div>
         </form>
 
-        {/* History Chips */}
+        {/* Recent Search Chips */}
         {history.length > 0 && (
           <div className="mt-4 flex items-center justify-between text-xs text-zinc-400">
-            <div className="flex items-center space-x-2 overflow-x-auto pr-2 pb-1">
+            <div className="flex items-center gap-2 overflow-x-auto pr-2 pb-1 scrollbar-none">
               <span className="text-[11px] font-bold text-zinc-500 flex items-center flex-shrink-0">
-                <History className="w-3.5 h-3.5 mr-1" />
+                <History className="w-3.5 h-3.5 mr-1 text-brand-orange" />
                 {t.search.recentQueries}:
               </span>
               {history.slice(0, 6).map((h, i) => (
                 <button
                   key={i}
+                  type="button"
                   onClick={() => handleHistoryClick(h.query)}
-                  className="flex items-center space-x-1 px-2.5 py-1 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 text-xs border border-white/5 transition-colors group flex-shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.05] hover:bg-white/[0.1] text-zinc-200 text-xs border border-white/[0.08] flex-shrink-0 cursor-pointer"
                 >
                   <span>{h.query}</span>
                   <X
-                    className="w-3 h-3 text-zinc-500 hover:text-brand-red ml-1"
+                    className="w-3 h-3 text-zinc-500 hover:text-brand-crimson"
                     onClick={(e) => handleDeleteHistory(e, h.query)}
                   />
                 </button>
@@ -142,8 +146,9 @@ export const SearchPage: React.FC = () => {
             </div>
 
             <button
+              type="button"
               onClick={handleClearHistory}
-              className="text-[10px] text-zinc-500 hover:text-brand-red whitespace-nowrap ml-2 flex-shrink-0 font-medium"
+              className="text-[11px] text-zinc-500 hover:text-brand-orange whitespace-nowrap ml-2 flex-shrink-0 font-bold cursor-pointer"
             >
               {t.search.clearHistory}
             </button>
@@ -153,42 +158,48 @@ export const SearchPage: React.FC = () => {
 
       {/* Results Header */}
       {searchQuery && !loading && (
-        <div className="mb-6 flex items-center justify-between pb-3 border-b border-white/5">
-          <h2 className="text-base font-bold text-white">
-            {t.search.resultsFor} <span className="text-brand-red">"{searchQuery}"</span>
-          </h2>
+        <div className="mb-6 flex items-center justify-between pb-3.5 border-b border-white/[0.06]">
+          <h1 className="font-display text-lg font-black text-white">
+            {t.search.resultsFor} <span className="text-ember-gradient">«{searchQuery}»</span>
+          </h1>
           <span className="text-xs text-zinc-400 font-mono">
             {t.search.foundCount}: {results.length}
           </span>
         </div>
       )}
 
-      {/* Loading state */}
+      {/* Loading */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-24">
-          <div className="w-12 h-12 border-4 border-brand-red/20 border-t-brand-red rounded-full animate-spin mb-3" />
-          <span className="text-zinc-500 text-xs font-semibold">{t.home.loadingCatalog}</span>
+          <div className="relative w-16 h-16 mb-4 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
+            <img src={appLogo} alt="" className="w-10 h-10 rounded-full object-cover shadow-glow" />
+          </div>
+          <span className="text-zinc-400 text-xs font-bold">{t.home.loadingCatalog}</span>
         </div>
       )}
 
-      {/* Empty / Initial State */}
+      {/* Empty State */}
       {!loading && results.length === 0 && (
         <div className="flex flex-col items-center justify-center py-24 text-zinc-500">
-          <Search className="w-16 h-16 text-zinc-700 mb-3" />
-          <p className="text-base font-bold text-zinc-400">
+          <div className="w-16 h-16 rounded-3xl cinema-panel flex items-center justify-center mb-4">
+            <Search className="w-7 h-7 text-brand-orange" />
+          </div>
+          <p className="font-display text-base font-black text-zinc-200">
             {searchQuery ? t.search.noResults : t.search.startTyping}
           </p>
           {searchQuery && (
             <>
-              <p className="text-xs text-zinc-500 mt-1 max-w-sm text-center leading-relaxed">
+              <p className="text-xs text-zinc-400 mt-1.5 max-w-sm text-center leading-relaxed">
                 {t.search.noResultsDesc}
               </p>
               <button
+                type="button"
                 onClick={() => openBrowser(searchQuery)}
-                className="mt-5 flex items-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-black shadow-glow transition-all active:scale-95 cursor-pointer"
+                className="mt-6 flex items-center gap-2 px-6 py-3 rounded-full btn-ember text-white text-xs font-display font-black uppercase tracking-wider active:scale-95 cursor-pointer"
               >
                 <Globe className="w-4 h-4" />
-                <span>Найти «{searchQuery}» в интернете (кино-браузер)</span>
+                <span>Найти «{searchQuery}» в Google (кино-браузер)</span>
               </button>
             </>
           )}
@@ -206,27 +217,29 @@ export const SearchPage: React.FC = () => {
             ))}
           </div>
 
-          <div className="mt-8 p-4 rounded-2xl bg-[#12131a] border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div className="text-xs text-zinc-400">
+          <div className="mt-9 p-5 rounded-3xl cinema-panel flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="text-xs text-zinc-300 font-medium">
               Не нашли нужный фильм, сериал или озвучку в списке выше?
             </div>
             <button
+              type="button"
               onClick={() => openBrowser(query.trim() || searchQuery)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 hover:bg-brand-red/20 border border-white/10 hover:border-brand-red/40 text-xs font-bold text-white transition-all cursor-pointer flex-shrink-0"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white/[0.06] hover:bg-brand-crimson/20 border border-white/[0.1] hover:border-brand-ember/50 text-xs font-bold text-white cursor-pointer flex-shrink-0"
             >
-              <Globe className="w-3.5 h-3.5 text-brand-red" />
-              <span>Найти в интернете (встроенный браузер)</span>
+              <Globe className="w-3.5 h-3.5 text-brand-orange" />
+              <span>Найти в Google (встроенный браузер)</span>
             </button>
           </div>
         </>
       )}
 
-      {/* Load More Button */}
+      {/* Load More */}
       {!loading && hasMore && results.length > 0 && (
         <div className="flex justify-center mt-10">
           <button
+            type="button"
             onClick={() => performSearch(searchQuery, page + 1)}
-            className="px-6 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white transition-all active:scale-95 shadow-sm"
+            className="px-7 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-white active:scale-95 cursor-pointer"
           >
             {t.search.loadMore}
           </button>

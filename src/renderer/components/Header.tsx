@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Sparkles, X, Star, Settings, Globe } from 'lucide-react';
+import { Search, Bell, Sparkles, X, Star, Settings, Globe, ArrowLeft, Film } from 'lucide-react';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
@@ -7,7 +7,7 @@ import { debounce } from '../../shared/utils';
 import appLogo from '../assets/logo.png';
 
 export const Header: React.FC = () => {
-  const { searchQuery, setSearchQuery, setPage, openDetails, openBrowser } = useMediaStore();
+  const { currentPage, searchQuery, setSearchQuery, setPage, openDetails, openBrowser } = useMediaStore();
   const { updateInfo, setUpdateModalOpen } = useSettingsStore();
   const { t } = useTranslation();
 
@@ -17,7 +17,6 @@ export const Header: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Close dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -31,7 +30,8 @@ export const Header: React.FC = () => {
   // Keyboard shortcut Ctrl+K or / to focus search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey && e.key.toLowerCase() === 'k') || (e.key === '/' && document.activeElement?.tagName !== 'INPUT')) {
+      const tag = (document.activeElement as HTMLElement | null)?.tagName;
+      if ((e.ctrlKey && e.key.toLowerCase() === 'k') || (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA')) {
         e.preventDefault();
         inputRef.current?.focus();
       }
@@ -40,7 +40,6 @@ export const Header: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Debounced search for suggestions
   const fetchSuggestions = useRef(
     debounce(async (query: string) => {
       if (!query.trim() || !window.api) {
@@ -74,6 +73,9 @@ export const Header: React.FC = () => {
       setIsOpen(false);
       setSearchQuery(localQuery.trim());
       setPage('search');
+    } else if (e.key === 'Escape') {
+      setIsOpen(false);
+      inputRef.current?.blur();
     }
   };
 
@@ -83,139 +85,178 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <header className="h-16 w-full border-b border-white/5 px-8 flex items-center justify-between relative z-40 bg-[#08080c]/80 backdrop-blur-xl">
-      {/* Search Bar */}
-      <div className="relative w-full max-w-md" ref={dropdownRef}>
-        <div className="flex items-center bg-[#12131a] border border-white/10 rounded-2xl px-3.5 py-2 text-xs focus-within:border-brand-red focus-within:ring-2 focus-within:ring-brand-red/30 transition-all shadow-inner">
-          <Search className="w-4 h-4 text-zinc-400 mr-2 flex-shrink-0" />
-          <input
-            ref={inputRef}
-            type="text"
-            value={localQuery}
-            onChange={handleInputChange}
-            onKeyDown={handleKeyDown}
-            placeholder={t.header.searchPlaceholder}
-            className="bg-transparent border-none outline-none text-white w-full placeholder-zinc-500 text-xs"
-          />
+    <header className="h-16 w-full border-b border-white/[0.06] px-7 lg:px-9 flex items-center justify-between gap-4 relative z-40 bg-[#0B070A]/80 backdrop-blur-2xl flex-shrink-0">
+      {/* Left: Quick Back Button (when viewing Details) + Spotlight Search */}
+      <div className="flex items-center gap-3 flex-1 min-w-0">
+        {currentPage === 'details' && (
+          <button
+            type="button"
+            onClick={() => setPage('home')}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-bold text-zinc-200 hover:text-white cursor-pointer flex-shrink-0"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-brand-orange" />
+            <span className="hidden sm:inline">{t.nav.home}</span>
+          </button>
+        )}
 
-          {localQuery ? (
-            <button
-              onClick={() => {
-                setLocalQuery('');
-                setSuggestions([]);
-                setIsOpen(false);
-              }}
-              className="text-zinc-500 hover:text-white transition-colors"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          ) : (
-            <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[9px] font-mono font-medium text-zinc-500 bg-white/5 border border-white/10 rounded">
-              Ctrl+K
-            </kbd>
-          )}
-        </div>
+        {/* Spotlight Cinema Search */}
+        <div className="relative w-full max-w-lg" ref={dropdownRef}>
+          <div className="flex items-center bg-[#150E13]/95 border border-white/[0.09] rounded-full px-4 py-2 text-xs focus-within:border-brand-ember focus-within:ring-2 focus-within:ring-brand-crimson/25 shadow-inner">
+            <Search className="w-4 h-4 text-zinc-400 mr-2.5 flex-shrink-0" aria-hidden="true" />
+            <input
+              ref={inputRef}
+              type="text"
+              value={localQuery}
+              onChange={handleInputChange}
+              onKeyDown={handleKeyDown}
+              aria-label={t.header.searchPlaceholder}
+              placeholder={t.header.searchPlaceholder}
+              className="bg-transparent border-none outline-none text-white w-full placeholder-zinc-500 text-xs font-medium"
+            />
 
-        {/* Autocomplete Dropdown */}
-        {isOpen && localQuery.trim() && (
-          <div className="absolute top-full left-0 right-0 mt-2 bg-[#12131a] border border-white/10 rounded-2xl shadow-elevated overflow-hidden z-50 animate-fadeIn">
-            <div className="p-1.5 space-y-0.5 max-h-72 overflow-y-auto">
-              {suggestions.length > 0 ? (
-                suggestions.map((item, idx) => (
+            {localQuery ? (
+              <button
+                type="button"
+                aria-label="Очистить поиск"
+                onClick={() => {
+                  setLocalQuery('');
+                  setSuggestions([]);
+                  setIsOpen(false);
+                }}
+                className="text-zinc-400 hover:text-white cursor-pointer p-0.5 rounded-full"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            ) : (
+              <kbd className="hidden sm:inline-flex items-center px-2 py-0.5 text-[10px] font-mono font-semibold text-zinc-400 bg-white/[0.06] border border-white/[0.08] rounded-full">
+                Ctrl+K
+              </kbd>
+            )}
+          </div>
+
+          {/* Autocomplete Dropdown with Poster Thumbnails */}
+          {isOpen && localQuery.trim() && (
+            <div className="absolute top-full left-0 right-0 mt-2.5 cinema-glass rounded-3xl shadow-elevated overflow-hidden z-50 animate-fadeIn">
+              <div className="p-2 space-y-1 max-h-80 overflow-y-auto">
+                {suggestions.length > 0 ? (
+                  suggestions.map((item, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => handleSelectSuggestion(item)}
+                      className="w-full flex items-center justify-between gap-3 px-3 py-2 rounded-2xl text-left text-xs text-zinc-200 hover:text-white hover:bg-white/[0.08] cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        {item.poster ? (
+                          <img
+                            src={item.poster}
+                            alt=""
+                            className="w-8 h-11 rounded-lg object-cover border border-white/10 flex-shrink-0 bg-dark-surface"
+                          />
+                        ) : (
+                          <span className="w-8 h-11 rounded-lg bg-white/[0.05] border border-white/10 flex items-center justify-center flex-shrink-0">
+                            <Film className="w-3.5 h-3.5 text-zinc-500" />
+                          </span>
+                        )}
+                        <span className="truncate font-semibold group-hover:text-brand-orange transition-colors">
+                          {item.title}
+                        </span>
+                      </div>
+                      {item.rating && (
+                        <span className="flex items-center text-[11px] font-extrabold text-brand-gold bg-[#1A120A] px-2 py-0.5 rounded-full border border-brand-gold/30 flex-shrink-0">
+                          <Star className="w-3 h-3 mr-1 fill-brand-gold" />
+                          {item.rating}
+                        </span>
+                      )}
+                    </button>
+                  ))
+                ) : (
+                  <div className="px-4 py-4 text-center text-xs text-zinc-400">
+                    Ничего не найдено в каталоге зеркал для «{localQuery.trim()}»
+                  </div>
+                )}
+              </div>
+
+              <div className="p-2.5 border-t border-white/[0.06] bg-black/40 flex flex-col gap-1.5 text-center">
+                {suggestions.length > 0 && (
                   <button
-                    key={idx}
-                    onClick={() => handleSelectSuggestion(item)}
-                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs text-zinc-300 hover:text-white hover:bg-white/10 transition-colors group"
+                    type="button"
+                    onClick={() => {
+                      setIsOpen(false);
+                      setSearchQuery(localQuery.trim());
+                      setPage('search');
+                    }}
+                    className="py-1 text-xs font-extrabold text-brand-orange hover:text-white cursor-pointer"
                   >
-                    <div className="flex items-center space-x-2.5 truncate">
-                      <span className="w-1.5 h-1.5 rounded-full bg-brand-red opacity-0 group-hover:opacity-100 transition-opacity" />
-                      <span className="truncate group-hover:text-white font-medium">{item.title}</span>
-                    </div>
-                    {item.rating && (
-                      <span className="flex items-center text-[11px] font-bold text-amber-400 bg-amber-950/40 px-1.5 py-0.5 rounded-lg border border-amber-500/20 flex-shrink-0 ml-2">
-                        <Star className="w-3 h-3 mr-1 fill-amber-400" />
-                        {item.rating}
-                      </span>
-                    )}
+                    {t.header.showAll} «{localQuery}»
                   </button>
-                ))
-              ) : (
-                <div className="px-3 py-3 text-center text-xs text-zinc-400">
-                  Ничего не найдено в каталоге зеркал для «{localQuery.trim()}»
-                </div>
-              )}
-            </div>
-            <div className="p-2.5 border-t border-white/5 bg-black/40 flex flex-col gap-1.5 text-center">
-              {suggestions.length > 0 && (
+                )}
                 <button
+                  type="button"
                   onClick={() => {
                     setIsOpen(false);
-                    setSearchQuery(localQuery.trim());
-                    setPage('search');
+                    openBrowser(localQuery.trim());
                   }}
-                  className="text-xs text-brand-red hover:text-brand-redHover font-bold transition-colors"
+                  className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-2xl bg-white/[0.06] hover:bg-brand-crimson/20 border border-white/[0.09] hover:border-brand-ember/45 text-xs font-bold text-zinc-100 hover:text-white cursor-pointer"
                 >
-                  {t.header.showAll} "{localQuery}"
+                  <Globe className="w-3.5 h-3.5 text-brand-orange" />
+                  <span>Найти «{localQuery.trim()}» в Google (кино-браузер)</span>
                 </button>
-              )}
-              <button
-                onClick={() => {
-                  setIsOpen(false);
-                  openBrowser(localQuery.trim());
-                }}
-                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-xl bg-white/5 hover:bg-brand-red/20 border border-white/10 hover:border-brand-red/40 text-xs font-bold text-zinc-200 hover:text-white transition-all cursor-pointer"
-              >
-                <Globe className="w-3.5 h-3.5 text-brand-red" />
-                <span>Найти «{localQuery.trim()}» в интернете (браузер)</span>
-              </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
-      {/* Right Actions */}
-      <div className="flex items-center space-x-3">
-        {/* Updates button */}
+      {/* Right Action Cluster */}
+      <div className="flex items-center gap-2.5 flex-shrink-0">
         {updateInfo?.hasUpdate ? (
           <button
+            type="button"
             onClick={() => setUpdateModalOpen(true)}
-            className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white font-bold text-xs shadow-glow transition-all active:scale-95 animate-pulse"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-full btn-ember text-white font-extrabold text-xs cursor-pointer active:scale-95 animate-emberPulse"
             title={t.header.updateAvailable}
           >
-            <Sparkles className="w-3.5 h-3.5" />
+            <Sparkles className="w-3.5 h-3.5 text-[#FFE29A]" />
             <span className="hidden sm:inline">v{updateInfo.latestVersion}</span>
           </button>
         ) : (
           <button
+            type="button"
             onClick={() => setPage('settings')}
-            className="p-2.5 rounded-xl text-zinc-400 hover:text-white hover:bg-white/5 transition-colors relative"
+            aria-label={t.header.notifications}
+            className="p-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-zinc-300 hover:text-white cursor-pointer"
             title={t.header.notifications}
           >
             <Bell className="w-4 h-4" />
           </button>
         )}
 
-        {/* Settings button */}
         <button
+          type="button"
           onClick={() => setPage('settings')}
-          className="p-2.5 rounded-xl text-zinc-400 hover:text-white hover:bg-white/5 transition-colors"
+          aria-label={t.nav.settings}
+          className="p-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-zinc-300 hover:text-white cursor-pointer group"
           title={t.nav.settings}
         >
-          <Settings className="w-4 h-4 hover:rotate-45 transition-transform" />
+          <Settings className="w-4 h-4 group-hover:rotate-45 transition-transform duration-300" />
         </button>
 
-        {/* Logo Avatar Miniature */}
-        <div
+        <button
+          type="button"
           onClick={() => setPage('settings')}
-          className="cursor-pointer pl-2 border-l border-white/10"
+          className="pl-2.5 border-l border-white/[0.08] cursor-pointer group rounded-full"
           title="HDREZKA Desktop"
+          aria-label="Профиль и настройки"
         >
-          <img
-            src={appLogo}
-            alt="HDRezka"
-            className="w-8 h-8 rounded-full object-cover border border-brand-red/50 shadow-glow-sm hover:scale-105 transition-transform"
-          />
-        </div>
+          <span className="logo-ring rounded-full block transition-transform duration-300 group-hover:scale-105">
+            <img
+              src={appLogo}
+              alt=""
+              className="w-8 h-8 rounded-full object-cover block"
+            />
+          </span>
+        </button>
       </div>
     </header>
   );

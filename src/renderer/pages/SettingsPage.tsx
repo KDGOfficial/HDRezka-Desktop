@@ -9,10 +9,8 @@ import {
   Download,
   Upload,
   Check,
-  AlertCircle,
   ExternalLink,
   Sparkles,
-  Info,
   CheckCircle2,
   Send,
   Search,
@@ -20,7 +18,7 @@ import {
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
-import { useTranslation, Locale } from '../i18n';
+import { useTranslation } from '../i18n';
 import appLogo from '../assets/logo.png';
 
 export const SettingsPage: React.FC = () => {
@@ -153,25 +151,27 @@ export const SettingsPage: React.FC = () => {
   return (
     <div className="w-full pb-20 text-left select-none max-w-4xl mx-auto animate-fadeIn">
       {/* Header */}
-      <div className="mb-8 pb-5 border-b border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="mb-8 pb-5 border-b border-white/[0.06] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-black text-white flex items-center">
-            <Settings className="w-6 h-6 text-brand-red mr-2.5" />
-            {t.settings.title}
+          <h1 className="font-display text-2xl md:text-3xl font-black text-white flex items-center gap-3">
+            <span className="w-9 h-9 rounded-2xl play-squircle flex items-center justify-center flex-shrink-0">
+              <Settings className="w-4 h-4 text-white" />
+            </span>
+            <span>{t.settings.title}</span>
           </h1>
-          <p className="text-xs text-zinc-400 mt-1">
-            {t.settings.subtitle} v{APP_VERSION}
+          <p className="text-xs text-zinc-400 mt-1.5">
+            {t.settings.subtitle} <span className="font-mono text-zinc-300">v{APP_VERSION}</span>
           </p>
         </div>
 
-        {/* Telegram Channel Link */}
         <button
+          type="button"
           onClick={() => {
             if (window.api?.openExternalUrl) {
               window.api.openExternalUrl(TELEGRAM_CHANNEL_URL);
             }
           }}
-          className="flex items-center space-x-2 px-4 py-2.5 rounded-2xl bg-[#229ED9]/15 hover:bg-[#229ED9]/25 text-[#229ED9] border border-[#229ED9]/30 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer self-start sm:self-auto"
+          className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-[#2AABEE]/15 hover:bg-[#2AABEE]/25 text-[#58C4FF] border border-[#2AABEE]/30 text-xs font-bold active:scale-95 cursor-pointer self-start sm:self-auto"
           title="Telegram @HDRezkaPC"
         >
           <Send className="w-4 h-4 flex-shrink-0" />
@@ -180,20 +180,20 @@ export const SettingsPage: React.FC = () => {
         </button>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-7">
         {/* Section: Language */}
-        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-zinc-300">
-              <Globe className="w-5 h-5 text-brand-red" />
+        <section className="p-6 rounded-3xl cinema-panel flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-2xl bg-brand-crimson/15 border border-brand-ember/30 flex items-center justify-center text-brand-orange">
+              <Globe className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-sm font-bold text-white">{t.settings.language}</h2>
+              <h2 className="font-display text-sm font-black text-white">{t.settings.language}</h2>
               <p className="text-xs text-zinc-400 mt-0.5">{t.settings.languageDesc}</p>
             </div>
           </div>
 
-          <div className="flex items-center bg-[#090a0f] p-1 rounded-2xl border border-white/10">
+          <div className="flex items-center bg-[#0B070A] p-1 rounded-full border border-white/[0.08]">
             {(
               [
                 { id: 'ru', label: 'Русский' },
@@ -203,49 +203,49 @@ export const SettingsPage: React.FC = () => {
             ).map((lang) => (
               <button
                 key={lang.id}
+                type="button"
+                aria-pressed={language === lang.id}
                 onClick={() => setLanguage(lang.id)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                  language === lang.id
-                    ? 'bg-gradient-to-r from-brand-red to-orange-600 text-white shadow-glow-sm'
-                    : 'text-zinc-400 hover:text-white'
+                className={`px-4 py-1.5 rounded-full text-xs font-bold cursor-pointer ${
+                  language === lang.id ? 'btn-ember text-white' : 'text-zinc-400 hover:text-white'
                 }`}
               >
                 {lang.label}
               </button>
             ))}
           </div>
-        </div>
+        </section>
 
         {/* Section: Auto-Update via GitHub */}
-        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-5">
-          <div className="flex items-center justify-between pb-4 border-b border-white/5 flex-wrap gap-2">
-            <div className="flex items-center space-x-3.5">
-              <div className="w-10 h-10 rounded-2xl bg-brand-red/10 border border-brand-red/20 flex items-center justify-center text-brand-red shadow-glow-sm">
-                <Sparkles className="w-5 h-5" />
+        <section className="p-6 rounded-3xl cinema-panel space-y-5">
+          <div className="flex items-center justify-between pb-4 border-b border-white/[0.06] flex-wrap gap-2">
+            <div className="flex items-center gap-3.5">
+              <div className="w-10 h-10 rounded-2xl play-squircle flex items-center justify-center text-white">
+                <Sparkles className="w-5 h-5 text-[#FFE29A]" />
               </div>
               <div>
-                <h2 className="text-sm font-bold text-white">{t.settings.updates}</h2>
+                <h2 className="font-display text-sm font-black text-white">{t.settings.updates}</h2>
                 <p className="text-xs text-zinc-400 mt-0.5">{t.settings.updatesDesc}</p>
               </div>
             </div>
 
             <button
+              type="button"
               onClick={() => checkForUpdates(false)}
               disabled={isCheckingUpdate}
-              className="flex items-center space-x-1.5 px-4 py-2 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white disabled:opacity-50 transition-all active:scale-95"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-white disabled:opacity-50 active:scale-95 cursor-pointer"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin text-brand-red' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isCheckingUpdate ? 'animate-spin text-brand-orange' : ''}`} />
               <span>{isCheckingUpdate ? t.settings.checkingUpdates : t.settings.checkUpdatesBtn}</span>
             </button>
           </div>
 
-          {/* Update Status Card */}
-          <div className="p-4 rounded-2xl bg-dark-bg/80 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-4 rounded-2xl bg-[#0B070A]/85 border border-white/[0.07] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-white">
                   {updateInfo?.hasUpdate ? (
-                    <span className="text-brand-red flex items-center">
+                    <span className="text-brand-orange flex items-center">
                       <Sparkles className="w-3.5 h-3.5 mr-1" />
                       {t.settings.newVersionFound}: v{updateInfo.latestVersion}
                     </span>
@@ -262,26 +262,28 @@ export const SettingsPage: React.FC = () => {
               </p>
             </div>
 
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {updateInfo?.hasUpdate && !isReady && (
                 <button
+                  type="button"
                   onClick={downloadUpdate}
                   disabled={isDownloading}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-bold shadow-glow transition-all active:scale-95 disabled:opacity-50"
+                  className="px-4 py-2 rounded-full btn-ember text-white text-xs font-extrabold active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
                   {isDownloading ? t.settings.downloading : t.settings.downloadUpdate}
                 </button>
               )}
 
               {isInstalling ? (
-                <div className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-emerald-600/50 text-white text-xs font-bold shadow-glow">
+                <div className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-emerald-600/50 text-white text-xs font-bold">
                   <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-300" />
                   <span>{t.updateModal.installing}</span>
                 </div>
               ) : isReady ? (
                 <button
+                  type="button"
                   onClick={installUpdate}
-                  className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-bold shadow-glow transition-all active:scale-95 cursor-pointer"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-extrabold shadow-glow active:scale-95 cursor-pointer"
                 >
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>{t.settings.installRestart}</span>
@@ -292,7 +294,7 @@ export const SettingsPage: React.FC = () => {
                 href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"
                 target="_blank"
                 rel="noreferrer"
-                className="flex items-center space-x-1 px-3 py-2 rounded-xl bg-white/5 hover:bg-white/10 text-zinc-300 text-xs font-semibold transition-colors"
+                className="flex items-center gap-1 px-3.5 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-200 text-xs font-bold"
               >
                 <span>{t.settings.downloadFromGithub}</span>
                 <ExternalLink className="w-3.5 h-3.5" />
@@ -300,25 +302,26 @@ export const SettingsPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Download progress bar */}
           {isDownloading && updateProgress && (
-            <div className="p-4 rounded-2xl bg-dark-bg/90 border border-brand-red/30 space-y-1.5">
-              <div className="flex justify-between text-xs font-semibold">
+            <div className="p-4 rounded-2xl bg-[#0B070A]/90 border border-brand-ember/40 space-y-2">
+              <div className="flex justify-between text-xs font-bold">
                 <span className="text-white">{t.settings.downloading}</span>
-                <span className="font-mono text-brand-red font-bold">{updateProgress.percent}%</span>
+                <span className="font-mono text-brand-orange">{updateProgress.percent}%</span>
               </div>
-              <div className="w-full h-1.5 rounded-full bg-zinc-800 overflow-hidden">
+              <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-brand-red to-orange-500 transition-all duration-200"
-                  style={{ width: `${updateProgress.percent}%` }}
+                  className="h-full rounded-full transition-all duration-200"
+                  style={{
+                    width: `${updateProgress.percent}%`,
+                    background: 'linear-gradient(90deg, #FF124F 0%, #FF7A00 100%)',
+                  }}
                 />
               </div>
             </div>
           )}
 
-          {/* Toggle auto check on startup */}
-          <div className="flex items-center justify-between pt-1">
-            <span className="text-xs text-zinc-300 font-medium">{t.settings.autoCheckOnStart}</span>
+          <label className="flex items-center justify-between pt-1 cursor-pointer">
+            <span className="text-xs text-zinc-300 font-semibold">{t.settings.autoCheckOnStart}</span>
             <input
               type="checkbox"
               checked={settings.app.checkUpdatesOnStart}
@@ -327,59 +330,60 @@ export const SettingsPage: React.FC = () => {
                   app: { ...settings.app, checkUpdatesOnStart: e.target.checked },
                 })
               }
-              className="w-4 h-4 accent-brand-red cursor-pointer"
+              className="w-4 h-4 accent-[#FF4D1A] cursor-pointer"
             />
-          </div>
-        </div>
+          </label>
+        </section>
 
         {/* Section: Mirrors & Network */}
-        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-5">
-          <div className="flex items-center justify-between pb-4 border-b border-white/5 flex-wrap gap-2">
+        <section className="p-6 rounded-3xl cinema-panel space-y-5">
+          <div className="flex items-center justify-between pb-4 border-b border-white/[0.06] flex-wrap gap-2">
             <div>
-              <h2 className="text-sm font-bold text-white flex items-center">
-                <Globe className="w-4 h-4 text-brand-red mr-2" />
-                {t.settings.mirrors}
+              <h2 className="font-display text-sm font-black text-white flex items-center gap-2">
+                <Globe className="w-4 h-4 text-brand-orange" />
+                <span>{t.settings.mirrors}</span>
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">{t.settings.mirrorsDesc}</p>
             </div>
-            <div className="flex items-center space-x-2 flex-wrap gap-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
+                type="button"
                 onClick={handleFindOnlineMirrors}
                 disabled={isFindingMirrors}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600/20 to-blue-600/20 hover:from-cyan-600/30 hover:to-blue-600/30 text-cyan-300 border border-cyan-500/30 text-xs font-semibold disabled:opacity-50 transition-all cursor-pointer shadow-sm active:scale-95"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-brand-crimson/15 hover:bg-brand-crimson/25 text-brand-orange border border-brand-ember/35 text-xs font-bold disabled:opacity-50 cursor-pointer active:scale-95"
                 title={t.settings.findOnlineMirrors}
               >
-                <Search className={`w-3.5 h-3.5 ${isFindingMirrors ? 'animate-spin text-cyan-400' : 'text-cyan-400'}`} />
+                <Search className={`w-3.5 h-3.5 ${isFindingMirrors ? 'animate-spin' : ''}`} />
                 <span>{isFindingMirrors ? t.settings.findingOnlineMirrors : t.settings.findOnlineMirrors}</span>
               </button>
               <button
+                type="button"
                 onClick={() => handleVerifyMirror(settings.app.activeMirror)}
-                className="px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-zinc-300 transition-colors cursor-pointer"
+                className="px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-zinc-200 cursor-pointer"
                 title={t.settings.verifyBtn}
               >
                 <ShieldCheck className="w-3.5 h-3.5 inline mr-1 text-emerald-400" />
                 <span>{t.details.passVerification}</span>
               </button>
               <button
+                type="button"
                 onClick={() => checkMirrors()}
                 disabled={isCheckingMirrors}
-                className="flex items-center space-x-1.5 px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-xs font-semibold text-zinc-300 disabled:opacity-50 transition-colors border border-white/10 cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] text-xs font-bold text-zinc-200 disabled:opacity-50 border border-white/[0.1] cursor-pointer"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingMirrors ? 'animate-spin text-brand-red' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isCheckingMirrors ? 'animate-spin text-brand-orange' : ''}`} />
                 <span>{isCheckingMirrors ? t.settings.testing : t.settings.testPing}</span>
               </button>
             </div>
           </div>
 
-          {/* Feedback banner for online search */}
           {findMirrorsStatus && (
-            <div className="p-3 rounded-2xl bg-cyan-950/40 border border-cyan-500/30 text-cyan-300 text-xs flex items-center space-x-2 animate-fadeIn">
-              <Sparkles className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+            <div className="p-3.5 rounded-2xl bg-brand-crimson/15 border border-brand-ember/35 text-amber-200 text-xs flex items-center gap-2 animate-fadeIn">
+              <Sparkles className="w-4 h-4 text-brand-orange flex-shrink-0" />
               <span>{findMirrorsStatus}</span>
             </div>
           )}
 
-          {/* Mirrors Verification Banner */}
           {(() => {
             const activeStatus = mirrorsStatus.find((m) => m.url === settings.app.activeMirror);
             const activeNeedsVerification = activeStatus?.isAvailable && activeStatus?.needsVerification;
@@ -389,14 +393,15 @@ export const SettingsPage: React.FC = () => {
             const shouldShowBanner = activeNeedsVerification || allAvailableNeedVerification;
 
             return shouldShowBanner ? (
-              <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3 animate-fadeIn">
-                <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="p-3.5 rounded-2xl bg-amber-950/35 border border-amber-500/35 text-amber-200 text-xs flex items-center justify-between gap-3 animate-fadeIn">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <ShieldCheck className="w-4 h-4 text-amber-400 flex-shrink-0" />
                   <span className="leading-snug">{t.settings.needsVerificationHint}</span>
                 </div>
                 <button
+                  type="button"
                   onClick={() => handleVerifyMirror(settings.app.activeMirror)}
-                  className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs transition-all flex-shrink-0 shadow-sm cursor-pointer active:scale-95"
+                  className="px-3.5 py-1.5 rounded-full bg-amber-400 hover:bg-amber-300 text-black font-extrabold text-xs flex-shrink-0 cursor-pointer active:scale-95"
                 >
                   {t.details.passVerification}
                 </button>
@@ -414,26 +419,26 @@ export const SettingsPage: React.FC = () => {
                   onClick={() => setActiveMirror(mirror)}
                   className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer group ${
                     isActive
-                      ? 'bg-brand-red/10 border-brand-red text-white shadow-glow-sm'
-                      : 'bg-white/5 border-white/5 hover:border-white/20 text-zinc-300'
+                      ? 'bg-brand-crimson/15 border-brand-ember text-white shadow-glow-sm'
+                      : 'bg-white/[0.04] border-white/[0.07] hover:border-white/20 text-zinc-300'
                   }`}
                 >
-                  <div className="flex items-center space-x-2.5 truncate min-w-0 mr-2">
+                  <div className="flex items-center gap-2.5 truncate min-w-0 mr-2">
                     <span
                       className={`w-2 h-2 rounded-full flex-shrink-0 ${
                         status?.isAvailable
                           ? status.needsVerification
-                            ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.7)]'
-                            : 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.7)]'
-                          : 'bg-red-500'
+                            ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                            : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+                          : 'bg-rose-500'
                       }`}
                     />
                     <span className="text-xs font-bold truncate font-mono">{mirror}</span>
                   </div>
 
-                  <div className="flex items-center space-x-2 flex-shrink-0">
+                  <div className="flex items-center gap-2 flex-shrink-0">
                     {status && (
-                      <span className="text-[10px] text-zinc-500 font-mono">
+                      <span className="text-[10px] text-zinc-400 font-mono tabular-nums">
                         {status.latencyMs < 9000
                           ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
                           : t.settings.error}
@@ -441,28 +446,30 @@ export const SettingsPage: React.FC = () => {
                     )}
                     {status?.needsVerification && (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleVerifyMirror(mirror);
                         }}
-                        className="px-2 py-0.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/30 text-[10px] font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                        className="px-2.5 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/35 text-[10px] font-bold cursor-pointer"
                         title={t.details.passVerification}
                       >
                         {t.details.passVerification}
                       </button>
                     )}
                     {isActive && (
-                      <span className="px-1.5 py-0.5 rounded-md bg-brand-red text-white text-[9px] font-black uppercase">
+                      <span className="px-2 py-0.5 rounded-full btn-ember text-white text-[9px] font-black uppercase">
                         {t.settings.active}
                       </span>
                     )}
                     {settings.app.mirrors && settings.app.mirrors.length > 1 && (
                       <button
+                        type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           removeCustomMirror(mirror);
                         }}
-                        className="p-1 rounded-lg hover:bg-red-500/20 text-zinc-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                        className="p-1 rounded-full hover:bg-rose-500/20 text-zinc-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
                         title={t.settings.deleteMirror}
                       >
                         <Trash2 className="w-3 h-3" />
@@ -474,36 +481,37 @@ export const SettingsPage: React.FC = () => {
             })}
           </div>
 
-          {/* Add custom mirror */}
-          <div className="flex items-center space-x-2 pt-1">
+          <div className="flex items-center gap-2 pt-1">
             <input
               type="text"
               value={customMirror}
               onChange={(e) => setCustomMirror(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleAddCustomMirror()}
               placeholder={t.settings.addMirrorPlaceholder}
-              className="flex-1 bg-dark-bg border border-white/10 rounded-2xl px-3.5 py-2 text-xs text-white outline-none focus:border-brand-red font-mono"
+              className="flex-1 bg-[#0B070A] border border-white/[0.1] rounded-full px-4 py-2.5 text-xs text-white outline-none focus:border-brand-ember font-mono"
             />
             <button
+              type="button"
               onClick={handleAddCustomMirror}
-              className="px-4 py-2 rounded-2xl bg-gradient-to-r from-brand-red to-orange-600 hover:from-brand-redHover hover:to-orange-500 text-white text-xs font-bold transition-all shadow-glow flex-shrink-0"
+              className="px-5 py-2.5 rounded-full btn-ember text-white text-xs font-extrabold flex-shrink-0 cursor-pointer active:scale-95"
             >
               {t.settings.addMirrorBtn}
             </button>
           </div>
-        </div>
+        </section>
 
         {/* Section: Video Player */}
-        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-4">
-          <h2 className="text-sm font-bold text-white flex items-center pb-3 border-b border-white/5">
-            <Tv className="w-4 h-4 text-brand-red mr-2" />
-            {t.settings.player}
+        <section className="p-6 rounded-3xl cinema-panel space-y-4">
+          <h2 className="font-display text-sm font-black text-white flex items-center gap-2 pb-3 border-b border-white/[0.06]">
+            <Tv className="w-4 h-4 text-brand-orange" />
+            <span>{t.settings.player}</span>
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5">
+            <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.04] border border-white/[0.07] cursor-pointer">
               <div>
                 <div className="text-xs font-bold text-white">{t.settings.autoplay}</div>
-                <div className="text-[11px] text-zinc-500 mt-0.5">{t.settings.autoplayDesc}</div>
+                <div className="text-[11px] text-zinc-400 mt-0.5">{t.settings.autoplayDesc}</div>
               </div>
               <input
                 type="checkbox"
@@ -511,14 +519,14 @@ export const SettingsPage: React.FC = () => {
                 onChange={(e) =>
                   updateSettings({ player: { ...settings.player, autoPlay: e.target.checked } })
                 }
-                className="w-4 h-4 accent-brand-red cursor-pointer"
+                className="w-4 h-4 accent-[#FF4D1A] cursor-pointer"
               />
-            </div>
+            </label>
 
-            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5">
+            <label className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.04] border border-white/[0.07] cursor-pointer">
               <div>
                 <div className="text-xs font-bold text-white">{t.settings.autoNext}</div>
-                <div className="text-[11px] text-zinc-500 mt-0.5">{t.settings.autoNextDesc}</div>
+                <div className="text-[11px] text-zinc-400 mt-0.5">{t.settings.autoNextDesc}</div>
               </div>
               <input
                 type="checkbox"
@@ -528,34 +536,35 @@ export const SettingsPage: React.FC = () => {
                     player: { ...settings.player, autoPlayNextEpisode: e.target.checked },
                   })
                 }
-                className="w-4 h-4 accent-brand-red cursor-pointer"
+                className="w-4 h-4 accent-[#FF4D1A] cursor-pointer"
               />
-            </div>
+            </label>
 
-            <div className="flex items-center justify-between p-3.5 rounded-2xl bg-white/5 border border-white/5 sm:col-span-2">
+            <div className="flex items-center justify-between p-4 rounded-2xl bg-white/[0.04] border border-white/[0.07] sm:col-span-2">
               <div>
                 <div className="text-xs font-bold text-white">{t.settings.defaultQuality}</div>
-                <div className="text-[11px] text-zinc-500 mt-0.5">{t.settings.defaultQualityDesc}</div>
+                <div className="text-[11px] text-zinc-400 mt-0.5">{t.settings.defaultQualityDesc}</div>
               </div>
               <select
+                aria-label={t.settings.defaultQuality}
                 value={settings.player.defaultQuality}
                 onChange={(e) =>
                   updateSettings({ player: { ...settings.player, defaultQuality: e.target.value } })
                 }
-                className="bg-dark-bg border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white outline-none cursor-pointer font-bold"
+                className="bg-[#0B070A] border border-white/[0.12] rounded-full px-4 py-1.5 text-xs text-white outline-none focus:border-brand-ember cursor-pointer font-bold"
               >
-                <option value="1080p">1080p</option>
-                <option value="720p">720p</option>
-                <option value="480p">480p</option>
-                <option value="360p">360p</option>
+                <option value="1080p" className="bg-[#140E12]">1080p</option>
+                <option value="720p" className="bg-[#140E12]">720p</option>
+                <option value="480p" className="bg-[#140E12]">480p</option>
+                <option value="360p" className="bg-[#140E12]">360p</option>
               </select>
             </div>
           </div>
-        </div>
+        </section>
 
-        {/* Section: Interface & Home Blocks */}
-        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-4">
-          <h2 className="text-sm font-bold text-white pb-3 border-b border-white/5">
+        {/* Section: Home Sections */}
+        <section className="p-6 rounded-3xl cinema-panel space-y-4">
+          <h2 className="font-display text-sm font-black text-white pb-3 border-b border-white/[0.06]">
             {t.settings.homeSections}
           </h2>
 
@@ -569,81 +578,86 @@ export const SettingsPage: React.FC = () => {
               { id: 'topSeries', label: t.settings.secTopSeries },
               { id: 'recommendations', label: t.settings.secRecommendations },
               { id: 'expected', label: t.settings.secExpected },
-            ].map((sec) => (
-              <button
-                key={sec.id}
-                onClick={() => handleToggleHomeSection(sec.id as any)}
-                className={`p-3 rounded-2xl border text-xs font-bold text-left transition-all flex items-center justify-between ${
-                  (settings.homeSections as any)[sec.id]
-                    ? 'bg-brand-red/10 border-brand-red text-white'
-                    : 'bg-white/5 border-white/5 text-zinc-500 hover:text-zinc-300'
-                }`}
-              >
-                <span className="truncate pr-1">{sec.label}</span>
-                {(settings.homeSections as any)[sec.id] && (
-                  <Check className="w-3.5 h-3.5 text-brand-red flex-shrink-0" />
-                )}
-              </button>
-            ))}
+            ].map((sec) => {
+              const enabled = Boolean((settings.homeSections as any)[sec.id]);
+              return (
+                <button
+                  key={sec.id}
+                  type="button"
+                  aria-pressed={enabled}
+                  onClick={() => handleToggleHomeSection(sec.id as any)}
+                  className={`p-3 rounded-2xl border text-xs font-bold text-left flex items-center justify-between cursor-pointer ${
+                    enabled
+                      ? 'bg-brand-crimson/15 border-brand-ember text-white shadow-glow-sm'
+                      : 'bg-white/[0.04] border-white/[0.07] text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <span className="truncate pr-1">{sec.label}</span>
+                  {enabled && <Check className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" />}
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </section>
 
-        {/* Section: Data Backup & Cache */}
-        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card space-y-4">
-          <h2 className="text-sm font-bold text-white flex items-center pb-3 border-b border-white/5">
-            <Database className="w-4 h-4 text-brand-red mr-2" />
-            {t.settings.dataManagement}
+        {/* Section: Data Management */}
+        <section className="p-6 rounded-3xl cinema-panel space-y-4">
+          <h2 className="font-display text-sm font-black text-white flex items-center gap-2 pb-3 border-b border-white/[0.06]">
+            <Database className="w-4 h-4 text-brand-orange" />
+            <span>{t.settings.dataManagement}</span>
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <button
+              type="button"
               onClick={handleClearCache}
-              className="flex items-center justify-center space-x-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-bold text-zinc-300 transition-colors"
+              className="flex items-center justify-center gap-2 p-3 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-bold text-zinc-200 cursor-pointer"
             >
-              <Trash2 className="w-4 h-4 text-zinc-400" />
+              <Trash2 className="w-4 h-4 text-brand-orange" />
               <span>{cacheCleared ? t.settings.cacheCleared : t.settings.clearCache}</span>
             </button>
 
             <button
+              type="button"
               onClick={handleExportBackup}
-              className="flex items-center justify-center space-x-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-bold text-zinc-300 transition-colors"
+              className="flex items-center justify-center gap-2 p-3 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-bold text-zinc-200 cursor-pointer"
             >
-              <Download className="w-4 h-4 text-zinc-400" />
+              <Download className="w-4 h-4 text-brand-orange" />
               <span>{t.settings.exportBackup}</span>
             </button>
 
-            <label className="flex items-center justify-center space-x-2 p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/5 text-xs font-bold text-zinc-300 transition-colors cursor-pointer">
-              <Upload className="w-4 h-4 text-zinc-400" />
+            <label className="flex items-center justify-center gap-2 p-3 rounded-full bg-white/[0.05] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-bold text-zinc-200 cursor-pointer">
+              <Upload className="w-4 h-4 text-brand-orange" />
               <span>{t.settings.importBackup}</span>
               <input type="file" accept=".json" onChange={handleImportBackup} className="hidden" />
             </label>
           </div>
 
           {importStatus && (
-            <div className="text-xs text-emerald-400 bg-emerald-950/40 p-3 rounded-2xl border border-emerald-500/20">
+            <div className="text-xs text-emerald-300 bg-emerald-950/35 p-3 rounded-2xl border border-emerald-500/30">
               {importStatus}
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Section: About the App */}
-        <div className="p-6 rounded-3xl bg-[#12131a] border border-white/5 shadow-card flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex items-center space-x-4">
-            <img
-              src={appLogo}
-              alt="HDRezka Desktop"
-              className="w-14 h-14 rounded-2xl object-cover border border-brand-red/40 shadow-glow flex-shrink-0"
-            />
+        {/* Section: About */}
+        <section className="p-6 rounded-3xl cinema-panel flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <div className="logo-ring rounded-full flex-shrink-0">
+              <img src={appLogo} alt="HDRezka Desktop" className="w-16 h-16 rounded-full object-cover block" />
+            </div>
             <div>
-              <div className="flex items-center space-x-2">
-                <span className="text-base font-black tracking-wider text-white">HDREZKA Desktop</span>
-                <span className="px-2 py-0.5 rounded-lg bg-gradient-to-r from-brand-red to-orange-500 text-white text-[10px] font-black uppercase">
-                  v{APP_VERSION}
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-display text-base font-black tracking-wider text-white">
+                  HD<span className="text-ember-gradient">REZKA</span> Desktop
+                </span>
+                <span className="logo-pill px-2.5 py-0.5 rounded-full text-white text-[10px] font-display font-black uppercase">
+                  PC · v{APP_VERSION}
                 </span>
               </div>
-              <p className="text-xs text-zinc-400 mt-1 max-w-md leading-relaxed">{t.settings.aboutDesc}</p>
-              <div className="text-[11px] text-zinc-500 mt-2 font-medium">
-                {t.settings.license} • {t.settings.developers}
+              <p className="text-xs text-zinc-400 mt-1.5 max-w-md leading-relaxed">{t.settings.aboutDesc}</p>
+              <div className="text-[11px] text-zinc-500 mt-2 font-semibold">
+                {t.settings.license} · {t.settings.developers} · Neon Ember Cinema UI
               </div>
             </div>
           </div>
@@ -652,12 +666,12 @@ export const SettingsPage: React.FC = () => {
             href="https://github.com/KDGOfficial/HDRezka-Desktop"
             target="_blank"
             rel="noreferrer"
-            className="flex items-center justify-center space-x-2 px-5 py-2.5 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-bold text-white transition-all shadow-sm flex-shrink-0 active:scale-95"
+            className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-white flex-shrink-0 active:scale-95"
           >
             <span>GitHub Repository</span>
             <ExternalLink className="w-3.5 h-3.5" />
           </a>
-        </div>
+        </section>
       </div>
     </div>
   );

@@ -99,21 +99,22 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen bg-dark-bg text-white overflow-hidden">
-      {/* Electron custom titlebar */}
+    <div className="flex flex-col h-screen w-screen bg-dark-void text-white overflow-hidden">
+      {/* Frameless Integrated TitleBar */}
       <TitleBar />
 
-      {/* Global Update Notification Banner */}
+      {/* Global Update Notification Strip */}
       {updateInfo?.hasUpdate && !isUpdateModalOpen && (
-        <div className="bg-gradient-to-r from-brand-red/90 via-orange-600/90 to-brand-red/90 text-white px-6 py-2 flex items-center justify-between text-xs font-semibold shadow-glow animate-fade-in z-30 select-none border-b border-white/10">
-          <div className="flex items-center space-x-2.5">
-            <Sparkles className="w-4 h-4 text-orange-200 animate-pulse flex-shrink-0" />
-            <span>{t.header.updateBanner.replace('{version}', updateInfo.latestVersion)}</span>
+        <div className="btn-ember px-6 py-2 flex items-center justify-between text-xs font-semibold z-30 select-none border-b border-white/15">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Sparkles className="w-4 h-4 text-[#FFE29A] animate-pulse flex-shrink-0" aria-hidden="true" />
+            <span className="truncate">{t.header.updateBanner.replace('{version}', updateInfo.latestVersion)}</span>
           </div>
-          <div className="flex items-center space-x-2 flex-shrink-0 ml-4">
+          <div className="flex items-center gap-2 flex-shrink-0 ml-4">
             <button
+              type="button"
               onClick={() => setUpdateModalOpen(true)}
-              className="px-3 py-1 rounded-lg bg-white text-black font-bold text-xs hover:bg-zinc-200 transition-all shadow-md active:scale-95 cursor-pointer"
+              className="px-3.5 py-1 rounded-full bg-white text-[#140A0E] font-extrabold text-[11px] hover:bg-amber-50 transition-all shadow-md active:scale-95 cursor-pointer"
             >
               {t.header.updateNow}
             </button>
@@ -121,37 +122,28 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Main app body */}
+      {/* Main Cinema Layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Sidebar */}
+        {/* Collapsible Navigation Rail */}
         <Sidebar />
 
-        {/* Right Content View */}
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-dark-bg">
-          {/* Header */}
+        {/* Right Cinema Viewport */}
+        <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden cinema-canvas">
+          {/* Translucent Floating Command Header */}
           <Header />
 
-          {/* Page Content Scroll Area */}
-          <main className="flex-1 overflow-y-auto px-8 py-8 scroll-smooth app-canvas">
+          {/* Main Scrollable Cinema Canvas */}
+          <main className="flex-1 overflow-y-auto px-7 lg:px-9 py-6 scroll-smooth">
             {renderCurrentPage()}
           </main>
         </div>
       </div>
 
-      {/* Video Player Modal / Overlay */}
+      {/* Overlays & Native Modal Dialogs */}
       <VideoPlayer />
-
-      {/* Add to Collection Modal */}
       <CollectionModal />
-
-      {/* Auto Update GitHub Modal */}
       <UpdateModal />
-
-      {/* What's New Changelog Modal */}
-      <WhatsNewModal
-        isOpen={isWhatsNewOpen}
-        onClose={() => setIsWhatsNewOpen(false)}
-      />
+      <WhatsNewModal isOpen={isWhatsNewOpen} onClose={() => setIsWhatsNewOpen(false)} />
     </div>
   );
 };

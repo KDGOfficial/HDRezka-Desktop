@@ -2,59 +2,198 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  color-scheme: dark;
+
+  /* Neon Ember Cinema — Tier 1 Brand & Canvas Tokens (derived from logo.png) */
+  --brand-crimson: #FF124F;
+  --brand-coral: #FF333D;
+  --brand-ember: #FF551A;
+  --brand-orange: #FF7A00;
+  --brand-gold: #FFB830;
+
+  --surface-void: #070507;
+  --surface-canvas: #0B070A;
+  --surface-panel: #140E12;
+  --surface-elevated: #1D141A;
+  --surface-hover: #281C24;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --border-ember: rgba(255, 77, 46, 0.42);
+
+  --gradient-ember: linear-gradient(135deg, var(--brand-crimson) 0%, var(--brand-coral) 45%, var(--brand-orange) 100%);
+  --gradient-ember-hover: linear-gradient(135deg, #FF2A62 0%, #FF4C4F 48%, #FF901F 100%);
+  --gradient-ember-soft: linear-gradient(135deg, rgba(255, 18, 79, 0.18) 0%, rgba(255, 122, 0, 0.14) 100%);
+
+  --scrollbar-thumb: rgba(255, 255, 255, 0.28);
+  --scrollbar-track: transparent;
+}
+
 @layer base {
+  html,
   body {
-    background: #08080c;
+    background-color: var(--surface-void);
     color: #ffffff;
     user-select: none;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
-  button, input, select {
-    transition: all .18s cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Standard scrollbar styling (with legacy WebKit fallback below) */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+  }
+
+  /* High-contrast accessible keyboard focus ring */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--brand-orange);
+    outline-offset: 2px;
+  }
+
+  button,
+  input,
+  select {
+    transition: background-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      color 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.22s cubic-bezier(0.16, 1, 0.3, 1);
   }
 }
 
-/* Cinematic App Canvas with ambient light bleed */
-.app-canvas {
-  background: 
-    radial-gradient(ellipse at 88% 0%, rgba(229, 9, 20, 0.12), transparent 40%),
-    radial-gradient(ellipse at 10% 90%, rgba(249, 115, 22, 0.05), transparent 45%),
-    #08080c;
-}
+/* Legacy WebKit scrollbar fallback only when standard scrollbar-color is unsupported */
+@supports not (scrollbar-color: auto) {
+  * {
+    scrollbar-width: auto;
+  }
 
-/* Sidebar styling */
-.sidebar-redesign {
-  background: linear-gradient(180deg, rgba(14, 15, 22, 0.98), rgba(9, 10, 14, 0.99));
-}
-
-/* Smooth card transitions with 3D lift */
-.transition-card {
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.transition-card:hover {
-  transform: translateY(-6px);
-  box-shadow: 0 16px 36px -6px rgba(0, 0, 0, 0.8), 0 0 24px -4px rgba(229, 9, 20, 0.35);
-}
-
-/* Scrollbars */
-@layer base {
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 7px;
+    height: 7px;
   }
 
   ::-webkit-scrollbar-track {
-    background: transparent;
+    background: var(--scrollbar-track);
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.14);
+    background: var(--scrollbar-thumb);
     border-radius: 9999px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(229, 9, 20, 0.5);
+    background: rgba(255, 77, 46, 0.7);
   }
+}
+
+/* Native <dialog> modal scroll containment & backdrop */
+dialog:modal {
+  overscroll-behavior: contain;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: auto;
+  max-width: min(92vw, 34rem);
+  width: 100%;
+  overflow: visible;
+  color: #ffffff;
+}
+
+dialog::backdrop {
+  background: rgba(5, 3, 6, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Warm Obsidian Cinema Canvas with subtle logo-derived neon ambient bleed */
+.cinema-canvas {
+  background:
+    radial-gradient(ellipse 65% 42% at 86% -4%, rgba(255, 18, 79, 0.16), transparent 62%),
+    radial-gradient(ellipse 52% 38% at 14% 12%, rgba(255, 122, 0, 0.08), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 50% 105%, rgba(255, 42, 66, 0.06), transparent 65%),
+    var(--surface-canvas);
+}
+
+/* Collapsible Navigation Rail */
+.cinema-rail {
+  background: linear-gradient(180deg, rgba(16, 10, 14, 0.96) 0%, rgba(9, 6, 8, 0.99) 100%);
+  box-shadow: inset -1px 0 0 var(--border-subtle);
+}
+
+/* Signature Ember Gradient Buttons & Accents (from logo circle) */
+.btn-ember {
+  background: var(--gradient-ember);
+  color: #ffffff;
+  box-shadow: 0 10px 26px -6px rgba(255, 24, 68, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.28);
+}
+
+.btn-ember:hover:not(:disabled) {
+  background: var(--gradient-ember-hover);
+  box-shadow: 0 14px 32px -6px rgba(255, 58, 42, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+/* Logo-inspired dark pill badge with luminous white rim (mirrors "[Win] PC" pill in logo) */
+.logo-pill {
+  background: rgba(14, 8, 12, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+/* Neon Ember Ring around the circular logo emblem */
+.logo-ring {
+  padding: 2px;
+  background: var(--gradient-ember);
+  box-shadow: 0 0 22px -2px rgba(255, 42, 66, 0.6), 0 0 10px -2px rgba(255, 132, 0, 0.45);
+}
+
+/* Glassmorphism cinema panels */
+.cinema-glass {
+  background: rgba(20, 14, 18, 0.78);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 14px 34px -12px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.cinema-panel {
+  background: linear-gradient(180deg, rgba(25, 17, 22, 0.92) 0%, rgba(17, 11, 15, 0.96) 100%);
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 16px 36px -14px rgba(0, 0, 0, 0.76), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* Tactile Poster Card elevation with warm ember rim */
+.cinema-card {
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.28s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.cinema-card:hover {
+  transform: translateY(-6px);
+}
+
+/* 3D Glossy Play Squircle (inspired by bottom-left Play button in logo.png) */
+.play-squircle {
+  background: var(--gradient-ember);
+  border: 1px solid rgba(255, 255, 255, 0.32);
+  box-shadow:
+    0 12px 28px -4px rgba(255, 24, 68, 0.72),
+    0 0 18px rgba(255, 122, 0, 0.42),
+    inset 0 1px 1px rgba(255, 255, 255, 0.45);
+}
+
+/* Hide scrollbars cleanly for horizontal filmstrip sliders */
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
 }
 
 /* Drag regions for Electron TitleBar */
@@ -66,35 +205,17 @@
   -webkit-app-region: no-drag;
 }
 
-/* Glassmorphism panels */
-.glass-panel {
-  background: rgba(18, 19, 26, 0.75);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.glass-card {
-  background: rgba(18, 20, 28, 0.6);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.glass-card:hover {
-  border-color: rgba(229, 9, 20, 0.35);
-}
-
-/* Neon text gradient */
-.text-gradient-brand {
-  background: linear-gradient(135deg, #ffffff 0%, #ffffff 60%, rgba(255, 255, 255, 0.7) 100%);
+/* Text gradient helper */
+.text-ember-gradient {
+  background: var(--gradient-ember);
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 /* Subtitles position and readability styling */
 video::-webkit-media-text-track-container {
-  bottom: 85px !important;
+  bottom: 88px !important;
   transform: translateY(-16px) !important;
 }
 
@@ -103,15 +224,15 @@ video::-webkit-media-text-track-display {
 }
 
 video::cue {
-  background-color: rgba(0, 0, 0, 0.8) !important;
+  background-color: rgba(7, 5, 7, 0.84) !important;
   color: #ffffff !important;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif !important;
+  font-family: 'Manrope', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
   font-size: 1.25rem !important;
   font-weight: 600 !important;
-  line-height: 1.35 !important;
-  padding: 0.25rem 0.65rem !important;
-  border-radius: 6px !important;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9) !important;
+  line-height: 1.38 !important;
+  padding: 0.28rem 0.7rem !important;
+  border-radius: 8px !important;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95) !important;
 }
 
 @keyframes fadeInScale {
@@ -127,4 +248,30 @@ video::cue {
 
 .animate-fade-in {
   animation: fadeInScale 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Accessibility: Reduced motion & Windows High Contrast (Forced Colors Mode) */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media (forced-colors: active) {
+  .btn-ember,
+  .logo-pill,
+  .cinema-panel,
+  .cinema-glass {
+    border: 1px solid CanvasText;
+  }
+
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 3px solid Highlight;
+    outline-offset: 2px;
+  }
 }

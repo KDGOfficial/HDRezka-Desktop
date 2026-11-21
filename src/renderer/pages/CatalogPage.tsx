@@ -4,6 +4,7 @@ import { MediaItem, ContentType } from '../../shared/types';
 import { GENRES } from '../../shared/constants';
 import { ChevronLeft, ChevronRight, Film, Tv, Smile, Sparkles, Clapperboard } from 'lucide-react';
 import { useTranslation } from '../i18n';
+import appLogo from '../assets/logo.png';
 
 interface CatalogPageProps {
   initialType?: ContentType;
@@ -55,85 +56,102 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
     { id: 'shows', label: t.catalog.categories.shows, icon: Clapperboard },
   ];
 
+  const activeCategoryLabel = categories.find((c) => c.id === contentType)?.label || t.nav.catalog;
+
   return (
     <div className="w-full pb-16 text-left select-none animate-fadeIn">
-      {/* Title & Filters bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-white/5">
-        {/* Categories Tabs - No scrollbar/slider, fits cleanly with compact pills */}
-        <div className="flex items-center flex-wrap gap-1.5">
-          {categories.map((cat) => {
-            const Icon = cat.icon;
-            const isActive = contentType === cat.id;
-            return (
-              <button
-                key={cat.id}
-                onClick={() => {
-                  setContentType(cat.id);
-                  setPage(1);
-                }}
-                className={`flex items-center space-x-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex-shrink-0 ${
-                  isActive
-                    ? 'bg-gradient-to-r from-brand-red via-brand-red to-orange-600 text-white shadow-glow'
-                    : 'bg-white/5 text-zinc-400 hover:text-white hover:bg-white/10'
-                }`}
-              >
-                <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-zinc-400'}`} />
-                <span className="whitespace-nowrap">{cat.label}</span>
-              </button>
-            );
-          })}
+      {/* Header & Glass Filter Bar */}
+      <div className="flex flex-col gap-5 mb-8 pb-5 border-b border-white/[0.06]">
+        <div className="flex items-center gap-3">
+          <span
+            className="w-1.5 h-6 rounded-full shadow-glow-sm"
+            style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
+          />
+          <h1 className="font-display text-2xl md:text-3xl font-black text-white tracking-tight">
+            {activeCategoryLabel}
+          </h1>
         </div>
 
-        {/* Dropdowns */}
-        <div className="flex items-center space-x-2 flex-wrap gap-y-2 flex-shrink-0">
-          {/* Genre selector */}
-          <select
-            value={selectedGenre}
-            onChange={(e) => {
-              setSelectedGenre(e.target.value);
-              setPage(1);
-            }}
-            className="bg-[#12131a] border border-white/10 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-200 outline-none hover:border-white/20 focus:border-brand-red cursor-pointer transition-colors shadow-sm whitespace-nowrap"
-          >
-            {GENRES.map((g) => (
-              <option key={g.id} value={g.id} className="bg-[#12131a] text-white">
-                {translateGenre(g.id)}
-              </option>
-            ))}
-          </select>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          {/* Category Pills */}
+          <div className="flex items-center flex-wrap gap-2">
+            {categories.map((cat) => {
+              const Icon = cat.icon;
+              const isActive = contentType === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  aria-pressed={isActive}
+                  onClick={() => {
+                    setContentType(cat.id);
+                    setPage(1);
+                  }}
+                  className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap cursor-pointer ${
+                    isActive
+                      ? 'btn-ember text-white'
+                      : 'bg-white/[0.05] text-zinc-300 hover:text-white hover:bg-white/[0.1] border border-white/[0.08]'
+                  }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${isActive ? 'text-white' : 'text-brand-orange'}`} />
+                  <span>{cat.label}</span>
+                </button>
+              );
+            })}
+          </div>
 
-          {/* Sort selector */}
-          <select
-            value={selectedSort}
-            onChange={(e) => {
-              setSelectedSort(e.target.value as any);
-              setPage(1);
-            }}
-            className="bg-[#12131a] border border-white/10 rounded-xl px-3 py-2 text-xs font-semibold text-zinc-200 outline-none hover:border-white/20 focus:border-brand-red cursor-pointer transition-colors shadow-sm whitespace-nowrap"
-          >
-            <option value="last" className="bg-[#12131a] text-white">
-              {t.catalog.sortLast}
-            </option>
-            <option value="popular" className="bg-[#12131a] text-white">
-              {t.catalog.sortPopular}
-            </option>
-            <option value="watching" className="bg-[#12131a] text-white">
-              {t.catalog.sortWatching}
-            </option>
-          </select>
+          {/* Genre & Sort Dropdowns */}
+          <div className="flex items-center gap-2 flex-wrap flex-shrink-0">
+            <select
+              aria-label={t.details.genre}
+              value={selectedGenre}
+              onChange={(e) => {
+                setSelectedGenre(e.target.value);
+                setPage(1);
+              }}
+              className="bg-dark-surface border border-white/[0.1] rounded-full px-4 py-2 text-xs font-bold text-zinc-200 outline-none hover:border-brand-ember/50 focus:border-brand-ember cursor-pointer"
+            >
+              {GENRES.map((g) => (
+                <option key={g.id} value={g.id} className="bg-[#140E12] text-white">
+                  {translateGenre(g.id)}
+                </option>
+              ))}
+            </select>
+
+            <select
+              aria-label="Сортировка"
+              value={selectedSort}
+              onChange={(e) => {
+                setSelectedSort(e.target.value as any);
+                setPage(1);
+              }}
+              className="bg-dark-surface border border-white/[0.1] rounded-full px-4 py-2 text-xs font-bold text-zinc-200 outline-none hover:border-brand-ember/50 focus:border-brand-ember cursor-pointer"
+            >
+              <option value="last" className="bg-[#140E12] text-white">
+                {t.catalog.sortLast}
+              </option>
+              <option value="popular" className="bg-[#140E12] text-white">
+                {t.catalog.sortPopular}
+              </option>
+              <option value="watching" className="bg-[#140E12] text-white">
+                {t.catalog.sortWatching}
+              </option>
+            </select>
+          </div>
         </div>
       </div>
 
-      {/* Grid of Media */}
+      {/* Media Grid */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-32">
-          <div className="w-12 h-12 border-4 border-brand-red/20 border-t-brand-red rounded-full animate-spin mb-3" />
-          <span className="text-zinc-500 text-xs font-medium">{t.home.loadingCatalog}</span>
+        <div className="flex flex-col items-center justify-center py-28">
+          <div className="relative w-16 h-16 mb-4 flex items-center justify-center">
+            <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
+            <img src={appLogo} alt="" className="w-10 h-10 rounded-full object-cover shadow-glow" />
+          </div>
+          <span className="text-zinc-400 text-xs font-bold">{t.home.loadingCatalog}</span>
         </div>
       ) : items.length === 0 ? (
-        <div className="text-center py-28 text-zinc-500 text-sm">
-          {t.catalog.noItems}
-        </div>
+        <div className="text-center py-28 text-zinc-500 text-sm font-semibold">{t.catalog.noItems}</div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-5">
           {items.map((item, idx) => (
@@ -146,24 +164,26 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
 
       {/* Pagination */}
       {!loading && items.length > 0 && (
-        <div className="flex items-center justify-center space-x-3 mt-12 pt-6 border-t border-white/5">
+        <div className="flex items-center justify-center gap-3 mt-12 pt-6 border-t border-white/[0.06]">
           <button
+            type="button"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1}
-            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 border border-white/10 text-xs font-bold text-white transition-all disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] disabled:opacity-30 border border-white/[0.1] text-xs font-bold text-white disabled:cursor-not-allowed cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
             <span>{t.catalog.prev}</span>
           </button>
 
-          <span className="px-3.5 py-1.5 rounded-xl bg-[#12131a] border border-white/10 text-xs font-mono font-bold text-zinc-300">
+          <span className="px-4 py-2 rounded-full logo-pill text-xs font-mono font-bold text-white tabular-nums">
             {t.catalog.page} {page}
           </span>
 
           <button
+            type="button"
             onClick={() => setPage((p) => p + 1)}
             disabled={!hasMore}
-            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl bg-white/5 hover:bg-white/10 disabled:opacity-30 border border-white/10 text-xs font-bold text-white transition-all disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] disabled:opacity-30 border border-white/[0.1] text-xs font-bold text-white disabled:cursor-not-allowed cursor-pointer"
           >
             <span>{t.catalog.next}</span>
             <ChevronRight className="w-4 h-4" />
