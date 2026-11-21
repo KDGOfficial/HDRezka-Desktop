@@ -332,12 +332,13 @@ export function registerIpcHandlers(): void {
                   document.title.includes('Attention Required')
                 ))
               );
+              const isSuccessScreen = !!document.getElementById('hdrezka-btn-finish');
 
               const statusEl = document.getElementById('hdrezka-verify-status');
               const doneBtn = document.getElementById('hdrezka-verify-done');
               if (statusEl && doneBtn) {
-                if (hasRezkaContent) {
-                  statusEl.textContent = '✓ Проверка успешно пройдена! Сайт загружен. Нажмите «Готово» или окно закроется автоматически.';
+                if (hasRezkaContent || isSuccessScreen) {
+                  statusEl.textContent = '✓ Проверка успешно пройдена! Нажмите «Готово» или окно закроется автоматически.';
                   statusEl.style.color = '#34d399';
                   doneBtn.style.background = '#10b981';
                   doneBtn.style.boxShadow = '0 0 12px rgba(16,185,129,0.5)';
@@ -348,11 +349,11 @@ export function registerIpcHandlers(): void {
                 }
               }
 
-              return { isDoneClicked, hasRezkaContent, isChallengeActive };
+              return { isDoneClicked, hasRezkaContent, isChallengeActive, isSuccessScreen };
             })()
-          `).catch(() => ({ isDoneClicked: false, hasRezkaContent: false, isChallengeActive: false }));
+          `).catch(() => ({ isDoneClicked: false, hasRezkaContent: false, isChallengeActive: false, isSuccessScreen: false }));
 
-          // 1. User explicitly clicked "Я прошёл проверку"
+          // 1. User explicitly clicked "Я прошёл проверку" or "Завершить"
           if (result.isDoneClicked) {
             closeAndResolve();
             return;
@@ -364,8 +365,8 @@ export function registerIpcHandlers(): void {
             return;
           }
 
-          // 3. Real Rezka content is verified loaded and stable for 4 continuous checks (3.2 seconds)
-          if (result.hasRezkaContent) {
+          // 3. Real Rezka content or success confirmation screen is stable
+          if (result.hasRezkaContent || result.isSuccessScreen) {
             stableContentTicks++;
             if (stableContentTicks >= 4) {
               closeAndResolve();
@@ -376,6 +377,46 @@ export function registerIpcHandlers(): void {
           }
         } catch (_) {}
       };
+
+      // Handles HTTP 500 empty screen from upstream Express when Anubis passes
+      const renderSuccessScreen = async () => {
+        if (isClosed || win.isDestroyed()) return;
+        try {
+          await win.webContents.executeJavaScript(`
+            (() => {
+              if (document.getElementById('hdrezka-btn-finish')) return;
+              document.documentElement.innerHTML = \`
+                <head>
+                  <title>Проверка пройдена — HDRezka</title>
+                  <meta charset="utf-8">
+                </head>
+                <body style="margin:0;padding:0;background:#090a0f;color:#fff;font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;box-sizing:border-box;user-select:none;">
+                  <div style="width:72px;height:72px;border-radius:50%;background:rgba(16,185,129,0.15);border:2px solid #10b981;display:flex;align-items:center;justify-content:center;margin-bottom:20px;box-shadow:0 0 30px rgba(16,185,129,0.3);">
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  </div>
+                  <h2 style="font-size:22px;font-weight:900;margin:0 0 10px 0;color:#fff;letter-spacing:0.3px;">Проверка защиты успешно пройдена!</h2>
+                  <p style="font-size:14px;color:#9ca3af;max-width:460px;line-height:1.6;margin:0 0 28px 0;text-align:center;">
+                    Токен защиты получен и сохранён в сессии приложения. Вы можете нажать кнопку ниже, чтобы вернуться к просмотру.
+                  </p>
+                  <button id="hdrezka-btn-finish" style="background:linear-gradient(to right,#e50914,#ea580c);color:#fff;border:none;border-radius:14px;padding:14px 36px;font-size:14px;font-weight:bold;cursor:pointer;box-shadow:0 4px 20px rgba(229,9,20,0.5);transition:transform 0.15s ease;">
+                    ✓ Завершить и вернуться в приложение
+                  </button>
+                </body>
+              \`;
+              const btn = document.getElementById('hdrezka-btn-finish');
+              if (btn) btn.onclick = () => { window.__hdrezka_verify_done = true; };
+            })()
+          `);
+        } catch (_) {}
+      };
+
+      win.webContents.on('did-navigate', async (e, url, statusCode) => {
+        if (statusCode === 500) {
+          await renderSuccessScreen();
+          await injectVerifyBar();
+          setTimeout(checkState, 300);
+        }
+      });
 
       const timer = setInterval(checkState, 800);
       win.webContents.on('did-finish-load', () => {
