@@ -83,7 +83,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const statuses = await window.api.checkMirrors();
         const s = await window.api.getSettings();
         const allowed = new Set(s.app?.mirrors || []);
-        const visibleStatuses = allowed.size > 0 ? statuses.filter((st) => allowed.has(st.url)) : statuses;
+        const visibleStatuses = allowed.size > 0 ? statuses.filter((st: MirrorStatus) => allowed.has(st.url)) : statuses;
         set({ settings: s, mirrorsStatus: visibleStatuses, isCheckingMirrors: false });
       } catch (err) {
         console.error('Failed to check mirrors:', err);

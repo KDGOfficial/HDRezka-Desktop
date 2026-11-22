@@ -287,7 +287,7 @@ export function pickBetterQualityStream(
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.48';
+  public version = '0.0.49';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -1671,7 +1671,7 @@ export class RezkaProvider implements IProvider {
               width: () => 800,
               height: () => 450,
             },
-            { get: (t, p) => (p in t ? t[p] : () => fakeEl) }
+            { get: (t: Record<string | symbol, any>, p) => (p in t ? t[p] : () => fakeEl) }
           );
           const fakeJq: any = (sel: any) => {
             if (typeof sel === 'function') {
@@ -2467,7 +2467,9 @@ export class RezkaProvider implements IProvider {
             if (g && g !== 'Фильмы') genres.push(g);
           });
         } else if (txt.includes('Режиссер:')) {
-          $(el).find('a').each((_, a) => directors.push($(a).text().trim()));
+          $(el).find('a').each((_, a) => {
+            directors.push($(a).text().trim());
+          });
         } else if (txt.includes('Актеры:')) {
           actors = txt.replace('Актеры:', '').split(',').map((s) => s.trim()).filter(Boolean);
         }
@@ -3927,7 +3929,7 @@ export class RezkaProvider implements IProvider {
 
     if (!isUnreleasedMovie) {
       // If primary translator fails, try known popular fallbacks
-      const cachedTranslators = (cachedItem?.translators || this.mediaCache.get(params.mediaId)?.translators);
+      const cachedTranslators = ((cachedItem as any)?.translators || (this.mediaCache.get(params.mediaId) as any)?.translators);
       if (cachedTranslators) {
         for (const t of cachedTranslators) {
           if (!translatorsToTry.includes(t.id)) translatorsToTry.push(t.id);

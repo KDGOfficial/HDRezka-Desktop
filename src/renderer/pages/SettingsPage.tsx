@@ -18,11 +18,21 @@ import {
   Sun,
   Moon,
   Monitor,
+  ChevronRight,
+  Play,
+  Code2,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
+import {
+  APP_VERSION,
+  TELEGRAM_CHANNEL_URL,
+  AUTHOR_YOUTUBE_URL,
+  AUTHOR_TELEGRAM_URL,
+  AUTHOR_GITHUB_URL,
+} from '../../shared/constants';
 import { useTranslation } from '../i18n';
 import appLogo from '../assets/logo.png';
+import authorPhoto from '../assets/author.jpg';
 
 export const SettingsPage: React.FC = () => {
   const {
@@ -119,6 +129,15 @@ export const SettingsPage: React.FC = () => {
     a.href = url;
     a.download = `hdrezka_backup_${Date.now()}.json`;
     a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const openExternal = (url: string) => {
+    if (window.api?.openExternalUrl) {
+      window.api.openExternalUrl(url);
+    } else {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -675,48 +694,138 @@ export const SettingsPage: React.FC = () => {
         </section>
 
         {/* Section: About */}
-        <section className="p-6 rounded-3xl cinema-panel flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
-            <div className="logo-ring rounded-full flex-shrink-0">
-              <img src={appLogo} alt="HDRezka Desktop" className="w-16 h-16 rounded-full object-cover block" />
+        <section className="p-6 rounded-3xl cinema-panel space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className="logo-ring rounded-full flex-shrink-0">
+                <img src={appLogo} alt="HDRezka Desktop" width={64} height={64} className="w-16 h-16 rounded-full object-cover block" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-display text-base font-black tracking-wider text-white">
+                    HD<span className="text-ember-gradient">REZKA</span> Desktop
+                  </span>
+                  <span className="logo-pill px-2.5 py-0.5 rounded-full text-white text-[10px] font-display font-black uppercase">
+                    PC · v{APP_VERSION}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-400 mt-1.5 max-w-md leading-relaxed">{t.settings.aboutDesc}</p>
+                <div className="text-[11px] text-zinc-500 mt-2 font-semibold">
+                  {t.settings.license} · {t.settings.developers} · Neon Ember Cinema UI
+                </div>
+              </div>
             </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-display text-base font-black tracking-wider text-white">
-                  HD<span className="text-ember-gradient">REZKA</span> Desktop
-                </span>
-                <span className="logo-pill px-2.5 py-0.5 rounded-full text-white text-[10px] font-display font-black uppercase">
-                  PC · v{APP_VERSION}
-                </span>
-              </div>
-              <p className="text-xs text-zinc-400 mt-1.5 max-w-md leading-relaxed">{t.settings.aboutDesc}</p>
-              <div className="text-[11px] text-zinc-500 mt-2 font-semibold">
-                {t.settings.license} · {t.settings.developers} · Neon Ember Cinema UI
-              </div>
+
+            <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => openExternal(TELEGRAM_CHANNEL_URL)}
+                className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-semibold text-zinc-400 hover:text-white active:scale-95 cursor-pointer"
+                title="Telegram @HDRezkaPC"
+              >
+                <Send className="w-3.5 h-3.5 opacity-75" />
+                <span>@HDRezkaPC</span>
+              </button>
+
+              <a
+                href="https://github.com/KDGOfficial/HDRezka-Desktop"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-white flex-shrink-0 active:scale-95"
+              >
+                <span>GitHub Repository</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5 flex-wrap flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => window.api?.openExternalUrl?.(TELEGRAM_CHANNEL_URL)}
-              className="flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-semibold text-zinc-400 hover:text-white active:scale-95 cursor-pointer"
-              title="Telegram @HDRezkaPC"
-            >
-              <Send className="w-3.5 h-3.5 opacity-75" />
-              <span>@HDRezkaPC</span>
-            </button>
+          {/* Unobtrusive collapsible "About the Author" disclosure */}
+          <details className="author-disclosure border-t border-white/[0.06] pt-4">
+            <summary className="flex items-center justify-between gap-3 cursor-pointer rounded-2xl px-3 py-2 -mx-3 hover:bg-white/[0.04]">
+              <span className="flex items-center gap-2.5 min-w-0">
+                <ChevronRight
+                  className="author-disclosure-chevron w-4 h-4 text-brand-orange flex-shrink-0"
+                  aria-hidden="true"
+                />
+                <span className="logo-ring rounded-full flex-shrink-0">
+                  <img
+                    src={authorPhoto}
+                    alt=""
+                    width={26}
+                    height={26}
+                    loading="lazy"
+                    decoding="async"
+                    className="w-[26px] h-[26px] rounded-full object-cover object-top block"
+                  />
+                </span>
+                <span className="font-display text-xs font-black text-white truncate">{t.settings.authorToggle}</span>
+                <span className="text-xs text-zinc-400 truncate">· KDG (@KDGOfficial)</span>
+              </span>
+              <span className="logo-pill px-2.5 py-0.5 rounded-full text-[10px] font-bold text-zinc-200 flex-shrink-0">
+                {t.settings.authorBadge}
+              </span>
+            </summary>
 
-            <a
-              href="https://github.com/KDGOfficial/HDRezka-Desktop"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-white flex-shrink-0 active:scale-95"
-            >
-              <span>GitHub Repository</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          </div>
+            <div className="mt-4 p-4 rounded-2xl bg-white/[0.03] border border-white/[0.07] flex flex-col sm:flex-row items-start gap-4">
+              <div className="logo-ring rounded-2xl flex-shrink-0">
+                <img
+                  src={authorPhoto}
+                  alt="KDG (KDGOfficial)"
+                  width={84}
+                  height={84}
+                  loading="lazy"
+                  decoding="async"
+                  className="w-[84px] h-[84px] rounded-[14px] object-cover object-top block"
+                />
+              </div>
+
+              <div className="min-w-0 flex-1 space-y-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="font-display text-sm font-black text-white">KDG</span>
+                  <span className="font-mono text-[11px] text-brand-orange">@KDGOfficial</span>
+                  <span className="px-2 py-0.5 rounded-full bg-brand-crimson/15 border border-brand-ember/35 text-[10px] font-bold text-amber-200">
+                    {t.settings.authorBadge}
+                  </span>
+                </div>
+
+                <p className="text-[11px] font-semibold text-zinc-300">{t.settings.authorRole}</p>
+                <p className="text-xs text-zinc-200 leading-relaxed">{t.settings.authorFirstApp}</p>
+                <p className="text-[11px] text-zinc-400 leading-relaxed">{t.settings.authorGithubInfo}</p>
+
+                <div className="flex items-center gap-2 flex-wrap pt-1.5">
+                  <button
+                    type="button"
+                    onClick={() => openExternal(AUTHOR_YOUTUBE_URL)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full btn-ember text-white text-xs font-extrabold active:scale-95 cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current" aria-hidden="true" />
+                    <span>{t.settings.authorYoutube}</span>
+                    <ExternalLink className="w-3 h-3 opacity-80" aria-hidden="true" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openExternal(AUTHOR_TELEGRAM_URL)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-white active:scale-95 cursor-pointer"
+                  >
+                    <Send className="w-3.5 h-3.5 text-brand-orange" aria-hidden="true" />
+                    <span>{t.settings.authorTelegram}</span>
+                    <ExternalLink className="w-3 h-3 opacity-60" aria-hidden="true" />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => openExternal(AUTHOR_GITHUB_URL)}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.08] text-xs font-semibold text-zinc-300 hover:text-white active:scale-95 cursor-pointer"
+                  >
+                    <Code2 className="w-3.5 h-3.5 text-zinc-400" aria-hidden="true" />
+                    <span>{t.settings.authorGithub}</span>
+                    <ExternalLink className="w-3 h-3 opacity-50" aria-hidden="true" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </details>
         </section>
       </div>
     </div>

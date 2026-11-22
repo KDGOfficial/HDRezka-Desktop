@@ -118,7 +118,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       const streams = stream.streams;
       const preferredOrder = ['1080p Ultra', '1080p', '2160p', '1440p', '720p'];
       const targetQuality =
-        preferredOrder.map((q) => streams.find((s) => s.quality === q)).find(Boolean) ||
+        preferredOrder.map((q) => streams.find((s: VideoQualityStream) => s.quality === q)).find(Boolean) ||
         [...streams].sort((a, b) => (parseInt(b.quality, 10) || 0) - (parseInt(a.quality, 10) || 0))[0];
 
       const useHls = !!targetQuality.hls;

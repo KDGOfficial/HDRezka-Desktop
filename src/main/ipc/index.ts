@@ -726,7 +726,7 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(
     IPC_CHANNELS.DOWNLOAD_UPDATE,
-    async (_, assetUrl?: string): Promise<{ success: boolean; filePath?: string; error?: string }> => {
+    async (_, assetUrl?: string): Promise<{ success: boolean; filePath?: string; openedInBrowser?: boolean; error?: string }> => {
       if (isDownloading) {
         return { success: false, error: 'Download already in progress' };
       }

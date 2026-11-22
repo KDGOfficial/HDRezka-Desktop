@@ -1074,7 +1074,7 @@ export const VideoPlayer: React.FC = () => {
           )}
 
           <div className="flex flex-wrap items-center justify-center gap-2.5">
-            {window.api?.verifyMirror &&
+            {typeof window.api?.verifyMirror === 'function' &&
               (() => {
                 const needsVerifyHighlight = Boolean(
                   error &&

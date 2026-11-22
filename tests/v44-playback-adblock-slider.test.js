@@ -18,7 +18,14 @@ function loadTsModule(relPath, external = []) {
   return m.exports;
 }
 
-const { isAdUrl, isCrossOriginPopupAd, APP_VERSION } = loadTsModule('../src/shared/constants/index.ts');
+const {
+  isAdUrl,
+  isCrossOriginPopupAd,
+  APP_VERSION,
+  AUTHOR_YOUTUBE_URL,
+  AUTHOR_TELEGRAM_URL,
+  AUTHOR_GITHUB_URL,
+} = loadTsModule('../src/shared/constants/index.ts');
 const {
   RezkaProvider,
   getQualityScore,
@@ -29,10 +36,18 @@ const {
   pickBetterQualityStream,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('v0.0.48 version synchronization across constants and provider', () => {
+test('v0.0.49 version synchronization and About Author configuration', () => {
   const provider = new RezkaProvider();
-  assert.equal(APP_VERSION, '0.0.48');
-  assert.equal(provider.version, '0.0.48');
+  assert.equal(APP_VERSION, '0.0.49');
+  assert.equal(provider.version, '0.0.49');
+  assert.equal(AUTHOR_YOUTUBE_URL, 'https://www.youtube.com/@KanalDobrogoGamera');
+  assert.equal(AUTHOR_TELEGRAM_URL, 'https://t.me/kdg_yt');
+  assert.equal(AUTHOR_GITHUB_URL, 'https://github.com/KDGOfficial');
+  assert.ok(fs.existsSync(path.resolve(__dirname, '../src/renderer/assets/author.jpg')));
+  const settingsSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/SettingsPage.tsx'), 'utf8');
+  assert.match(settingsSrc, /<details[^>]*author-disclosure/);
+  assert.match(settingsSrc, /AUTHOR_YOUTUBE_URL/);
+  assert.match(settingsSrc, /AUTHOR_TELEGRAM_URL/);
 });
 
 test('parseHlsMasterVariants handles cinema 1920x800 1080p, picks highest bitrate per quality, and never invents fake 1080p', () => {

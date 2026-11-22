@@ -88,7 +88,6 @@ export function createMainWindow(): BrowserWindow {
     const isStreamOrApi =
       details.resourceType === 'media' ||
       details.resourceType === 'xhr' ||
-      details.resourceType === 'fetch' ||
       url.includes('voidboost') ||
       url.includes('femeretes.org') ||
       url.includes('vdbmate.org') ||

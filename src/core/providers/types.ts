@@ -18,7 +18,9 @@ export interface IProvider {
   setActiveMirror(mirror: string): void;
   getMirrors(): string[];
   setMirrors(mirrors: string[]): void;
-  checkMirrors(): Promise<MirrorStatus[]>;
+  checkMirrors(mirrorsToCheck?: string[]): Promise<MirrorStatus[]>;
+  pruneProtectedMirrors(mirrorsToCheck?: string[]): Promise<string>;
+  findOnlineMirrors(): Promise<{ added: string[]; all: string[] }>;
   selectBestMirror(): Promise<string>;
 
   // Catalog & Content
