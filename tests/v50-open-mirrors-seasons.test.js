@@ -27,6 +27,8 @@ const {
   RezkaProvider,
   mergeSeasons,
   parseCollapsEmbedHtml,
+  cleanTitleForSearch,
+  pickBestMirrorMatch,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
 test('OPEN_MIRROR_SEEDS and DEFAULT_MIRRORS include hdstudio.org and kinovod.pro as trusted open mirrors', () => {
@@ -319,6 +321,223 @@ test('checkMirrors and pruneProtectedMirrors accept hdstudio.org and kinovod.pro
     assert.ok(kept.includes('http://hdstudio.org'));
     assert.ok(!kept.includes('https://rezka.ag'));
     assert.ok(active === 'https://kinovod.pro' || active === 'http://hdstudio.org');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('parseCollapsEmbedHtml hides "delete" and empty audio slots without shifting HLS audioTrackIndex and prefers unblocked entries', () => {
+  const movieHtml = `
+    <script>
+      makePlayer({
+        hls: "https://cdn.interkh.com/1plus1/master.m3u8",
+        audio: {"names":["R5","Ozz","","delete","1+1","AAA Sound","Fr. Original"],"order":[0,1,6,2,3,4,5]},
+        cc: []
+      });
+    </script>
+  `;
+  const movie = parseCollapsEmbedHtml(movieHtml);
+  assert.ok(movie);
+  assert.ok(!movie.translators.some((t) => /^delete$/i.test(t.name) || !t.name), 'Must exclude delete & empty slots from UI');
+
+  const tr1plus1 = movie.getEpisodeData(undefined, undefined, '1+1');
+  assert.equal(tr1plus1.audioTrackIndex, 4, '1+1 must remain at raw HLS index 4 despite empty & delete slots before it');
+  assert.equal(tr1plus1.audioTrackMatched, true);
+
+  const trFr = movie.getEpisodeData(undefined, undefined, 'Fr. Original');
+  assert.equal(trFr.audioTrackIndex, 6, 'Fr. Original must remain at raw HLS index 6');
+  assert.equal(trFr.audioTrackMatched, true);
+
+  // Blocked vs unblocked duplicate season preference
+  const dupSeriesHtml = `
+    <script>
+      seasons: [
+        {"season":3,"blocked":true,"episodes":[{"episode":"1","hls":"https://cdn.interkh.com/blocked.m3u8","audio":{"names":["Amedia"]}}]},
+        {"season":3,"blocked":false,"episodes":[{"episode":"1","hls":"https://cdn.interkh.com/open.m3u8","audio":{"names":["HDRezka Studio"]}}]}
+      ]
+    </script>
+  `;
+  const series = parseCollapsEmbedHtml(dupSeriesHtml);
+  assert.equal(series.getEpisodeData(3, 1, 'HDRezka Studio').hls, 'https://cdn.interkh.com/open.m3u8');
+});
+
+test('cleanTitleForSearch and pickBestMirrorMatch strip season tags and reject wrong film/series or year mismatches', () => {
+  assert.equal(cleanTitleForSearch('Эйфория (1-3 сезон)'), 'Эйфория');
+  assert.equal(cleanTitleForSearch('Очень странные дела (1-5 сезон) / Stranger Things'), 'Очень странные дела');
+
+  const candidates = [
+    { id: '1', title: 'Эйфория', url: 'http://hdstudio.org/serial/ehjforija/23-1-0-333', poster: '', year: 2019, type: 'series' },
+    { id: '2', title: 'Эйфория', url: 'https://kinobase.org/film/203699-ejforiya', poster: '', year: 2018, type: 'films' },
+    { id: '3', title: 'Эйфория', url: 'https://kinobase.org/serial/318215-eyforiya-2', poster: '', year: 2012, type: 'series' },
+  ];
+
+  // Film 2018 must NOT match 2019 series on HDStudio-only candidate list
+  assert.equal(pickBestMirrorMatch([candidates[0]], { title: 'Эйфория', year: 2018, type: 'films' }), null);
+  // Kinogo "(1-3 сезон)" 2019 series must match the 2019 series, not 2018 film or 2012 series
+  const matched2019 = pickBestMirrorMatch(candidates, { title: 'Эйфория (1-3 сезон)', year: 2019, type: 'series' });
+  assert.equal(matched2019?.id, '1');
+});
+
+test('findAlternativeStream preserves chosen Collaps dubbing instead of overwriting with Kinobase generic 1080p track', async () => {
+  const provider = new RezkaProvider('https://kinobase.org', ['https://kinobase.org', 'http://hdstudio.org']);
+  const hdId = 'hdstudio-23-1-0-333';
+  const hdUrl = 'http://hdstudio.org/serial/ehjforija_1_2_3_season-4/23-1-0-333';
+  const kbUrl = 'https://kinobase.org/serial/245093-eyforiya';
+
+  provider['mediaUrlCache'].set(hdId, hdUrl);
+  provider['kpIdCache'].set(hdId, '1178445');
+  provider['mediaCache'].set(hdId, {
+    id: hdId,
+    title: 'Эйфория',
+    origTitle: 'Euphoria',
+    year: 2019,
+    type: 'series',
+    url: hdUrl,
+  });
+  provider['kinobasePlayerCache'].set(kbUrl, {
+    ts: Date.now(),
+    kpId: '1178445',
+    file: [
+      {
+        title: '3 сезон',
+        folder: [
+          { title: '1 серия', file: '[1080p]https://cdn.kinobase.org/s3e1-generic-ru.m3u8' },
+        ],
+      },
+    ],
+  });
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    if (s === 'https://apiplayers.insertunit.ws/embed/kp/1178445') {
+      return new Response(
+        `<script>seasons: [
+          {"season":3,"episodes":[{"episode":"1","hls":"https://cdn.interkh.com/s3e1.m3u8","audio":{"names":["Syncmer","HDRezka Studio","HBO Max (укр)","Eng.Original"]}}]}
+        ]</script>`,
+        { status: 200 }
+      );
+    }
+    if (s === 'https://cdn.interkh.com/s3e1.m3u8') {
+      return new Response(
+        [
+          '#EXTM3U',
+          '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="rus0",DEFAULT=YES,URI="a1.m3u8"',
+          '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="rus1",DEFAULT=NO,URI="a2.m3u8"',
+          '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="ukr2",DEFAULT=NO,URI="a3.m3u8"',
+          '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="audio0",NAME="eng3",DEFAULT=NO,URI="a4.m3u8"',
+          '#EXT-X-STREAM-INF:BANDWIDTH=1200000,RESOLUTION=1280x720,AUDIO="audio0"',
+          'v720.m3u8',
+        ].join('\n'),
+        { status: 200 }
+      );
+    }
+    if (s.includes('kinobase.org/search')) {
+      return new Response(
+        `<div class="item"><a href="/serial/245093-eyforiya" class="link"><img src="/p.jpg" /></a><div class="title">Эйфория</div><span class="year">2019</span></div>`,
+        { status: 200 }
+      );
+    }
+    return new Response('', { status: 404 });
+  };
+
+  try {
+    const ukrStream = await provider.getStream({
+      mediaId: hdId,
+      translatorId: 3003,
+      translatorName: 'HBO Max (укр)',
+      season: 3,
+      episode: 1,
+      title: 'Эйфория',
+      year: 2019,
+    });
+    assert.equal(ukrStream.sourceName, 'HDStudio / Collaps', 'Must NOT overwrite chosen Ukrainian dubbing with Kinobase generic track');
+    assert.equal(ukrStream.audioTrackIndex, 2);
+
+    const engStream = await provider.getStream({
+      mediaId: hdId,
+      translatorId: 3004,
+      translatorName: 'Eng.Original',
+      season: 3,
+      episode: 1,
+      title: 'Эйфория',
+      year: 2019,
+    });
+    assert.equal(engStream.sourceName, 'HDStudio / Collaps', 'Must NOT overwrite chosen Original dubbing with Kinobase generic track');
+    assert.equal(engStream.audioTrackIndex, 3);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('extractBalancerStream returns null when requested season/episode is missing instead of playing S1E1 and blocking Collaps', async () => {
+  const provider = new RezkaProvider('https://kinobase.org', ['https://kinobase.org', 'http://hdstudio.org']);
+  const kbUrl = 'https://kinobase.org/serial/245093-eyforiya';
+  provider['mediaUrlCache'].set('245093', kbUrl);
+  provider['mediaCache'].set('245093', {
+    id: '245093',
+    title: 'Эйфория',
+    year: 2019,
+    type: 'series',
+    url: kbUrl,
+  });
+  provider['kinobasePlayerCache'].set(kbUrl, {
+    ts: Date.now(),
+    kpId: '1178445',
+    balancerSrc: 'https://tazaromikaz.link/balancer-api/iframe?movie_id=2305',
+    file: [
+      { title: '1 сезон', folder: [{ title: '1 серия', file: '[1080p]https://cdn.kinobase.org/s1e1.m3u8' }] },
+      { title: '2 сезон', folder: [{ title: '1 серия', file: '[1080p]https://cdn.kinobase.org/s2e1.m3u8' }] },
+    ],
+  });
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    if (s.includes('balancer-api/iframe')) {
+      return new Response(
+        `<script>window.REQUEST_HEADERS = {'X-Token':'abc'}; window.ENV_BASE_URL = 'https://api.balancer.test';</script>`,
+        { status: 200 }
+      );
+    }
+    if (s.includes('api.balancer.test/catalog-api/episodes')) {
+      // Balancer ONLY has Seasons 1 & 2, NOT Season 3!
+      return new Response(
+        JSON.stringify([
+          { seasonNumber: 1, episodeNumber: 1, episodeVariants: [{ streamQuality: '1080p', filepath: 'https://cdn.bal.test/s1e1.m3u8', title: 'Amedia' }] },
+          { seasonNumber: 2, episodeNumber: 1, episodeVariants: [{ streamQuality: '1080p', filepath: 'https://cdn.bal.test/s2e1.m3u8', title: 'Amedia' }] },
+        ]),
+        { status: 200 }
+      );
+    }
+    if (s === 'https://apiplayers.insertunit.ws/embed/kp/1178445') {
+      return new Response(
+        `<script>seasons: [
+          {"season":3,"episodes":[{"episode":"1","hls":"https://cdn.interkh.com/s3e1.m3u8","audio":{"names":["HDRezka Studio"]}}]}
+        ]</script>`,
+        { status: 200 }
+      );
+    }
+    if (s === 'https://cdn.interkh.com/s3e1.m3u8') {
+      return new Response(
+        '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1500000,RESOLUTION=1280x720\nv720.m3u8',
+        { status: 200 }
+      );
+    }
+    return new Response('', { status: 404 });
+  };
+
+  try {
+    const s3 = await provider.getStream({
+      mediaId: '245093',
+      translatorId: 1,
+      season: 3,
+      episode: 1,
+      title: 'Эйфория',
+      year: 2019,
+    });
+    assert.equal(s3.sourceName, 'HDStudio / Collaps', 'Balancer lacking S3E1 must return null and fall through to Collaps S3E1');
+    assert.ok(s3.streams[0].hls.includes('cdn.interkh.com'), 'Must stream Collaps S3E1, never balancer S1E1');
   } finally {
     globalThis.fetch = origFetch;
   }

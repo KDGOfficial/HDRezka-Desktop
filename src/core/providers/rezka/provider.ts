@@ -358,6 +358,90 @@ function extractBalancedJson(src: string, openIdx: number, openChar: '[' | '{', 
   return null;
 }
 
+export function cleanTitleForSearch(raw?: string): string {
+  if (!raw) return '';
+  return raw
+    .split('/')[0]
+    .replace(/\s*\([^)]*(?:сезон|серия|сериал|season|episode|19\d{2}|20\d{2})[^)]*\)/gi, ' ')
+    .replace(/\s*\b\d+(?:\s*[-–]\s*\d+)?\s*(?:сезон|season)\b/gi, ' ')
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function pickBestMirrorMatch(
+  results: MediaItem[],
+  meta?: Partial<MediaItem>
+): MediaItem | null {
+  if (!Array.isArray(results) || results.length === 0) return null;
+  const queryNorm = cleanTitleForSearch(meta?.title || meta?.origTitle || '').toLowerCase();
+  const origNorm = cleanTitleForSearch(meta?.origTitle || '').toLowerCase();
+  const queryTokens = queryNorm.split(' ').filter((w) => w.length >= 2);
+  const targetYear = meta?.year && meta.year > 1900 ? meta.year : undefined;
+  const targetType = meta?.type;
+
+  const isTypeCompatible = (candType?: ContentType): boolean => {
+    if (!targetType || !candType) return true;
+    if (targetType === 'films') return candType === 'films' || candType === 'cartoons';
+    if (targetType === 'series') return candType === 'series' || candType === 'animation' || candType === 'shows';
+    return true;
+  };
+
+  let best: MediaItem | null = null;
+  let bestScore = -1;
+
+  for (const item of results) {
+    if (!item?.url) continue;
+    if (!isTypeCompatible(item.type)) continue;
+
+    // Reject clear year mismatches (>= 2 years apart when both years are known)
+    if (targetYear && item.year && Math.abs(item.year - targetYear) >= 2) {
+      continue;
+    }
+
+    const candNorm = cleanTitleForSearch(item.title).toLowerCase();
+    const candOrigNorm = cleanTitleForSearch(item.origTitle).toLowerCase();
+
+    let titleScore = 0;
+    if (queryNorm) {
+      if (candNorm === queryNorm || (origNorm && candOrigNorm === origNorm)) {
+        titleScore = 100;
+      } else if (
+        candNorm &&
+        (candNorm.startsWith(`${queryNorm} `) || queryNorm.startsWith(`${candNorm} `))
+      ) {
+        // Require year match if one title is a spin-off / subtitle of the other
+        if (targetYear && item.year && item.year !== targetYear) continue;
+        titleScore = 55;
+      } else if (queryTokens.length > 0 && candNorm) {
+        const candTokens = candNorm.split(' ').filter((w) => w.length >= 2);
+        const overlap = queryTokens.filter((w) => candTokens.includes(w)).length;
+        const ratio = overlap / Math.max(queryTokens.length, candTokens.length, 1);
+        if (overlap === 0 || ratio < 0.5) continue;
+        titleScore = Math.round(ratio * 70);
+      } else {
+        continue;
+      }
+    } else {
+      titleScore = 10;
+    }
+
+    let yearBonus = 0;
+    if (targetYear && item.year) {
+      if (item.year === targetYear) yearBonus = 40;
+      else if (Math.abs(item.year - targetYear) === 1) yearBonus = 15;
+    }
+
+    const score = titleScore + yearBonus;
+    if (score > bestScore) {
+      bestScore = score;
+      best = item;
+    }
+  }
+
+  return best;
+}
+
 export interface CollapsParsedData {
   isSeries: boolean;
   seasons?: Season[];
@@ -367,11 +451,13 @@ export interface CollapsParsedData {
     episode?: number,
     translatorName?: string,
     translatorId?: number
-  ) => { hls: string; subtitles: SubtitleTrack[]; audioTrackIndex?: number } | null;
+  ) => { hls: string; subtitles: SubtitleTrack[]; audioTrackIndex?: number; audioTrackMatched?: boolean } | null;
 }
 
 export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
   if (!html || typeof html !== 'string') return null;
+
+  const isPlaceholderAudioName = (name: string): boolean => !name || /^delete$/i.test(name);
 
   const parseSubtitles = (cc: any): SubtitleTrack[] => {
     if (!Array.isArray(cc)) return [];
@@ -387,21 +473,25 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
   };
 
   const resolveAudioIndex = (
-    audioNames: string[],
+    rawAudioNames: string[],
     translatorName?: string,
     unifiedTranslators?: Translator[],
     translatorId?: number
-  ): number | undefined => {
-    if (!Array.isArray(audioNames) || audioNames.length === 0) return undefined;
+  ): { index?: number; matched: boolean } => {
+    if (!Array.isArray(rawAudioNames) || rawAudioNames.length === 0) return { index: undefined, matched: false };
+    // Preserve raw 0-based HLS track index even when empty/"delete" slots exist in audio.names
+    const indexed = rawAudioNames
+      .map((name, idx) => ({ id: idx + 1, name }))
+      .filter((t) => !isPlaceholderAudioName(t.name));
+    if (indexed.length === 0) return { index: 0, matched: false };
     const targetName =
       translatorName ||
       (translatorId && unifiedTranslators
         ? unifiedTranslators.find((t) => t.id === translatorId)?.name
         : undefined);
-    if (!targetName) return 0;
-    const indexed = audioNames.map((name, idx) => ({ id: idx + 1, name }));
+    if (!targetName) return { index: indexed[0].id - 1, matched: false };
     const matched = matchTranslatorByName(indexed, targetName);
-    return matched ? matched.id - 1 : 0;
+    return matched ? { index: matched.id - 1, matched: true } : { index: indexed[0].id - 1, matched: false };
   };
 
   // 1. Series payload: seasons: [...]
@@ -414,7 +504,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
         const rawSeasons = JSON.parse(jsonSlice);
         if (Array.isArray(rawSeasons) && rawSeasons.length > 0) {
           const seasons: Season[] = [];
-          const episodeMap = new Map<string, { hls: string; audioNames: string[]; subtitles: SubtitleTrack[] }>();
+          const episodeMap = new Map<string, { hls: string; audioNames: string[]; subtitles: SubtitleTrack[]; blocked?: boolean }>();
           const seenAudio = new Set<string>();
           const translators: Translator[] = [];
 
@@ -430,10 +520,12 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
               const epNum = parseInt(String(ep?.episode ?? idx + 1), 10);
               if (!Number.isFinite(epNum) || epNum <= 0) continue;
               const hls = typeof ep?.hls === 'string' ? ep.hls.trim() : '';
+              // Keep raw array slots intact so audioTrackIndex matches HLS #EXT-X-MEDIA order 1:1
               const audioNames: string[] = Array.isArray(ep?.audio?.names)
-                ? ep.audio.names.map((n: any) => String(n || '').trim()).filter(Boolean)
+                ? ep.audio.names.map((n: any) => String(n ?? '').trim())
                 : [];
               for (const aName of audioNames) {
+                if (isPlaceholderAudioName(aName)) continue;
                 const key = aName.toLowerCase();
                 if (!seenAudio.has(key)) {
                   seenAudio.add(key);
@@ -446,11 +538,17 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
                 }
               }
               if (hls && /^https?:\/\//i.test(hls)) {
-                episodeMap.set(`${seasonNum}_${epNum}`, {
-                  hls,
-                  audioNames,
-                  subtitles: parseSubtitles(ep?.cc),
-                });
+                const epKey = `${seasonNum}_${epNum}`;
+                const epBlocked = Boolean(rawSeason?.blocked || ep?.blocked);
+                const existing = episodeMap.get(epKey);
+                if (!existing || (existing.blocked && !epBlocked)) {
+                  episodeMap.set(epKey, {
+                    hls,
+                    audioNames,
+                    subtitles: parseSubtitles(ep?.cc),
+                    blocked: epBlocked,
+                  });
+                }
               }
               if (!episodes.some((e) => e.episodeId === epNum)) {
                 episodes.push({
@@ -490,10 +588,12 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
                 const eNum = episode && episode > 0 ? episode : 1;
                 const epData = episodeMap.get(`${sNum}_${eNum}`);
                 if (!epData) return null;
+                const resolved = resolveAudioIndex(epData.audioNames, translatorName, finalTranslators, translatorId);
                 return {
                   hls: epData.hls,
                   subtitles: epData.subtitles,
-                  audioTrackIndex: resolveAudioIndex(epData.audioNames, translatorName, finalTranslators, translatorId),
+                  audioTrackIndex: resolved.index,
+                  audioTrackMatched: resolved.matched,
                 };
               },
             };
@@ -517,7 +617,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
       try {
         const parsedAudio = JSON.parse(audioJson);
         if (Array.isArray(parsedAudio?.names)) {
-          audioNames = parsedAudio.names.map((n: any) => String(n || '').trim()).filter(Boolean);
+          audioNames = parsedAudio.names.map((n: any) => String(n ?? '').trim());
         }
       } catch {}
     }
@@ -534,34 +634,39 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
     }
   }
 
-  const rawTranslators: Translator[] =
-    audioNames.length > 0
-      ? audioNames.map((name, idx) => ({
-          id: idx + 1,
-          name,
-          premium: false,
-          camrip: isCamRipText(name),
-        }))
-      : [{ id: 1, name: 'Дубляж / Оригинал', premium: false }];
-  const cleanMovieTranslators = rawTranslators.filter((t) => !t.camrip);
-  const finalTranslators = cleanMovieTranslators.length > 0 ? cleanMovieTranslators : rawTranslators;
+  const rawTranslators: Translator[] = audioNames
+    .map((name, idx) => ({
+      id: idx + 1,
+      name,
+      premium: false,
+      camrip: isCamRipText(name),
+    }))
+    .filter((t) => !isPlaceholderAudioName(t.name));
+  const nonEmptyTranslators =
+    rawTranslators.length > 0 ? rawTranslators : [{ id: 1, name: 'Дубляж / Оригинал', premium: false }];
+  const cleanMovieTranslators = nonEmptyTranslators.filter((t) => !t.camrip);
+  const finalTranslators = cleanMovieTranslators.length > 0 ? cleanMovieTranslators : nonEmptyTranslators;
 
   return {
     isSeries: false,
     seasons: undefined,
     translators: finalTranslators,
-    getEpisodeData: (_season?: number, _episode?: number, translatorName?: string, translatorId?: number) => ({
-      hls: movieHls,
-      subtitles,
-      audioTrackIndex: resolveAudioIndex(audioNames, translatorName, finalTranslators, translatorId),
-    }),
+    getEpisodeData: (_season?: number, _episode?: number, translatorName?: string, translatorId?: number) => {
+      const resolved = resolveAudioIndex(audioNames, translatorName, finalTranslators, translatorId);
+      return {
+        hls: movieHls,
+        subtitles,
+        audioTrackIndex: resolved.index,
+        audioTrackMatched: resolved.matched,
+      };
+    },
   };
 }
 
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.50';
+  public version = '0.0.51';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -1800,7 +1905,13 @@ export class RezkaProvider implements IProvider {
   ): {
     translators: Translator[];
     seasons?: Season[];
-    getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number, translatorName?: string) => VideoQualityStream[];
+    getEpisodeStreams: (
+      translatorId?: number,
+      seasonId?: number,
+      episodeId?: number,
+      translatorName?: string,
+      strictTranslatorMatch?: boolean
+    ) => VideoQualityStream[];
     subtitles: SubtitleTrack[];
   } {
     const subtitles = this.parseKinobaseSubtitles(rawSubtitle);
@@ -1822,12 +1933,19 @@ export class RezkaProvider implements IProvider {
         translators: movieParsed.translators,
         seasons: undefined,
         subtitles,
-        getEpisodeStreams: (translatorId?: number, _seasonId?: number, _episodeId?: number, translatorName?: string) => {
+        getEpisodeStreams: (
+          translatorId?: number,
+          _seasonId?: number,
+          _episodeId?: number,
+          translatorName?: string,
+          strictTranslatorMatch?: boolean
+        ) => {
           if (translatorName) {
             const byName = matchTranslatorByName(movieParsed.translators, translatorName);
             if (byName && movieParsed.streamsByTranslator.has(byName.id)) {
               return movieParsed.streamsByTranslator.get(byName.id)!;
             }
+            if (strictTranslatorMatch) return [];
           }
           if (translatorId && movieParsed.streamsByTranslator.has(translatorId)) {
             return movieParsed.streamsByTranslator.get(translatorId)!;
@@ -1902,7 +2020,13 @@ export class RezkaProvider implements IProvider {
       translators: unifiedTranslators,
       seasons: seasons.length > 0 ? seasons : undefined,
       subtitles,
-      getEpisodeStreams: (translatorId?: number, seasonId?: number, episodeId?: number, translatorName?: string) => {
+      getEpisodeStreams: (
+        translatorId?: number,
+        seasonId?: number,
+        episodeId?: number,
+        translatorName?: string,
+        strictTranslatorMatch?: boolean
+      ) => {
         const targetKey = `${seasonId || seasons[0]?.id || 1}_${episodeId || 1}`;
         // If caller requested a specific season & episode and this mirror doesn't have it, return [] so sibling mirrors/Collaps can serve it
         const epFile =
@@ -1917,6 +2041,7 @@ export class RezkaProvider implements IProvider {
           if (matchedTr && parsedEp.streamsByTranslator.has(matchedTr.id)) {
             return parsedEp.streamsByTranslator.get(matchedTr.id)!;
           }
+          if (strictTranslatorMatch) return [];
         }
         return this.parseKinobaseFileString(epFile, translatorId).defaultStreams;
       },
@@ -1950,7 +2075,7 @@ export class RezkaProvider implements IProvider {
 
     const trailerMatch = html.match(/MOVIE_TRAILER\s*=\s*["']([^"']+)["']/i);
     const trailerUrl = trailerMatch ? trailerMatch[1] : undefined;
-    const kpMatch = html.match(/kinopoisk\.ru\/film\/(\d+)/i);
+    const kpMatch = html.match(/kinopoisk\.ru\/(?:film|series)\/(\d+)/i);
     const kpId = kpMatch ? kpMatch[1] : undefined;
     const $ = cheerio.load(html);
     const balancerSrc = $('#tab-options a[href="#online2"]').attr('data-balancer-src') || undefined;
@@ -2137,7 +2262,8 @@ export class RezkaProvider implements IProvider {
     balancerSrc: string,
     episode?: number,
     season?: number,
-    translatorName?: string
+    translatorName?: string,
+    strictTranslatorMatch?: boolean
   ): Promise<StreamData | null> {
     try {
       const movieId = new URL(balancerSrc).searchParams.get('movie_id');
@@ -2169,6 +2295,7 @@ export class RezkaProvider implements IProvider {
       const eJson: any[] = await er.json();
       if (!Array.isArray(eJson) || eJson.length === 0) return null;
 
+      const hasSeasonNumbers = eJson.some((item) => Number(item?.seasonNumber ?? item?.season) > 0);
       let targetEp =
         season && episode
           ? eJson.find(
@@ -2178,6 +2305,8 @@ export class RezkaProvider implements IProvider {
             )
           : undefined;
       if (!targetEp) {
+        // Never silently fall back to S1E1 when a specific season/episode is absent from this balancer
+        if (season && episode && hasSeasonNumbers) return null;
         const epIdx = episode && episode > 0 && eJson[episode - 1] ? episode - 1 : 0;
         targetEp = eJson[epIdx];
       }
@@ -2188,7 +2317,17 @@ export class RezkaProvider implements IProvider {
           !isCamRipText(String(v.streamQuality || '')) &&
           !isCamRipText(String(v.title || ''))
       );
-      const pool = nonCamVariants.length > 0 ? nonCamVariants : variants.filter((v) => v?.filepath);
+      let pool = nonCamVariants.length > 0 ? nonCamVariants : variants.filter((v) => v?.filepath);
+      if (strictTranslatorMatch && translatorName) {
+        const indexedVariants = pool.map((v, idx) => ({ id: idx + 1, name: String(v?.title || '') }));
+        const matched = matchTranslatorByName(indexedVariants, translatorName);
+        if (!matched) return null;
+        pool = pool.filter((_, idx) => {
+          const m = matchTranslatorByName([{ id: 1, name: String(pool[idx]?.title || '') }], translatorName);
+          return Boolean(m);
+        });
+        if (pool.length === 0) return null;
+      }
       const qRank = (q?: string) => {
         const up = String(q || '').toUpperCase();
         if (up.includes('2160') || up.includes('4K') || up.includes('UHD')) return 5;
@@ -2255,22 +2394,18 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    const rawTitle = meta?.title || meta?.origTitle || '';
-    const query = rawTitle.split('/')[0].replace(/[^\p{L}\p{N}\s]/gu, ' ').trim();
+    const query = cleanTitleForSearch(meta?.title || meta?.origTitle || '');
     if (!query) return null;
 
     const primaryOrigin = defaultOrigin;
     const backupOrigin = primaryOrigin.includes('kinovod.pro') ? 'https://kinobase.org' : 'https://kinovod.pro';
     let results = await this.searchKinobase(query, primaryOrigin);
-    if (results.length === 0) {
+    let matched = pickBestMirrorMatch(results, meta);
+    if (!matched) {
       results = await this.searchKinobase(query, backupOrigin);
+      matched = pickBestMirrorMatch(results, meta);
     }
-    if (results.length === 0) return null;
-    if (meta?.year) {
-      const exactYear = results.find((r) => r.year === meta.year);
-      if (exactYear) return exactYear.url;
-    }
-    return results[0].url;
+    return matched ? matched.url : null;
   }
 
   private async getKinobaseDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails | null> {
@@ -2348,7 +2483,7 @@ export class RezkaProvider implements IProvider {
       // Enrich seasons, voiceovers & viewer comments from Kinogo + Collaps/HDStudio + Kinopoisk + critics in parallel
       const [kinogoEnrichRes, collapsEnrichRes, criticReviewsRes, kpReviewsRes] = await Promise.allSettled([
         (async () => {
-          const gUrl = await this.resolveKinogoUrl('', { title, origTitle, year });
+          const gUrl = await this.resolveKinogoUrl('', { title, origTitle, year, type });
           if (!gUrl) return null;
           const gHtml = await this.fetchKinogoPage(gUrl, 3000);
           if (!gHtml) return null;
@@ -2358,7 +2493,7 @@ export class RezkaProvider implements IProvider {
           ]);
           return { translators: tree?.translators || [], seasons: tree?.seasons, comments };
         })(),
-        isSeriesLike && playerData?.kpId
+        (isSeriesLike || !playerData?.file) && playerData?.kpId
           ? this.fetchCollapsPlayerData(playerData.kpId)
           : Promise.resolve(null),
         this.fetchCriticReviews(title, year, { ratingRezka, ratingImdb, ratingKp, genres, directors }),
@@ -2476,7 +2611,13 @@ export class RezkaProvider implements IProvider {
 
   private async getCollapsStream(
     kpIdOrEmbedUrl: string,
-    params: { season?: number; episode?: number; translatorName?: string; translatorId?: number }
+    params: {
+      season?: number;
+      episode?: number;
+      translatorName?: string;
+      translatorId?: number;
+      strictTranslatorMatch?: boolean;
+    }
   ): Promise<StreamData | null> {
     try {
       const parsed = await this.fetchCollapsPlayerData(kpIdOrEmbedUrl);
@@ -2487,6 +2628,9 @@ export class RezkaProvider implements IProvider {
           : params.translatorId;
       const epData = parsed.getEpisodeData(params.season, params.episode, params.translatorName, normTrId);
       if (!epData?.hls) return null;
+      if (params.strictTranslatorMatch && params.translatorName && !epData.audioTrackMatched) {
+        return null;
+      }
 
       const streams = await this.fetchHlsMasterStreams(epData.hls, {
         'User-Agent': BROWSER_USER_AGENT,
@@ -2647,12 +2791,11 @@ export class RezkaProvider implements IProvider {
         return c.startsWith('http') ? c : `http://hdstudio.org${c.startsWith('/') ? '' : '/'}${c}`;
       }
     }
-    const rawTitle = meta?.title || meta?.origTitle || '';
-    const query = rawTitle.split('/')[0].replace(/[^\p{L}\p{N}\s]/gu, ' ').trim();
+    const query = cleanTitleForSearch(meta?.title || meta?.origTitle || '');
     if (!query) return null;
     const results = await this.searchHdStudio(query);
-    if (results.length === 0) return null;
-    return results[0].url;
+    const matched = pickBestMirrorMatch(results, meta);
+    return matched ? matched.url : null;
   }
 
   private async getHdStudioDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails | null> {
@@ -2746,10 +2889,11 @@ export class RezkaProvider implements IProvider {
         this.kpIdCache.set(filmUrl, kpId);
       }
 
+      const inferredType: ContentType = filmUrl.includes('/serial/') ? 'series' : meta?.type || 'films';
       const [collapsRes, kinogoEnrichRes, criticReviewsRes, kpReviewsRes] = await Promise.allSettled([
         embedUrl || kpId ? this.fetchCollapsPlayerData(embedUrl || kpId!) : Promise.resolve(null),
         (async () => {
-          const gUrl = await this.resolveKinogoUrl('', { title, origTitle, year });
+          const gUrl = await this.resolveKinogoUrl('', { title, origTitle, year, type: inferredType });
           if (!gUrl) return null;
           const gHtml = await this.fetchKinogoPage(gUrl, 3000);
           if (!gHtml) return null;
@@ -3026,17 +3170,12 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    const rawTitle = meta?.title || meta?.origTitle || '';
-    const query = rawTitle.split('/')[0].replace(/[^\p{L}\p{N}\s]/gu, ' ').trim();
+    const query = cleanTitleForSearch(meta?.title || meta?.origTitle || '');
     if (!query) return null;
 
     const results = await this.searchKinogo(query);
-    if (results.length === 0) return null;
-    if (meta?.year) {
-      const exactYear = results.find((r) => r.year === meta.year);
-      if (exactYear) return exactYear.url;
-    }
-    return results[0].url;
+    const matched = pickBestMirrorMatch(results, meta);
+    return matched ? matched.url : null;
   }
 
   private async extractKinogoPlayerTree(filmUrl: string, preloadedHtml?: string) {
@@ -3206,11 +3345,20 @@ export class RezkaProvider implements IProvider {
       const ratingKp = kpMatch ? parseFloat(kpMatch[1]) : undefined;
       const description = $('.fullStory p').first().text().trim() || $('.excerpt').first().text().trim() || '';
 
+      const inferredKinogoType: ContentType =
+        genres.some((g) => /сериал/i.test(g)) || /\bсезон\b/i.test(title)
+          ? 'series'
+          : genres.some((g) => /аниме/i.test(g))
+            ? 'animation'
+            : genres.some((g) => /мультфильм/i.test(g))
+              ? 'cartoons'
+              : meta?.type || 'films';
+
       const [treeRes, criticReviewsRes, kbEnrichRes, kpReviewsRes] = await Promise.allSettled([
         this.extractKinogoPlayerTree(filmUrl, html),
         this.fetchCriticReviews(title, year, { ratingRezka: ratingKp || meta?.rating, ratingKp, genres, directors }),
         (async () => {
-          const kbUrl = await this.resolveKinobaseUrl('', { title, year });
+          const kbUrl = await this.resolveKinobaseUrl('', { title, year, type: inferredKinogoType });
           if (!kbUrl) return { translators: [] as Translator[], seasons: undefined as Season[] | undefined, kpId: undefined as string | undefined };
           const pd = await this.extractKinobasePlayerData(kbUrl);
           if (!pd) return { translators: [] as Translator[], seasons: undefined as Season[] | undefined, kpId: undefined as string | undefined };
@@ -3239,10 +3387,15 @@ export class RezkaProvider implements IProvider {
             ? 'cartoons'
             : meta?.type || 'films';
 
-      const pageKpId =
+      let pageKpId =
         kbEnrich?.kpId ||
         html.match(/kinopoisk\.ru\/(?:film|series)\/(\d+)/i)?.[1] ||
         html.match(/\/embed\/kp\/(\d+)/i)?.[1];
+      if (isSeries && !pageKpId) {
+        pageKpId =
+          (await this.resolveKinopoiskId(cleanTitleForSearch(title) || title, year, meta?.origTitle).catch(() => null)) ||
+          undefined;
+      }
       if (pageKpId) {
         this.kpIdCache.set(id, pageKpId);
         this.kpIdCache.set(filmUrl, pageKpId);
@@ -3294,7 +3447,13 @@ export class RezkaProvider implements IProvider {
 
   private async getKinogoStream(
     filmUrl: string,
-    params: { translatorId?: number; translatorName?: string; season?: number; episode?: number }
+    params: {
+      translatorId?: number;
+      translatorName?: string;
+      season?: number;
+      episode?: number;
+      strictTranslatorMatch?: boolean;
+    }
   ): Promise<StreamData | null> {
     try {
       const tree = await this.extractKinogoPlayerTree(filmUrl);
@@ -3303,11 +3462,16 @@ export class RezkaProvider implements IProvider {
       const sId = params.season || tree.seasons?.[0]?.id || 1;
       const eId = params.episode || tree.seasons?.[0]?.episodes?.[0]?.id || 1;
       const matchedByName = matchTranslatorByName(tree.translators, params.translatorName);
+      if (params.strictTranslatorMatch && params.translatorName && !matchedByName) {
+        return null;
+      }
       const trId = matchedByName?.id || params.translatorId || tree.translators[0]?.id || 1;
 
       const isExplicitSeriesRequest = Boolean(tree.seasons?.length && params.season && params.episode);
       const targetData = isExplicitSeriesRequest
-        ? tree.itemDataMap.get(`${trId}:${sId}:${eId}`) || tree.itemDataMap.get(`${sId}:${eId}`)
+        ? params.strictTranslatorMatch && matchedByName
+          ? tree.itemDataMap.get(`${trId}:${sId}:${eId}`)
+          : tree.itemDataMap.get(`${trId}:${sId}:${eId}`) || tree.itemDataMap.get(`${sId}:${eId}`)
         : tree.itemDataMap.get(`${trId}:${sId}:${eId}`) ||
           tree.itemDataMap.get(`${sId}:${eId}`) ||
           tree.itemDataMap.get(`tr:${trId}`) ||
@@ -4623,6 +4787,7 @@ export class RezkaProvider implements IProvider {
       title: params.title || cachedItem?.title,
       origTitle: params.origTitle || cachedItem?.origTitle,
       year: params.year || cachedItem?.year,
+      type: params.season ? ('series' as ContentType) : cachedItem?.type,
     };
 
     const forceKinogoByOffset = params.translatorId !== undefined && params.translatorId >= 1000 && params.translatorId < 2000;
@@ -4636,7 +4801,12 @@ export class RezkaProvider implements IProvider {
           ? params.translatorId! - 1000
           : params.translatorId;
 
+    // A specific dubbing name must never be silently overridden by another mirror's generic default track during quality upgrade
+    const genericTrRe = /^(?:дубляж|оригинал\s*\/\s*дубляж|дубляж\s*\/\s*оригинал|оригинал\s*\/\s*по\s+умолчанию|по\s+умолчанию)$/i;
+    const hasSpecificTranslator = Boolean(params.translatorName && !genericTrRe.test(params.translatorName.trim()));
+
     const state: { best: StreamData | null } = { best: null };
+    const needStrictUpgrade = () => Boolean(state.best && hasSpecificTranslator);
     const considerStream = (candidate: StreamData | null) => {
       if (!candidate || !candidate.streams || candidate.streams.length === 0) return false;
       state.best = pickBetterQualityStream(state.best, [candidate]);
@@ -4688,6 +4858,7 @@ export class RezkaProvider implements IProvider {
           ...params,
           translatorId: normalizedTrId,
           translatorName: params.translatorName,
+          strictTranslatorMatch: needStrictUpgrade(),
         });
         if (considerStream(gStream)) return state.best;
       }
@@ -4712,7 +4883,8 @@ export class RezkaProvider implements IProvider {
         forceKinobaseByOffset ? normalizedTrId : params.translatorId,
         params.season,
         params.episode,
-        params.translatorName
+        params.translatorName,
+        needStrictUpgrade()
       );
       if (streams.length > 0) {
         const kinobaseStream: StreamData = {
@@ -4728,7 +4900,13 @@ export class RezkaProvider implements IProvider {
 
     // If current mirror only has <= 720p (or no stream), check balancer & sibling mirrors for 1080p+
     if (pd?.balancerSrc) {
-      const bStream = await this.extractBalancerStream(pd.balancerSrc, params.episode, params.season, params.translatorName);
+      const bStream = await this.extractBalancerStream(
+        pd.balancerSrc,
+        params.episode,
+        params.season,
+        params.translatorName,
+        needStrictUpgrade()
+      );
       if (bStream && considerStream({ ...bStream, trailerUrl: pd.trailerUrl })) {
         return state.best;
       }
@@ -4747,6 +4925,7 @@ export class RezkaProvider implements IProvider {
           ...params,
           translatorId: normalizedTrId,
           translatorName: params.translatorName,
+          strictTranslatorMatch: needStrictUpgrade(),
         });
         if (considerStream(gStream)) return state.best;
       }
@@ -4769,7 +4948,7 @@ export class RezkaProvider implements IProvider {
         if (!knownKpId) {
           knownKpId =
             (await this.resolveKinopoiskId(
-              metaForResolve.title || '',
+              cleanTitleForSearch(metaForResolve.title) || metaForResolve.title || '',
               metaForResolve.year,
               metaForResolve.origTitle
             )) || undefined;
@@ -4783,6 +4962,7 @@ export class RezkaProvider implements IProvider {
           episode: params.episode,
           translatorName: params.translatorName,
           translatorId: normalizedTrId,
+          strictTranslatorMatch: needStrictUpgrade(),
         });
         if (cStream) {
           considerStream({ ...cStream, trailerUrl: pd?.trailerUrl });

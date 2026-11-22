@@ -172,10 +172,28 @@ export const VideoPlayer: React.FC = () => {
   const lastUiSyncRef = useRef(0);
   const showControlsRef = useRef(showControls);
   const currentQualityRef = useRef(currentQuality);
+  const audioTrackIndexRef = useRef<number | undefined>(streamData?.audioTrackIndex);
   const announcedStreamRef = useRef<string | null>(null);
 
   showControlsRef.current = showControls;
   currentQualityRef.current = currentQuality;
+  audioTrackIndexRef.current = streamData?.audioTrackIndex;
+
+  // Apply multi-audio track index immediately if it changes on an active HLS session
+  useEffect(() => {
+    const hls = hlsRef.current;
+    const idx = streamData?.audioTrackIndex;
+    if (
+      hls &&
+      typeof idx === 'number' &&
+      hls.audioTracks &&
+      idx >= 0 &&
+      idx < hls.audioTracks.length &&
+      hls.audioTrack !== idx
+    ) {
+      hls.audioTrack = idx;
+    }
+  }, [streamData?.audioTrackIndex]);
 
   useEffect(() => {
     setEpisodeMenuSeasonId(seasonId);
@@ -496,13 +514,14 @@ export const VideoPlayer: React.FC = () => {
         }
 
         // Select requested multi-audio HLS track (e.g. Collaps / HDStudio / InsertUnit dubbings)
+        const targetAudioIdx = audioTrackIndexRef.current;
         if (
-          typeof streamData?.audioTrackIndex === 'number' &&
+          typeof targetAudioIdx === 'number' &&
           hls.audioTracks &&
-          streamData.audioTrackIndex >= 0 &&
-          streamData.audioTrackIndex < hls.audioTracks.length
+          targetAudioIdx >= 0 &&
+          targetAudioIdx < hls.audioTracks.length
         ) {
-          hls.audioTrack = streamData.audioTrackIndex;
+          hls.audioTrack = targetAudioIdx;
         }
 
         // Start loading explicitly from resumeStartPos (0:00 on fresh playback, current time on CDN failover)
@@ -512,14 +531,15 @@ export const VideoPlayer: React.FC = () => {
 
       hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
         if (cleanedUp) return;
+        const targetAudioIdx = audioTrackIndexRef.current;
         if (
-          typeof streamData?.audioTrackIndex === 'number' &&
+          typeof targetAudioIdx === 'number' &&
           hls.audioTracks &&
-          streamData.audioTrackIndex >= 0 &&
-          streamData.audioTrackIndex < hls.audioTracks.length &&
-          hls.audioTrack !== streamData.audioTrackIndex
+          targetAudioIdx >= 0 &&
+          targetAudioIdx < hls.audioTracks.length &&
+          hls.audioTrack !== targetAudioIdx
         ) {
-          hls.audioTrack = streamData.audioTrackIndex;
+          hls.audioTrack = targetAudioIdx;
         }
       });
 
