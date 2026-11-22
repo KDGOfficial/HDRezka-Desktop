@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Globe, Layers, Search, PlayCircle, Sparkles, Check, X, ExternalLink, Send } from 'lucide-react';
+import { Clock, Maximize2, Pin, Keyboard, Sparkles, Check, X, ExternalLink, Send } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
@@ -49,22 +49,22 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
 
   const features = [
     {
-      icon: <Globe className="w-4 h-4 text-brand-orange" />,
+      icon: <Clock className="w-4 h-4 text-brand-orange" />,
       title: t.whatsNew.f1_title,
       desc: t.whatsNew.f1_desc,
     },
     {
-      icon: <Layers className="w-4 h-4 text-brand-gold" />,
+      icon: <Maximize2 className="w-4 h-4 text-brand-gold" />,
       title: t.whatsNew.f2_title,
       desc: t.whatsNew.f2_desc,
     },
     {
-      icon: <Search className="w-4 h-4 text-brand-crimson" />,
+      icon: <Pin className="w-4 h-4 text-brand-crimson" />,
       title: t.whatsNew.f3_title,
       desc: t.whatsNew.f3_desc,
     },
     {
-      icon: <PlayCircle className="w-4 h-4 text-amber-300" />,
+      icon: <Keyboard className="w-4 h-4 text-amber-300" />,
       title: t.whatsNew.f4_title,
       desc: t.whatsNew.f4_desc,
     },

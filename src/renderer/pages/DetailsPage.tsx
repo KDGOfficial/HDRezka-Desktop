@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
   Heart,
@@ -23,29 +23,58 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { MediaSlider } from '../components/MediaSlider';
 import { HorizontalSlider } from '../components/HorizontalSlider';
 import { useTranslation } from '../i18n';
+import { formatDuration, getResumableTime } from '../../shared/utils';
 import appLogo from '../assets/logo.png';
 
 export const DetailsPage: React.FC = () => {
-  const { selectedMediaId, selectedMediaDetails, favorites, toggleFavorite, openCollectionModal, openBrowser } = useMediaStore();
+  const {
+    selectedMediaId,
+    selectedMediaDetails,
+    favorites,
+    watchHistory,
+    loadWatchHistory,
+    toggleFavorite,
+    openCollectionModal,
+    openBrowser,
+  } = useMediaStore();
   const { openPlayer } = usePlayerStore();
   const { t } = useTranslation();
 
   const [details, setDetails] = useState<MediaDetails | null>(selectedMediaDetails);
   const [loading, setLoading] = useState<boolean>(!selectedMediaDetails);
-  const [selectedTranslatorId, setSelectedTranslatorId] = useState<number>(selectedMediaDetails?.currentTranslatorId || 56);
+  const [selectedTranslatorId, setSelectedTranslatorId] = useState<number>(selectedMediaDetails?.currentTranslatorId ?? 56);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number>(1);
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [loadingEpisodes, setLoadingEpisodes] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [reviewFilter, setReviewFilter] = useState<'all' | 'kinopoisk' | 'critic' | 'user'>('all');
+  const syncedResumeSeasonRef = useRef<string | null>(null);
+
+  const matchesMediaHistory = (h: { mediaId: string; url?: string }, d: MediaDetails) =>
+    h.mediaId === d.id ||
+    (Boolean(d.url) && (h.url === d.url || h.mediaId === d.url)) ||
+    (Boolean(h.url) && h.url === d.id);
+
+  const lastWatch = details ? watchHistory.find((h) => matchesMediaHistory(h, details)) : undefined;
+  const resumableTime = getResumableTime(lastWatch?.currentTime, lastWatch?.duration);
+
+  useEffect(() => {
+    if (!details || seasons.length === 0 || !lastWatch?.season) return;
+    if (syncedResumeSeasonRef.current === details.id) return;
+    if (seasons.some((s) => s.id === lastWatch.season)) {
+      setSelectedSeasonId(lastWatch.season);
+      syncedResumeSeasonRef.current = details.id;
+    }
+  }, [details?.id, seasons, lastWatch?.season]);
 
   useEffect(() => {
     if (selectedMediaId) {
+      loadWatchHistory();
       if (selectedMediaDetails) {
         setDetails(selectedMediaDetails);
         setSeasons(selectedMediaDetails.seasons || []);
         if (selectedMediaDetails.translators && selectedMediaDetails.translators.length > 0) {
-          setSelectedTranslatorId(selectedMediaDetails.currentTranslatorId || selectedMediaDetails.translators[0].id);
+          setSelectedTranslatorId(selectedMediaDetails.currentTranslatorId ?? selectedMediaDetails.translators[0].id);
         }
       }
       loadMediaDetails(selectedMediaId);
@@ -61,11 +90,19 @@ export const DetailsPage: React.FC = () => {
       const data = await window.api.getDetails(idOrUrl, selectedMediaDetails || undefined);
       setDetails(data);
       if (data.translators && data.translators.length > 0) {
-        setSelectedTranslatorId(data.currentTranslatorId || data.translators[0].id);
+        setSelectedTranslatorId(data.currentTranslatorId ?? data.translators[0].id);
       }
       if (data.seasons && data.seasons.length > 0) {
         setSeasons(data.seasons);
-        setSelectedSeasonId(data.seasons[0].id);
+        const latestHistory = useMediaStore
+          .getState()
+          .watchHistory.find((h) => matchesMediaHistory(h, data));
+        const resumeSeason = latestHistory?.season;
+        if (resumeSeason && data.seasons.some((s: Season) => s.id === resumeSeason)) {
+          setSelectedSeasonId(resumeSeason);
+        } else {
+          setSelectedSeasonId(data.seasons[0].id);
+        }
       } else {
         setSeasons([]);
       }
@@ -96,16 +133,38 @@ export const DetailsPage: React.FC = () => {
 
   const handleWatch = (seasonId?: number, episodeId?: number) => {
     if (!details) return;
-    const isSeriesLike = details.type === 'series' || details.type === 'animation' || (seasons && seasons.length > 0);
+    const isSeriesLike =
+      details.type === 'series' ||
+      details.type === 'animation' ||
+      details.type === 'cartoons' ||
+      (seasons && seasons.length > 0);
     const effectiveTranslatorId =
       typeof selectedTranslatorId === 'number'
         ? selectedTranslatorId
         : details.translators?.[0]?.id ?? details.currentTranslatorId ?? 0;
+
+    const isExplicitEpisode = seasonId !== undefined || episodeId !== undefined;
+    const fallbackSeason = seasons.find((s) => s.id === selectedSeasonId) || seasons[0];
+    const targetSeason = isSeriesLike
+      ? seasonId || (!isExplicitEpisode && resumableTime > 0 && lastWatch?.season ? lastWatch.season : fallbackSeason?.id ?? selectedSeasonId)
+      : undefined;
+    const targetSeasonObj = seasons.find((s) => s.id === targetSeason) || fallbackSeason;
+    const targetEpisode = isSeriesLike
+      ? episodeId || (!isExplicitEpisode && resumableTime > 0 && lastWatch?.episode ? lastWatch.episode : targetSeasonObj?.episodes?.[0]?.episodeId ?? 1)
+      : undefined;
+    const matchingHistoryStart =
+      !isExplicitEpisode &&
+      resumableTime > 0 &&
+      (!isSeriesLike || (lastWatch?.season === targetSeason && lastWatch?.episode === targetEpisode))
+        ? resumableTime
+        : undefined;
+
     openPlayer({
       details,
       translatorId: effectiveTranslatorId,
-      seasonId: isSeriesLike ? seasonId || selectedSeasonId : undefined,
-      episodeId: isSeriesLike ? episodeId || 1 : undefined,
+      seasonId: targetSeason,
+      episodeId: targetEpisode,
+      startTime: matchingHistoryStart,
     });
   };
 
@@ -264,7 +323,13 @@ export const DetailsPage: React.FC = () => {
                 className="flex items-center gap-2.5 px-7 py-3.5 rounded-full btn-ember text-white font-display font-black text-xs uppercase tracking-wider active:scale-95 cursor-pointer"
               >
                 <Play className="w-4 h-4 fill-white" aria-hidden="true" />
-                <span>{t.details.watch}</span>
+                <span>
+                  {resumableTime > 0
+                    ? isSeriesLike && lastWatch?.season && lastWatch?.episode
+                      ? `${t.history.resume} · С${lastWatch.season} Э${lastWatch.episode} (${formatDuration(resumableTime)})`
+                      : `${t.history.resume} (${formatDuration(resumableTime)})`
+                    : t.details.watch}
+                </span>
               </button>
 
               <button
@@ -455,7 +520,7 @@ export const DetailsPage: React.FC = () => {
                   <button
                     key={ep.id}
                     type="button"
-                    onClick={() => handleWatch(selectedSeasonId, ep.episodeId)}
+                    onClick={() => handleWatch(currentSeason.id, ep.episodeId)}
                     className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-white/[0.04] hover:bg-gradient-to-br hover:from-brand-crimson hover:to-brand-orange border border-white/[0.07] hover:border-white/25 text-zinc-200 hover:text-white text-xs font-bold group active:scale-95 cursor-pointer"
                   >
                     <span className="text-[10px] text-zinc-400 group-hover:text-white/85 uppercase font-mono">
@@ -473,7 +538,7 @@ export const DetailsPage: React.FC = () => {
                   <button
                     key={ep.id}
                     type="button"
-                    onClick={() => handleWatch(selectedSeasonId, ep.episodeId)}
+                    onClick={() => handleWatch(currentSeason.id, ep.episodeId)}
                     className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-white/[0.04] hover:bg-gradient-to-br hover:from-brand-crimson hover:to-brand-orange border border-white/[0.07] hover:border-white/25 text-zinc-200 hover:text-white text-xs font-bold group active:scale-95 cursor-pointer"
                   >
                     <span className="text-[10px] text-zinc-400 group-hover:text-white/85 uppercase font-mono">

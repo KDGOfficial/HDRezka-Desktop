@@ -279,3 +279,161 @@ export function sortMediaItems<T extends { year?: number; rating?: number; views
     })
     .map((x) => x.item);
 }
+
+/** Returns resumable playback timestamp in seconds for unfinished items, or 0 if finished/unstarted. */
+export function getResumableTime(currentTime?: number, duration?: number): number {
+  if (typeof currentTime !== 'number' || typeof duration !== 'number') return 0;
+  if (!Number.isFinite(currentTime) || !Number.isFinite(duration)) return 0;
+  if (duration <= 0 || currentTime < 5) return 0;
+  const endThreshold = Math.min(30, duration * 0.08);
+  if (currentTime >= duration - endThreshold) return 0;
+  return currentTime;
+}
+
+/** Computes default centered window bounds adapted to display work area. */
+export function getDefaultWindowBounds(workArea: {
+  x?: number;
+  y?: number;
+  width: number;
+  height: number;
+}): { x: number; y: number; width: number; height: number } {
+  const waX = workArea.x || 0;
+  const waY = workArea.y || 0;
+  const width = Math.min(
+    workArea.width,
+    Math.max(Math.min(1024, workArea.width), Math.min(1680, Math.round(workArea.width * 0.84)))
+  );
+  const height = Math.min(
+    workArea.height,
+    Math.max(Math.min(680, workArea.height), Math.min(1050, Math.round(workArea.height * 0.86)))
+  );
+  return {
+    x: waX + Math.round((workArea.width - width) / 2),
+    y: waY + Math.round((workArea.height - height) / 2),
+    width,
+    height,
+  };
+}
+
+const MODIFIER_ONLY_CODES = new Set([
+  'ControlLeft',
+  'ControlRight',
+  'ShiftLeft',
+  'ShiftRight',
+  'AltLeft',
+  'AltRight',
+  'MetaLeft',
+  'MetaRight',
+]);
+
+const CODE_DISPLAY_LABELS: Record<string, string> = {
+  Space: 'Space',
+  ArrowLeft: '←',
+  ArrowRight: '→',
+  ArrowUp: '↑',
+  ArrowDown: '↓',
+  Enter: 'Enter',
+  NumpadEnter: 'NumEnter',
+  Tab: 'Tab',
+  Backspace: 'Backspace',
+  Delete: 'Del',
+  Home: 'Home',
+  End: 'End',
+  PageUp: 'PgUp',
+  PageDown: 'PgDn',
+  Minus: '-',
+  Equal: '=',
+  BracketLeft: '[',
+  BracketRight: ']',
+  Backslash: '\\',
+  Semicolon: ';',
+  Quote: "'",
+  Backquote: '`',
+  Comma: ',',
+  Period: '.',
+  Slash: '/',
+  NumpadAdd: 'Num+',
+  NumpadSubtract: 'Num-',
+  NumpadMultiply: 'Num*',
+  NumpadDivide: 'Num/',
+};
+
+export interface ShortcutEventLike {
+  code?: string;
+  ctrlKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+  metaKey?: boolean;
+}
+
+/** Converts a keyboard event into a layout-independent canonical shortcut string (e.g. "Ctrl+KeyK", "Space"). */
+export function buildShortcutFromEvent(input: ShortcutEventLike): string | null {
+  const code = (input.code || '').trim();
+  if (!code || code === 'Escape' || input.metaKey || MODIFIER_ONLY_CODES.has(code)) return null;
+  const parts: string[] = [];
+  if (input.ctrlKey) parts.push('Ctrl');
+  if (input.altKey) parts.push('Alt');
+  if (input.shiftKey) parts.push('Shift');
+  parts.push(code);
+  return parts.join('+');
+}
+
+export function parseShortcut(binding?: string): { ctrl: boolean; alt: boolean; shift: boolean; code: string } | null {
+  if (!binding || typeof binding !== 'string') return null;
+  const tokens = binding
+    .split('+')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  if (tokens.length === 0) return null;
+  let ctrl = false;
+  let alt = false;
+  let shift = false;
+  let code = '';
+  for (const tok of tokens) {
+    const low = tok.toLowerCase();
+    if (low === 'ctrl' || low === 'control') ctrl = true;
+    else if (low === 'alt') alt = true;
+    else if (low === 'shift') shift = true;
+    else code = tok;
+  }
+  if (!code) return null;
+  return { ctrl, alt, shift, code };
+}
+
+/** Matches a keyboard event against a canonical shortcut string. */
+export function matchesShortcut(input: ShortcutEventLike, binding?: string): boolean {
+  const parsed = parseShortcut(binding);
+  if (!parsed || !input.code) return false;
+  return (
+    input.code === parsed.code &&
+    Boolean(input.ctrlKey) === parsed.ctrl &&
+    Boolean(input.altKey) === parsed.alt &&
+    Boolean(input.shiftKey) === parsed.shift &&
+    !input.metaKey
+  );
+}
+
+/** Formats a canonical shortcut string for human-readable display (e.g. "Ctrl+KeyK" -> "Ctrl + K"). */
+export function formatShortcutLabel(binding?: string): string {
+  const parsed = parseShortcut(binding);
+  if (!parsed) return '—';
+  const parts: string[] = [];
+  if (parsed.ctrl) parts.push('Ctrl');
+  if (parsed.alt) parts.push('Alt');
+  if (parsed.shift) parts.push('Shift');
+
+  let keyLabel = CODE_DISPLAY_LABELS[parsed.code];
+  if (!keyLabel) {
+    if (parsed.code.startsWith('Key') && parsed.code.length === 4) {
+      keyLabel = parsed.code.slice(3);
+    } else if (parsed.code.startsWith('Digit') && parsed.code.length === 6) {
+      keyLabel = parsed.code.slice(5);
+    } else if (parsed.code.startsWith('Numpad') && parsed.code.length > 6) {
+      keyLabel = `Num${parsed.code.slice(6)}`;
+    } else {
+      keyLabel = parsed.code;
+    }
+  }
+  parts.push(keyLabel);
+  return parts.join(' + ');
+}

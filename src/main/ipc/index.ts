@@ -5,7 +5,7 @@ import https from 'https';
 import http from 'http';
 import { spawn } from 'child_process';
 import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, HDREZKA_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
-import { getMainWindow } from '../window';
+import { getMainWindow, restoreDefaultWindowBounds } from '../window';
 import { setBrowserAdBlockEnabled, getBrowserAdBlockStats } from '../main';
 import { ProviderManager } from '../../core/providers/manager';
 import { clearStaleAnubisCookies } from '../../core/providers/rezka/provider';
@@ -70,8 +70,12 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.WINDOW_SET_ALWAYS_ON_TOP, (_, flag?: boolean) => {
     const win = getMainWindow();
     if (!win) return false;
-    const newState = flag !== undefined ? flag : !win.isAlwaysOnTop();
+    const wasPinned = win.isAlwaysOnTop();
+    const newState = flag !== undefined ? flag : !wasPinned;
     win.setAlwaysOnTop(newState);
+    if (wasPinned && !newState) {
+      restoreDefaultWindowBounds(win);
+    }
     return newState;
   });
 

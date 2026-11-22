@@ -21,8 +21,10 @@ import {
   MonitorPlay,
 } from 'lucide-react';
 import { useMediaStore } from '../stores/useMediaStore';
+import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
-import { BROWSER_USER_AGENT } from '../../shared/constants';
+import { BROWSER_USER_AGENT, DEFAULT_HOTKEYS } from '../../shared/constants';
+import { buildShortcutFromEvent, formatShortcutLabel } from '../../shared/utils';
 
 const PORTALS = [
   { id: 'kinobase', label: 'Kinobase', base: 'https://kinobase.org/', search: (q: string) => `https://kinobase.org/search?query=${encodeURIComponent(q)}` },
@@ -180,6 +182,8 @@ function normalizeUrlOrSearch(input: string): string {
 
 export const BrowserPage: React.FC = () => {
   const { browserUrl, browserQuery, searchQuery, openDetails } = useMediaStore();
+  const customHotkeys = useSettingsStore((s) => s.settings.hotkeys);
+  const hotkeys = { ...DEFAULT_HOTKEYS, ...(customHotkeys || {}) };
   const { t } = useTranslation();
   const webviewRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -384,6 +388,7 @@ export const BrowserPage: React.FC = () => {
       setShowControls(true);
       return;
     }
+    window.api?.isAlwaysOnTop?.().then(setIsPinned).catch(() => {});
     const onMove = () => {
       if (!isUiLocked) resetHideTimer();
     };
@@ -434,12 +439,13 @@ export const BrowserPage: React.FC = () => {
 
   const handleTogglePin = async () => {
     if (!window.api?.setAlwaysOnTop) return;
-    const next = !isPinned;
+    const currentPinned = window.api.isAlwaysOnTop ? await window.api.isAlwaysOnTop() : isPinned;
+    const next = !currentPinned;
+    if (document.fullscreenElement) {
+      await document.exitFullscreen().catch(() => {});
+      setIsFullscreen(false);
+    }
     if (next) {
-      if (document.fullscreenElement) {
-        await document.exitFullscreen().catch(() => {});
-        setIsFullscreen(false);
-      }
       if (window.api.unmaximize) await window.api.unmaximize();
       if (window.api.getBounds && window.api.setBounds) {
         const b = await window.api.getBounds();
@@ -448,10 +454,12 @@ export const BrowserPage: React.FC = () => {
         }
       }
       setCinemaMode(true);
+    } else {
+      setShowScaleMenu(false);
     }
-    await window.api.setAlwaysOnTop(next);
-    setIsPinned(next);
-    showToast(next ? t.player.pinned : t.player.unpinned);
+    const actual = await window.api.setAlwaysOnTop(next);
+    setIsPinned(actual);
+    showToast(actual ? t.player.pinned : t.player.unpinned);
   };
 
   const handleResizePreset = async (w: number, h: number) => {
@@ -529,19 +537,11 @@ export const BrowserPage: React.FC = () => {
     setCinemaMode(false);
   };
 
-  // Hotkeys matching VideoPlayer 1:1 (H, P, Z, F, Esc), including when <webview> holds focus
+  // Hotkeys matching VideoPlayer 1:1 (customizable via Settings), including when <webview> holds focus
   useEffect(() => {
     if (!cinemaMode) return;
-    const dispatchCode = (code: string) => {
-      if (code === 'KeyH') {
-        toggleUiLock();
-      } else if (code === 'KeyP') {
-        handleTogglePin();
-      } else if (code === 'KeyZ') {
-        cycleVideoFit();
-      } else if (code === 'KeyF') {
-        toggleFullscreen();
-      } else if (code === 'Escape') {
+    const dispatchCombo = (combo: string) => {
+      if (combo === 'Escape') {
         if (isUiLocked) {
           setIsUiLocked(false);
           setShowControls(true);
@@ -551,23 +551,38 @@ export const BrowserPage: React.FC = () => {
         } else {
           exitCinemaMode();
         }
+      } else if (combo === hotkeys.toggleUi) {
+        toggleUiLock();
+      } else if (combo === hotkeys.togglePin) {
+        handleTogglePin();
+      } else if (combo === hotkeys.cycleScale) {
+        cycleVideoFit();
+      } else if (combo === hotkeys.fullscreen) {
+        toggleFullscreen();
       }
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
+      if (document.documentElement.dataset.recordingShortcut === 'true') return;
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
-      if (['KeyH', 'KeyP', 'KeyZ', 'KeyF', 'Escape'].includes(e.code)) {
+      if (e.code === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
         e.preventDefault();
-        dispatchCode(e.code);
+        dispatchCombo('Escape');
+        return;
+      }
+      const combo = buildShortcutFromEvent(e);
+      if (combo && [hotkeys.toggleUi, hotkeys.togglePin, hotkeys.cycleScale, hotkeys.fullscreen].includes(combo)) {
+        e.preventDefault();
+        dispatchCombo(combo);
       }
     };
     window.addEventListener('keydown', onKeyDown);
-    const unsubWebviewKey = window.api?.onBrowserWebviewKey?.((code) => dispatchCode(code));
+    const unsubWebviewKey = window.api?.onBrowserWebviewKey?.((combo) => dispatchCombo(combo));
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       unsubWebviewKey?.();
     };
-  }, [cinemaMode, isUiLocked, isPinned, videoFit, t]);
+  }, [cinemaMode, isUiLocked, isPinned, videoFit, t, customHotkeys]);
 
   const navigateTo = (target: string) => {
     const resolved = normalizeUrlOrSearch(target);
@@ -592,7 +607,7 @@ export const BrowserPage: React.FC = () => {
       ref={containerRef}
       className={
         cinemaMode
-          ? `fixed inset-0 z-50 bg-black cinema-player-surface flex flex-col select-none overflow-hidden ${
+          ? `fixed inset-0 z-50 bg-black cinema-player-surface cinema-player-stage flex flex-col select-none overflow-hidden ${
               isUiLocked ? 'cursor-none' : ''
             }`
           : 'w-full h-[calc(100dvh-7.5rem)] min-h-[480px] flex flex-col rounded-3xl overflow-hidden cinema-panel shadow-elevated select-none animate-fadeIn relative'
@@ -600,8 +615,8 @@ export const BrowserPage: React.FC = () => {
     >
       {/* 1:1 On-screen Toast Notification */}
       {toastMessage && (
-        <div className="cinema-player-surface absolute top-12 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full logo-pill backdrop-blur-xl text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 pointer-events-none animate-fade-in">
-          <span>{toastMessage}</span>
+        <div className="player-toast cinema-player-surface absolute top-12 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full logo-pill backdrop-blur-xl text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 max-w-[calc(100%-2rem)] text-center pointer-events-none animate-fade-in">
+          <span className="truncate">{toastMessage}</span>
         </div>
       )}
 
@@ -721,7 +736,7 @@ export const BrowserPage: React.FC = () => {
                 type="button"
                 onClick={toggleFullscreen}
                 aria-label="Открыть плеер на весь экран"
-                title="Открыть на весь экран (F)"
+                title={`Открыть на весь экран (${formatShortcutLabel(hotkeys.fullscreen)})`}
                 className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-300 hover:text-white border border-white/[0.08] cursor-pointer flex-shrink-0"
               >
                 <Maximize className="w-4 h-4" />
@@ -815,24 +830,24 @@ export const BrowserPage: React.FC = () => {
             onMouseLeave={() => {
               if (!isUiLocked) resetHideTimer();
             }}
-            className={`absolute top-0 left-0 right-0 z-40 flex items-center justify-between bg-gradient-to-b from-[#070507]/90 via-[#070507]/50 to-transparent p-5 drag-region transition-opacity duration-300 ${
+            className={`player-top-bar absolute top-0 left-0 right-0 z-40 flex items-center justify-between gap-2 bg-gradient-to-b from-[#070507]/90 via-[#070507]/50 to-transparent p-5 drag-region transition-opacity duration-300 ${
               showControls && !isUiLocked ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
           >
-            <div className="flex items-center gap-3.5 no-drag min-w-0">
+            <div className="flex items-center gap-2.5 sm:gap-3.5 no-drag min-w-0 flex-1">
               <button
                 type="button"
                 onClick={exitCinemaMode}
                 aria-label={t.player.back}
-                className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-white backdrop-blur-xl cursor-pointer active:scale-95"
+                className="player-ctrl-btn p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-white backdrop-blur-xl cursor-pointer active:scale-95 flex-shrink-0"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
               <div className="min-w-0">
-                <h2 className="font-display text-base font-black text-white leading-tight truncate">
+                <h2 className="player-title font-display text-base font-black text-white leading-tight truncate">
                   {pageTitle || 'Кино-браузер'}
                 </h2>
-                <div className="flex items-center gap-2 text-xs text-zinc-300 mt-0.5">
+                <div className="player-subtitle-meta flex items-center gap-2 text-xs text-zinc-300 mt-0.5">
                   <span className="text-emerald-400 font-semibold">
                     {adBlockEnabled ? `AdBlock · ${blockedCount}` : 'AdBlock выкл.'}
                   </span>
@@ -841,30 +856,30 @@ export const BrowserPage: React.FC = () => {
             </div>
 
             {/* Top Bar Quick Actions — 1:1 identical to VideoPlayer.tsx */}
-            <div className="flex items-center gap-2 no-drag flex-shrink-0">
+            <div className="player-controls-group flex items-center gap-2 no-drag flex-shrink-0">
               {isPinned && (
                 <>
                   <div
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] text-zinc-200 text-xs font-semibold select-none cursor-grab active:cursor-grabbing border border-white/15 drag-region"
+                    className="player-move-pill flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] text-zinc-200 text-xs font-semibold select-none cursor-grab active:cursor-grabbing border border-white/15 drag-region"
                     title={t.player.pinnedDragTip}
                   >
                     <Move className="w-3.5 h-3.5 text-brand-gold" />
-                    <span className="hidden sm:inline text-[11px] font-bold">{t.player.moveWindow}</span>
+                    <span className="player-btn-label-md text-[11px] font-bold">{t.player.moveWindow}</span>
                   </div>
 
                   <div className="relative">
                     <button
                       type="button"
                       onClick={() => setShowScaleMenu((prev) => !prev)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-zinc-200 hover:text-white backdrop-blur-xl text-[11px] font-bold border border-white/15 cursor-pointer"
+                      className="player-pill-btn flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-zinc-200 hover:text-white backdrop-blur-xl text-[11px] font-bold border border-white/15 cursor-pointer"
                       title={t.player.pinnedPresets}
                     >
                       <Scaling className="w-3.5 h-3.5 text-brand-orange" />
-                      <span className="hidden sm:inline">{t.player.pinnedPresets}</span>
+                      <span className="player-btn-label-md">{t.player.pinnedPresets}</span>
                     </button>
 
                     {showScaleMenu && (
-                      <div className="absolute right-0 top-full mt-2 w-48 rounded-2xl cinema-glass p-1.5 shadow-elevated z-50 animate-fadeIn space-y-1">
+                      <div className="player-scale-popup absolute right-0 top-full mt-2 w-48 rounded-2xl cinema-glass p-1.5 shadow-elevated z-50 animate-fadeIn space-y-1">
                         <div className="px-2.5 py-1 text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">
                           {t.player.pinnedPresets}
                         </div>
@@ -888,8 +903,8 @@ export const BrowserPage: React.FC = () => {
               <button
                 type="button"
                 onClick={cycleVideoFit}
-                className="px-3 py-1.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-xs font-bold text-zinc-200 hover:text-white border border-white/15 backdrop-blur-xl cursor-pointer"
-                title={t.player.scale}
+                className="player-scale-btn px-3 py-1.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-xs font-bold text-zinc-200 hover:text-white border border-white/15 backdrop-blur-xl cursor-pointer whitespace-nowrap"
+                title={`${t.player.scale.replace(/\s*\([^)]*\)\s*$/, '')} (${formatShortcutLabel(hotkeys.cycleScale)})`}
               >
                 {fitBadgeLabel}
               </button>
@@ -898,8 +913,8 @@ export const BrowserPage: React.FC = () => {
                 type="button"
                 onClick={toggleUiLock}
                 aria-label={t.player.hideUi}
-                className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white backdrop-blur-xl cursor-pointer"
-                title={t.player.hideUi}
+                className="player-hide-ui-btn player-ctrl-btn p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white backdrop-blur-xl cursor-pointer"
+                title={`${t.player.hideUi.replace(/\s*\([^)]*\)\s*$/, '')} (${formatShortcutLabel(hotkeys.toggleUi)})`}
               >
                 <EyeOff className="w-4 h-4" />
               </button>
@@ -909,12 +924,12 @@ export const BrowserPage: React.FC = () => {
                 onClick={handleTogglePin}
                 aria-label={isPinned ? t.player.unpinWindow : t.player.pinWindow}
                 aria-pressed={isPinned}
-                className={`p-2.5 rounded-full backdrop-blur-xl border cursor-pointer ${
+                className={`player-ctrl-btn p-2.5 rounded-full backdrop-blur-xl border cursor-pointer ${
                   isPinned
                     ? 'btn-ember border-white/25 text-white'
                     : 'bg-white/[0.1] hover:bg-white/[0.2] border-white/10 text-zinc-200 hover:text-white'
                 }`}
-                title={isPinned ? t.player.unpinWindow : t.player.pinWindow}
+                title={`${(isPinned ? t.player.unpinWindow : t.player.pinWindow).replace(/\s*\([^)]*\)\s*$/, '')} (${formatShortcutLabel(hotkeys.togglePin)})`}
               >
                 <Pin className={`w-4 h-4 ${isPinned ? 'fill-current rotate-45' : ''}`} />
               </button>
@@ -923,8 +938,8 @@ export const BrowserPage: React.FC = () => {
                 type="button"
                 onClick={toggleFullscreen}
                 aria-label="Полный экран"
-                className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white backdrop-blur-xl cursor-pointer"
-                title="Полный экран (F)"
+                className="player-ctrl-btn p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white backdrop-blur-xl cursor-pointer"
+                title={`Полный экран (${formatShortcutLabel(hotkeys.fullscreen)})`}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
               </button>
@@ -936,8 +951,8 @@ export const BrowserPage: React.FC = () => {
             <button
               type="button"
               onClick={toggleUiLock}
-              aria-label="Показать интерфейс (H)"
-              title="Показать интерфейс (H)"
+              aria-label={`Показать интерфейс (${formatShortcutLabel(hotkeys.toggleUi)})`}
+              title={`Показать интерфейс (${formatShortcutLabel(hotkeys.toggleUi)})`}
               className="absolute top-3 right-3 z-50 p-2 rounded-full bg-black/50 hover:bg-black/85 text-white/40 hover:text-white border border-white/15 opacity-20 hover:opacity-100 transition-opacity cursor-pointer no-drag"
             >
               <Eye className="w-4 h-4" />

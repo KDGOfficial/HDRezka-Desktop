@@ -10,7 +10,7 @@ import {
   SearchHistoryEntry,
   UserSettings,
 } from '../../shared/types';
-import { DEFAULT_USER_SETTINGS } from '../../shared/constants';
+import { DEFAULT_USER_SETTINGS, DEFAULT_HOTKEYS } from '../../shared/constants';
 
 let DatabaseSync: any = null;
 try {
@@ -164,7 +164,11 @@ export class AppDatabase {
             const data: StorageData = {
               ...this.createDefaultStorage(),
               ...parsed,
-              settings: { ...DEFAULT_USER_SETTINGS, ...(parsed.settings || {}) },
+              settings: {
+                ...DEFAULT_USER_SETTINGS,
+                ...(parsed.settings || {}),
+                hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.settings?.hotkeys || {}) },
+              },
             };
             return sanitizeStorageMojibake(data);
           }
@@ -751,12 +755,27 @@ export class AppDatabase {
       if (row && row.value) {
         try {
           const parsed = JSON.parse(row.value);
-          return { ...DEFAULT_USER_SETTINGS, ...parsed };
+          return {
+            ...DEFAULT_USER_SETTINGS,
+            ...parsed,
+            homeSections: { ...DEFAULT_USER_SETTINGS.homeSections, ...(parsed.homeSections || {}) },
+            player: { ...DEFAULT_USER_SETTINGS.player, ...(parsed.player || {}) },
+            hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.hotkeys || {}) },
+            app: { ...DEFAULT_USER_SETTINGS.app, ...(parsed.app || {}) },
+          };
         } catch {}
       }
-      return { ...DEFAULT_USER_SETTINGS };
+      return { ...DEFAULT_USER_SETTINGS, hotkeys: { ...DEFAULT_HOTKEYS } };
     }
-    return { ...DEFAULT_USER_SETTINGS, ...(this.storage?.settings || {}) };
+    const stored = this.storage?.settings || ({} as Partial<UserSettings>);
+    return {
+      ...DEFAULT_USER_SETTINGS,
+      ...stored,
+      homeSections: { ...DEFAULT_USER_SETTINGS.homeSections, ...(stored.homeSections || {}) },
+      player: { ...DEFAULT_USER_SETTINGS.player, ...(stored.player || {}) },
+      hotkeys: { ...DEFAULT_HOTKEYS, ...(stored.hotkeys || {}) },
+      app: { ...DEFAULT_USER_SETTINGS.app, ...(stored.app || {}) },
+    };
   }
 
   public saveSettings(settings: Partial<UserSettings>): UserSettings {
@@ -766,6 +785,7 @@ export class AppDatabase {
       ...settings,
       homeSections: { ...current.homeSections, ...(settings.homeSections || {}) },
       player: { ...current.player, ...(settings.player || {}) },
+      hotkeys: { ...DEFAULT_HOTKEYS, ...current.hotkeys, ...(settings.hotkeys || {}) },
       app: { ...current.app, ...(settings.app || {}) },
     };
 

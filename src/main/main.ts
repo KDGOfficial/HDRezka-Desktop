@@ -4,6 +4,7 @@ import { registerIpcHandlers } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
 import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, IPC_CHANNELS, isBadMirrorUrl, BROWSER_USER_AGENT, isAdUrl, isCrossOriginPopupAd } from '../shared/constants';
+import { buildShortcutFromEvent } from '../shared/utils';
 
 const SUBFRAME_ADBLOCK_SCRIPT = `
   (() => {
@@ -263,15 +264,23 @@ if (!gotTheLock) {
           } catch {}
         });
         contents.on('before-input-event', (_event, input) => {
-          if (
-            input.type === 'keyDown' &&
-            !input.isAutoRepeat &&
-            !input.control &&
-            !input.alt &&
-            !input.meta &&
-            ['Escape', 'KeyH', 'KeyP', 'KeyZ', 'KeyF'].includes(input.code)
-          ) {
-            getMainWindow()?.webContents.send(IPC_CHANNELS.BROWSER_WEBVIEW_KEY, input.code);
+          if (input.type !== 'keyDown' || input.isAutoRepeat || input.meta) return;
+          if (input.code === 'Escape' && !input.control && !input.alt && !input.shift) {
+            getMainWindow()?.webContents.send(IPC_CHANNELS.BROWSER_WEBVIEW_KEY, 'Escape');
+            return;
+          }
+          const combo = buildShortcutFromEvent({
+            code: input.code,
+            ctrlKey: input.control,
+            altKey: input.alt,
+            shiftKey: input.shift,
+            metaKey: input.meta,
+          });
+          if (!combo) return;
+          const hk = db.getSettings().hotkeys;
+          const cinemaCombos = [hk.toggleUi, hk.togglePin, hk.cycleScale, hk.fullscreen];
+          if (cinemaCombos.includes(combo)) {
+            getMainWindow()?.webContents.send(IPC_CHANNELS.BROWSER_WEBVIEW_KEY, combo);
           }
         });
       }

@@ -1,7 +1,7 @@
-import { UserSettings } from '../types';
+import { UserSettings, HotkeysConfig } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.51';
+export const APP_VERSION = '0.0.52';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -111,6 +111,20 @@ export const DEFAULT_MIRRORS = [
   'https://www.kinobase.org',
 ];
 
+export const DEFAULT_HOTKEYS: HotkeysConfig = {
+  playPause: 'Space',
+  seekBackward: 'ArrowLeft',
+  seekForward: 'ArrowRight',
+  volumeUp: 'ArrowUp',
+  volumeDown: 'ArrowDown',
+  fullscreen: 'KeyF',
+  mute: 'KeyM',
+  toggleUi: 'KeyH',
+  togglePin: 'KeyP',
+  cycleScale: 'KeyZ',
+  focusSearch: 'Ctrl+KeyK',
+};
+
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   theme: 'dark',
   cardSize: 'medium',
@@ -133,6 +147,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
     volume: 0.8,
     fullscreenOnPlay: false,
   },
+  hotkeys: { ...DEFAULT_HOTKEYS },
   app: {
     autoLaunch: false,
     checkUpdatesOnStart: true,

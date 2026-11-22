@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { History, Play, Trash2, Clock } from 'lucide-react';
 import { useMediaStore } from '../stores/useMediaStore';
 import { usePlayerStore } from '../stores/usePlayerStore';
-import { formatRelativeTime, formatDuration } from '../../shared/utils';
+import { formatRelativeTime, formatDuration, getResumableTime } from '../../shared/utils';
 import { useTranslation } from '../i18n';
 
 export const HistoryPage: React.FC = () => {
@@ -28,16 +28,23 @@ export const HistoryPage: React.FC = () => {
     }
   };
 
-  const handleResume = async (mediaId: string, season?: number, episode?: number, currentTime?: number) => {
+  const handleResume = async (
+    idOrUrl: string,
+    season?: number,
+    episode?: number,
+    currentTime?: number,
+    duration?: number
+  ) => {
     if (!window.api) return;
     try {
-      const details = await window.api.getDetails(mediaId);
+      const details = await window.api.getDetails(idOrUrl);
+      const startTime = getResumableTime(currentTime, duration);
       openPlayer({
         details,
-        translatorId: details.translators[0]?.id || 56,
+        translatorId: details.currentTranslatorId ?? details.translators?.[0]?.id ?? 0,
         seasonId: season,
         episodeId: episode,
-        startTime: currentTime || 0,
+        startTime,
       });
     } catch (err) {
       console.error(err);
@@ -140,7 +147,7 @@ export const HistoryPage: React.FC = () => {
               <div className="flex items-center gap-2.5 pl-4 flex-shrink-0">
                 <button
                   type="button"
-                  onClick={() => handleResume(item.mediaId, item.season, item.episode, item.currentTime)}
+                  onClick={() => handleResume(item.url || item.mediaId, item.season, item.episode, item.currentTime, item.duration)}
                   className="flex items-center gap-1.5 px-4 py-2.5 rounded-full btn-ember text-white text-xs font-extrabold active:scale-95 cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Settings,
   Tv,
@@ -21,15 +21,20 @@ import {
   ChevronRight,
   Play,
   Code2,
+  Keyboard,
+  RotateCcw,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import {
   APP_VERSION,
+  DEFAULT_HOTKEYS,
   TELEGRAM_CHANNEL_URL,
   AUTHOR_YOUTUBE_URL,
   AUTHOR_TELEGRAM_URL,
   AUTHOR_GITHUB_URL,
 } from '../../shared/constants';
+import { HotkeyAction } from '../../shared/types';
+import { buildShortcutFromEvent, formatShortcutLabel } from '../../shared/utils';
 import { useTranslation } from '../i18n';
 import appLogo from '../assets/logo.png';
 import authorPhoto from '../assets/author.jpg';
@@ -61,6 +66,111 @@ export const SettingsPage: React.FC = () => {
   const [cacheCleared, setCacheCleared] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [findMirrorsStatus, setFindMirrorsStatus] = useState<string | null>(null);
+  const [recordingAction, setRecordingAction] = useState<HotkeyAction | null>(null);
+  const [hotkeyNotice, setHotkeyNotice] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const hotkeyNoticeTimerRef = useRef<any>(null);
+
+  const showHotkeyNotice = (type: 'error' | 'success', text: string, ms = 3500) => {
+    setHotkeyNotice({ type, text });
+    if (hotkeyNoticeTimerRef.current) clearTimeout(hotkeyNoticeTimerRef.current);
+    hotkeyNoticeTimerRef.current = setTimeout(() => setHotkeyNotice(null), ms);
+  };
+
+  useEffect(() => () => {
+    if (hotkeyNoticeTimerRef.current) clearTimeout(hotkeyNoticeTimerRef.current);
+  }, []);
+
+  const hotkeys = { ...DEFAULT_HOTKEYS, ...(settings.hotkeys || {}) };
+  const hotkeyItems: Array<{ action: HotkeyAction; label: string }> = [
+    { action: 'playPause', label: t.settings.hkPlayPause },
+    { action: 'seekBackward', label: t.settings.hkSeekBackward },
+    { action: 'seekForward', label: t.settings.hkSeekForward },
+    { action: 'volumeUp', label: t.settings.hkVolumeUp },
+    { action: 'volumeDown', label: t.settings.hkVolumeDown },
+    { action: 'fullscreen', label: t.settings.hkFullscreen },
+    { action: 'mute', label: t.settings.hkMute },
+    { action: 'toggleUi', label: t.settings.hkToggleUi },
+    { action: 'togglePin', label: t.settings.hkTogglePin },
+    { action: 'cycleScale', label: t.settings.hkCycleScale },
+    { action: 'focusSearch', label: t.settings.hkFocusSearch },
+  ];
+  const hasCustomHotkeys = hotkeyItems.some(({ action }) => hotkeys[action] !== DEFAULT_HOTKEYS[action]);
+
+  useEffect(() => {
+    if (!recordingAction) return;
+    document.documentElement.dataset.recordingShortcut = 'true';
+
+    const onCaptureKey = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (e.code === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        setRecordingAction(null);
+        return;
+      }
+
+      const combo = buildShortcutFromEvent(e);
+      if (!combo) return;
+
+      const conflict = hotkeyItems.find(
+        (item) => item.action !== recordingAction && hotkeys[item.action] === combo
+      );
+      if (conflict) {
+        showHotkeyNotice('error', t.settings.hotkeysConflict.replace('{action}', conflict.label));
+        setRecordingAction(null);
+        return;
+      }
+
+      updateSettings({
+        hotkeys: {
+          ...hotkeys,
+          [recordingAction]: combo,
+        },
+      });
+      setRecordingAction(null);
+      setHotkeyNotice(null);
+    };
+
+    const onPointerDown = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest('[data-hotkey-btn]')) {
+        setRecordingAction(null);
+      }
+    };
+    const onBlur = () => setRecordingAction(null);
+    window.addEventListener('keydown', onCaptureKey, true);
+    window.addEventListener('mousedown', onPointerDown, true);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      delete document.documentElement.dataset.recordingShortcut;
+      window.removeEventListener('keydown', onCaptureKey, true);
+      window.removeEventListener('mousedown', onPointerDown, true);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [recordingAction, settings.hotkeys, t]);
+
+  const handleResetAllHotkeys = () => {
+    setRecordingAction(null);
+    updateSettings({ hotkeys: { ...DEFAULT_HOTKEYS } });
+    showHotkeyNotice('success', t.settings.hotkeysResetDone, 3000);
+  };
+
+  const handleResetSingleHotkey = (action: HotkeyAction) => {
+    if (recordingAction === action) setRecordingAction(null);
+    const defaultBinding = DEFAULT_HOTKEYS[action];
+    const conflict = hotkeyItems.find((item) => item.action !== action && hotkeys[item.action] === defaultBinding);
+    if (conflict) {
+      showHotkeyNotice('error', t.settings.hotkeysConflict.replace('{action}', conflict.label));
+      return;
+    }
+    updateSettings({
+      hotkeys: {
+        ...hotkeys,
+        [action]: defaultBinding,
+      },
+    });
+    setHotkeyNotice(null);
+  };
 
   useEffect(() => {
     loadSettings();
@@ -612,6 +722,95 @@ export const SettingsPage: React.FC = () => {
                 <option value="360p" className="bg-[#140E12]">360p</option>
               </select>
             </div>
+          </div>
+        </section>
+
+        {/* Section: Keyboard Shortcuts */}
+        <section className="p-6 rounded-3xl cinema-panel space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-white/[0.06] flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-brand-crimson/15 border border-brand-ember/30 flex items-center justify-center text-brand-orange flex-shrink-0">
+                <Keyboard className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-display text-sm font-black text-white">{t.settings.hotkeys}</h2>
+                <p className="text-xs text-zinc-400 mt-0.5">{t.settings.hotkeysDesc}</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleResetAllHotkeys}
+              disabled={!hasCustomHotkeys}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-zinc-200 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-brand-orange" />
+              <span>{t.settings.hotkeysReset}</span>
+            </button>
+          </div>
+
+          {hotkeyNotice && (
+            <div
+              className={`text-xs p-3 rounded-2xl border animate-fadeIn ${
+                hotkeyNotice.type === 'error'
+                  ? 'text-amber-200 bg-amber-950/35 border-amber-500/35'
+                  : 'text-emerald-300 bg-emerald-950/35 border-emerald-500/30'
+              }`}
+            >
+              {hotkeyNotice.text}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {hotkeyItems.map(({ action, label }) => {
+              const isRecording = recordingAction === action;
+              const isModified = hotkeys[action] !== DEFAULT_HOTKEYS[action];
+              return (
+                <div
+                  key={action}
+                  className={`flex items-center justify-between gap-2 p-3.5 rounded-2xl border transition-all ${
+                    isRecording
+                      ? 'bg-brand-crimson/15 border-brand-ember shadow-glow-sm'
+                      : 'bg-white/[0.04] border-white/[0.07]'
+                  }`}
+                >
+                  <span className="text-xs font-bold text-zinc-200 truncate">{label}</span>
+
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {isModified && !isRecording && (
+                      <button
+                        type="button"
+                        onClick={() => handleResetSingleHotkey(action)}
+                        aria-label={`${t.settings.hotkeysReset}: ${label}`}
+                        title={t.settings.hotkeysReset}
+                        className="p-1.5 rounded-full bg-white/[0.05] hover:bg-white/[0.14] text-zinc-400 hover:text-white cursor-pointer"
+                      >
+                        <RotateCcw className="w-3 h-3" />
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      data-hotkey-btn={action}
+                      onClick={() => {
+                        setHotkeyNotice(null);
+                        setRecordingAction(isRecording ? null : action);
+                      }}
+                      aria-pressed={isRecording}
+                      className={`min-w-[84px] px-3 py-1.5 rounded-full text-xs font-mono font-bold text-center cursor-pointer transition-all ${
+                        isRecording
+                          ? 'btn-ember text-white animate-pulse'
+                          : isModified
+                            ? 'bg-brand-crimson/20 border border-brand-ember/50 text-white hover:bg-brand-crimson/30'
+                            : 'logo-pill text-zinc-100 hover:border-brand-orange/60'
+                      }`}
+                    >
+                      {isRecording ? t.settings.hotkeysPressKey : formatShortcutLabel(hotkeys[action])}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </section>
 

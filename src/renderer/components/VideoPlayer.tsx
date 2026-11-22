@@ -32,7 +32,8 @@ import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { HorizontalSlider } from './HorizontalSlider';
 import { useTranslation } from '../i18n';
-import { formatDuration } from '../../shared/utils';
+import { formatDuration, matchesShortcut, formatShortcutLabel } from '../../shared/utils';
+import { DEFAULT_HOTKEYS } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
 
 function getHlsLevelQualityRank(level: { width?: number; height?: number }): number {
@@ -141,6 +142,9 @@ export const VideoPlayer: React.FC = () => {
     switchTranslator,
     retryPlayback,
   } = usePlayerStore();
+
+  const customHotkeys = useSettingsStore((s) => s.settings.hotkeys);
+  const hotkeys = { ...DEFAULT_HOTKEYS, ...(customHotkeys || {}) };
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -255,14 +259,15 @@ export const VideoPlayer: React.FC = () => {
 
   const handleTogglePin = async () => {
     if (window.api?.setAlwaysOnTop) {
-      const next = !isPinned;
+      const currentPinned = window.api.isAlwaysOnTop ? await window.api.isAlwaysOnTop() : isPinned;
+      const next = !currentPinned;
+      if (document.fullscreenElement) {
+        try {
+          await document.exitFullscreen();
+        } catch (_) {}
+        setIsFullscreen(false);
+      }
       if (next) {
-        if (document.fullscreenElement) {
-          try {
-            await document.exitFullscreen();
-          } catch (_) {}
-          setIsFullscreen(false);
-        }
         if (window.api.unmaximize) {
           await window.api.unmaximize();
         }
@@ -272,10 +277,12 @@ export const VideoPlayer: React.FC = () => {
             await window.api.setBounds({ width: 854, height: 480 });
           }
         }
+      } else {
+        setShowScaleMenu(false);
       }
-      await window.api.setAlwaysOnTop(next);
-      setIsPinned(next);
-      showToast(next ? t.player.pinned : t.player.unpinned);
+      const actual = await window.api.setAlwaysOnTop(next);
+      setIsPinned(actual);
+      showToast(actual ? t.player.pinned : t.player.unpinned);
     }
   };
 
@@ -439,6 +446,7 @@ export const VideoPlayer: React.FC = () => {
 
     let cleanedUp = false;
     let onNativeLoadedMetadata: (() => void) | null = null;
+    let onHlsLoadedMetadata: (() => void) | null = null;
     let onHlsLoadedData: (() => void) | null = null;
     let onHlsPlaying: (() => void) | null = null;
 
@@ -447,6 +455,7 @@ export const VideoPlayer: React.FC = () => {
       let mediaRetries = 0;
       let firstFragStart = 0;
       let resumeStartPos = startSec;
+      let resumeSeekApplied = startSec <= 0;
       let introGuardDone = startSec !== 0;
       let triedAltHls = false;
 
@@ -575,8 +584,29 @@ export const VideoPlayer: React.FC = () => {
         }
       });
 
-      onHlsLoadedData = () => checkIntroGuard(false);
-      onHlsPlaying = () => checkIntroGuard(true);
+      const enforceResumePos = (markApplied: boolean) => {
+        if (cleanedUp || resumeSeekApplied || userSeekedRef.current || resumeStartPos <= 0) return;
+        const dur = video.duration;
+        const clamped = Number.isFinite(dur) && dur > 1 ? Math.min(resumeStartPos, Math.max(0, dur - 1)) : resumeStartPos;
+        if (Math.abs(video.currentTime - clamped) > 2) {
+          video.currentTime = clamped;
+          setCurrentTime(clamped);
+        }
+        if (markApplied) {
+          resumeSeekApplied = true;
+        }
+      };
+
+      onHlsLoadedMetadata = () => enforceResumePos(false);
+      onHlsLoadedData = () => {
+        checkIntroGuard(false);
+        enforceResumePos(false);
+      };
+      onHlsPlaying = () => {
+        checkIntroGuard(true);
+        enforceResumePos(true);
+      };
+      video.addEventListener('loadedmetadata', onHlsLoadedMetadata, { once: true });
       video.addEventListener('loadeddata', onHlsLoadedData, { once: true });
       video.addEventListener('playing', onHlsPlaying, { once: true });
 
@@ -631,11 +661,18 @@ export const VideoPlayer: React.FC = () => {
             if (altMp4 && videoRef.current) {
               hls.destroy();
               hlsRef.current = null;
-              const resumePos = videoRef.current.currentTime || startSec;
-              videoRef.current.src = altMp4;
-              videoRef.current.load();
-              videoRef.current.currentTime = resumePos;
-              videoRef.current.play().catch(() => setIsPlaying(false));
+              const targetVideo = videoRef.current;
+              const resumePos = targetVideo.currentTime || startSec;
+              onNativeLoadedMetadata = () => {
+                if (cleanedUp) return;
+                const dur = targetVideo.duration;
+                const clamped = Number.isFinite(dur) && dur > 1 ? Math.min(resumePos, Math.max(0, dur - 1)) : resumePos;
+                targetVideo.currentTime = clamped;
+                targetVideo.play().catch(() => setIsPlaying(false));
+              };
+              targetVideo.addEventListener('loadedmetadata', onNativeLoadedMetadata, { once: true });
+              targetVideo.src = altMp4;
+              targetVideo.load();
               return;
             }
             hls.destroy();
@@ -673,7 +710,9 @@ export const VideoPlayer: React.FC = () => {
       video.src = currentStreamUrl;
       onNativeLoadedMetadata = () => {
         if (cleanedUp) return;
-        video.currentTime = startSec;
+        const dur = video.duration;
+        const clamped = Number.isFinite(dur) && dur > 1 ? Math.min(startSec, Math.max(0, dur - 1)) : startSec;
+        video.currentTime = clamped;
         video.play().catch(() => setIsPlaying(false));
       };
       video.addEventListener('loadedmetadata', onNativeLoadedMetadata, { once: true });
@@ -684,6 +723,9 @@ export const VideoPlayer: React.FC = () => {
       cleanedUp = true;
       if (onNativeLoadedMetadata) {
         video.removeEventListener('loadedmetadata', onNativeLoadedMetadata);
+      }
+      if (onHlsLoadedMetadata) {
+        video.removeEventListener('loadedmetadata', onHlsLoadedMetadata);
       }
       if (onHlsLoadedData) {
         video.removeEventListener('loadeddata', onHlsLoadedData);
@@ -698,103 +740,106 @@ export const VideoPlayer: React.FC = () => {
     };
   }, [currentStreamUrl, isHls, isOpen]);
 
+  const persistProgress = () => {
+    if (!window.api || !videoRef.current || !mediaDetails) return;
+    const time = videoRef.current.currentTime;
+    const dur = videoRef.current.duration;
+    if (!Number.isFinite(time) || !Number.isFinite(dur) || time <= 0 || dur <= 0) return;
+    const percent = (time / dur) * 100;
+
+    window.api.saveProgress(mediaDetails.id, seasonId || 0, episodeId || 0, time, dur);
+    window.api.saveWatchHistory({
+      id: `${mediaDetails.id}_${seasonId || 0}_${episodeId || 0}`,
+      mediaId: mediaDetails.id,
+      title: mediaDetails.title,
+      origTitle: mediaDetails.origTitle,
+      poster: mediaDetails.poster,
+      type: mediaDetails.type,
+      season: seasonId,
+      episode: episodeId,
+      currentTime: time,
+      duration: dur,
+      percent: Math.min(100, Math.round(percent)),
+      lastWatchedAt: Date.now(),
+      url: mediaDetails.url || undefined,
+    });
+  };
+
   // Periodic progress saving (stable 5s interval — never re-armed on every timeupdate frame)
   useEffect(() => {
     if (!isOpen || !mediaDetails) return;
 
-    const interval = setInterval(() => {
-      if (window.api && videoRef.current) {
-        const time = videoRef.current.currentTime;
-        const dur = videoRef.current.duration;
-        if (!Number.isFinite(time) || !Number.isFinite(dur) || time <= 0 || dur <= 0) return;
-        const percent = (time / dur) * 100;
+    const interval = setInterval(persistProgress, 5000);
+    const onBeforeUnload = () => persistProgress();
+    window.addEventListener('beforeunload', onBeforeUnload);
 
-        window.api.saveProgress(mediaDetails.id, seasonId || 0, episodeId || 0, time, dur);
-
-        window.api.saveWatchHistory({
-          id: `${mediaDetails.id}_${seasonId || 0}_${episodeId || 0}`,
-          mediaId: mediaDetails.id,
-          title: mediaDetails.title,
-          origTitle: mediaDetails.origTitle,
-          poster: mediaDetails.poster,
-          type: mediaDetails.type,
-          season: seasonId,
-          episode: episodeId,
-          currentTime: time,
-          duration: dur,
-          percent: Math.min(100, Math.round(percent)),
-          lastWatchedAt: Date.now(),
-          url: mediaDetails.url || undefined,
-        });
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
   }, [isOpen, mediaDetails, seasonId, episodeId]);
 
-  // Keyboard controls
+  // Keyboard controls (customizable via Settings)
   useEffect(() => {
     if (!isOpen) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return;
+      if (document.documentElement.dataset.recordingShortcut === 'true') return;
+      const target = e.target as HTMLElement | null;
+      const isTextInput =
+        target &&
+        ((target.tagName === 'INPUT' && (target as HTMLInputElement).type !== 'range') ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable);
+      if (isTextInput) return;
 
-      switch (e.code) {
-        case 'KeyH':
-          e.preventDefault();
-          toggleUiLock();
-          break;
-        case 'KeyP':
-          e.preventDefault();
-          handleTogglePin();
-          break;
-        case 'KeyZ':
-          e.preventDefault();
-          cycleVideoFit();
-          break;
-        case 'Space':
-          e.preventDefault();
-          togglePlay();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          seekDelta(-10);
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          seekDelta(10);
-          break;
-        case 'ArrowUp':
-          e.preventDefault();
-          adjustVolume(0.1);
-          break;
-        case 'ArrowDown':
-          e.preventDefault();
-          adjustVolume(-0.1);
-          break;
-        case 'KeyF':
-          e.preventDefault();
-          toggleFullscreen();
-          break;
-        case 'KeyM':
-          e.preventDefault();
-          toggleMute();
-          break;
-        case 'Escape':
-          e.preventDefault();
-          if (isUiLocked) {
-            setIsUiLocked(false);
-            setShowControls(true);
-            showToast(t.player.uiUnlocked);
-          } else if (activeMenu !== 'none') {
-            setActiveMenu('none');
-          } else if (document.fullscreenElement) {
-            document.exitFullscreen();
-          } else {
-            handleClose();
-          }
-          break;
+      if (e.code === 'Escape' && !e.ctrlKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        if (isUiLocked) {
+          setIsUiLocked(false);
+          setShowControls(true);
+          showToast(t.player.uiUnlocked);
+        } else if (activeMenu !== 'none') {
+          setActiveMenu('none');
+        } else if (document.fullscreenElement) {
+          document.exitFullscreen();
+        } else {
+          handleClose();
+        }
+      } else if (matchesShortcut(e, hotkeys.toggleUi)) {
+        e.preventDefault();
+        toggleUiLock();
+      } else if (matchesShortcut(e, hotkeys.togglePin)) {
+        e.preventDefault();
+        handleTogglePin();
+      } else if (matchesShortcut(e, hotkeys.cycleScale)) {
+        e.preventDefault();
+        cycleVideoFit();
+      } else if (matchesShortcut(e, hotkeys.playPause)) {
+        e.preventDefault();
+        togglePlay();
+      } else if (matchesShortcut(e, hotkeys.seekBackward)) {
+        e.preventDefault();
+        seekDelta(-10);
+      } else if (matchesShortcut(e, hotkeys.seekForward)) {
+        e.preventDefault();
+        seekDelta(10);
+      } else if (matchesShortcut(e, hotkeys.volumeUp)) {
+        e.preventDefault();
+        adjustVolume(0.1);
+      } else if (matchesShortcut(e, hotkeys.volumeDown)) {
+        e.preventDefault();
+        adjustVolume(-0.1);
+      } else if (matchesShortcut(e, hotkeys.fullscreen)) {
+        e.preventDefault();
+        toggleFullscreen();
+      } else if (matchesShortcut(e, hotkeys.mute)) {
+        e.preventDefault();
+        toggleMute();
+      } else {
+        return;
       }
+
       if (!isUiLocked) {
         resetHideTimer();
       }
@@ -802,7 +847,7 @@ export const VideoPlayer: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, isPlaying, isMuted, volume, activeMenu, isUiLocked, t]);
+  }, [isOpen, isPlaying, isMuted, volume, activeMenu, isUiLocked, isPinned, videoFit, t, customHotkeys, mediaDetails, seasonId, episodeId]);
 
   if (!isOpen) return null;
 
@@ -911,22 +956,31 @@ export const VideoPlayer: React.FC = () => {
   };
 
   const handleClose = () => {
-    if (videoRef.current && mediaDetails) {
-      const time = videoRef.current.currentTime;
-      const dur = videoRef.current.duration;
-      if (dur > 0 && window.api) {
-        window.api.saveProgress(mediaDetails.id, seasonId || 0, episodeId || 0, time, dur);
-      }
-    }
+    persistProgress();
     if (document.fullscreenElement) {
       document.exitFullscreen().catch(() => {});
     }
     closePlayer();
+    useMediaStore.getState().loadWatchHistory();
   };
 
   const handleOpenSettings = () => {
     handleClose();
     useMediaStore.getState().setPage('settings');
+  };
+
+  const handleSwitchTranslator = (targetTranslatorId: number) => {
+    persistProgress();
+    const liveTime = videoRef.current?.currentTime || 0;
+    const resumePos = liveTime > 0 ? liveTime : currentTime > 0 ? currentTime : undefined;
+    switchTranslator(targetTranslatorId, resumePos);
+    setActiveMenu('none');
+  };
+
+  const handleSwitchEpisode = (targetSeasonId: number, targetEpisodeId: number) => {
+    persistProgress();
+    switchEpisode(targetSeasonId, targetEpisodeId);
+    setActiveMenu('none');
   };
 
   const currentSeason = mediaDetails?.seasons?.find((s) => s.id === seasonId);
@@ -935,6 +989,7 @@ export const VideoPlayer: React.FC = () => {
 
   const handleNextEpisode = () => {
     if (seasonId !== undefined && nextEpisode) {
+      persistProgress();
       switchEpisode(seasonId, nextEpisode.episodeId);
     }
   };
@@ -942,41 +997,65 @@ export const VideoPlayer: React.FC = () => {
   return (
     <div
       ref={containerRef}
-      className={`cinema-player-surface fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden ${
+      className={`cinema-player-surface cinema-player-stage fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden ${
         isUiLocked ? 'cursor-none' : ''
       }`}
     >
       {/* On-screen Toast Notification */}
       {toastMessage && (
-        <div className="absolute top-10 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full bg-[#140E12]/92 border border-white/20 text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 pointer-events-none animate-fade-in">
-          <span>{toastMessage}</span>
+        <div className="player-toast absolute top-10 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-full bg-[#140E12]/92 border border-white/20 text-white text-xs font-bold shadow-elevated flex items-center gap-2.5 max-w-[calc(100%-2rem)] text-center pointer-events-none animate-fade-in">
+          <span className="truncate">{toastMessage}</span>
         </div>
       )}
 
-      {/* Optional 1-click Resume Pill (never auto-cuts movie intro) */}
+      {/* Auto-Resumed Status / Quick Jump Pill */}
       {resumeOfferTime && !isLoading && !error && (
-        <div className="absolute bottom-28 left-6 z-40 flex items-center gap-2 px-4 py-2 rounded-full cinema-glass border border-brand-orange/40 shadow-elevated animate-fade-in">
-          <button
-            type="button"
-            onClick={() => {
-              userSeekedRef.current = true;
-              if (videoRef.current) {
-                videoRef.current.currentTime = resumeOfferTime;
-                setCurrentTime(resumeOfferTime);
-              }
-              dismissResumeOffer();
-              showToast(`Продолжено с ${formatDuration(resumeOfferTime)}`);
-            }}
-            className="flex items-center gap-2 text-xs font-extrabold text-white hover:text-brand-orange cursor-pointer"
-          >
-            <Clock className="w-3.5 h-3.5 text-brand-orange" aria-hidden="true" />
-            <span>Продолжить с {formatDuration(resumeOfferTime)}</span>
-          </button>
+        <div className="player-resume-pill absolute bottom-28 left-6 z-40 flex items-center gap-2 px-4 py-2 rounded-full cinema-glass border border-brand-orange/40 shadow-elevated max-w-[calc(100%-1.5rem)] animate-fade-in">
+          {currentTime < 5 ? (
+            <button
+              type="button"
+              onClick={() => {
+                userSeekedRef.current = true;
+                if (videoRef.current) {
+                  videoRef.current.currentTime = resumeOfferTime;
+                  setCurrentTime(resumeOfferTime);
+                }
+                dismissResumeOffer();
+                showToast(`Продолжено с ${formatDuration(resumeOfferTime)}`);
+              }}
+              className="flex items-center gap-2 text-xs font-extrabold text-white hover:text-brand-orange cursor-pointer truncate"
+            >
+              <Clock className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" aria-hidden="true" />
+              <span className="truncate">Продолжить с {formatDuration(resumeOfferTime)}</span>
+            </button>
+          ) : (
+            <>
+              <span className="flex items-center gap-1.5 text-xs font-bold text-white truncate">
+                <Clock className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" aria-hidden="true" />
+                <span className="truncate">Продолжено с {formatDuration(resumeOfferTime)}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  userSeekedRef.current = true;
+                  if (videoRef.current) {
+                    videoRef.current.currentTime = 0;
+                    setCurrentTime(0);
+                  }
+                  dismissResumeOffer();
+                  showToast('Воспроизведение с начала');
+                }}
+                className="px-2.5 py-0.5 rounded-full bg-white/[0.12] hover:bg-white/[0.22] text-[11px] font-extrabold text-brand-orange cursor-pointer flex-shrink-0"
+              >
+                Сначала
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={dismissResumeOffer}
-            aria-label="Смотреть сначала"
-            className="p-1 rounded-full hover:bg-white/[0.15] text-zinc-400 hover:text-white cursor-pointer"
+            aria-label="Закрыть уведомление"
+            className="p-1 rounded-full hover:bg-white/[0.15] text-zinc-400 hover:text-white cursor-pointer flex-shrink-0"
           >
             <X className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
@@ -1030,7 +1109,11 @@ export const VideoPlayer: React.FC = () => {
           setIsBuffering(false);
         }}
         onPlay={() => setIsPlaying(true)}
-        onPause={() => setIsPlaying(false)}
+        onPause={() => {
+          setIsPlaying(false);
+          persistProgress();
+        }}
+        onSeeked={() => persistProgress()}
         onError={() => {
           setIsPlaying(false);
           usePlayerStore.setState({
@@ -1039,7 +1122,11 @@ export const VideoPlayer: React.FC = () => {
         }}
         onEnded={() => {
           setIsPlaying(false);
-          if (nextEpisode) handleNextEpisode();
+          if (nextEpisode) {
+            handleNextEpisode();
+          } else {
+            persistProgress();
+          }
         }}
       >
         {subtitleTrack && (
@@ -1061,12 +1148,13 @@ export const VideoPlayer: React.FC = () => {
 
       {/* Error State */}
       {error && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#070507]/96 p-6 z-30">
-          <div className="w-16 h-16 rounded-3xl bg-brand-crimson/15 border border-brand-ember/40 flex items-center justify-center text-brand-orange mb-4 shadow-glow-sm">
-            <AlertCircle className="w-9 h-9" />
+        <div className="absolute inset-0 flex flex-col items-center bg-[#070507]/96 p-4 sm:p-6 z-40 overflow-y-auto">
+          <div className="my-auto w-full flex flex-col items-center">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-3xl bg-brand-crimson/15 border border-brand-ember/40 flex items-center justify-center text-brand-orange mb-3 sm:mb-4 shadow-glow-sm flex-shrink-0">
+            <AlertCircle className="w-8 h-8 sm:w-9 sm:h-9" />
           </div>
-          <h3 className="font-display text-xl font-black text-white mb-2">Не удалось воспроизвести видео</h3>
-          <p className="text-sm text-zinc-400 max-w-md text-center mb-6 leading-relaxed">{error}</p>
+          <h3 className="font-display text-base sm:text-xl font-black text-white mb-1.5 sm:mb-2 text-center">Не удалось воспроизвести видео</h3>
+          <p className="text-xs sm:text-sm text-zinc-400 max-w-md text-center mb-4 sm:mb-6 leading-relaxed">{error}</p>
 
           {(streamData?.trailerUrl || usePlayerStore.getState().trailerUrl) && (
             <div className="mb-6">
@@ -1101,7 +1189,7 @@ export const VideoPlayer: React.FC = () => {
                   <button
                     key={tr.id}
                     type="button"
-                    onClick={() => switchTranslator(tr.id, 0)}
+                    onClick={() => handleSwitchTranslator(tr.id)}
                     aria-pressed={translatorId === tr.id}
                     className={`flex-shrink-0 whitespace-nowrap px-3.5 py-2 rounded-full text-xs font-bold cursor-pointer ${
                       translatorId === tr.id
@@ -1192,33 +1280,34 @@ export const VideoPlayer: React.FC = () => {
               Назад
             </button>
           </div>
+          </div>
         </div>
       )}
 
       {/* Cinema OSD Controls Overlay (visibility:hidden when faded out prevents software compositor overdraw) */}
       <div
-        className={`absolute inset-0 flex flex-col justify-between p-6 pointer-events-none transition-opacity duration-300 ${
+        className={`player-osd absolute inset-0 z-30 flex flex-col justify-between p-6 pointer-events-none transition-opacity duration-300 ${
           showControls && !error ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
       >
         {/* Top Floating Glass Bar */}
-        <div className="flex items-center justify-between pointer-events-auto bg-gradient-to-b from-[#070507]/90 via-[#070507]/50 to-transparent p-5 -m-6 mb-0 drag-region">
-          <div className="flex items-center gap-3.5 no-drag min-w-0">
+        <div className="player-top-bar flex items-center justify-between gap-2 pointer-events-auto bg-gradient-to-b from-[#070507]/90 via-[#070507]/50 to-transparent p-5 -m-6 mb-0 drag-region">
+          <div className="flex items-center gap-2.5 sm:gap-3.5 no-drag min-w-0 flex-1">
             <button
               type="button"
               onClick={handleClose}
               aria-label={t.player.back}
-              className="p-2.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] border border-white/10 text-white cursor-pointer active:scale-95"
+              className="player-ctrl-btn p-2.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] border border-white/10 text-white cursor-pointer active:scale-95 flex-shrink-0"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="min-w-0">
-              <h2 className="font-display text-base font-black text-white leading-tight truncate">
+              <h2 className="player-title font-display text-base font-black text-white leading-tight truncate">
                 {mediaDetails?.title}
               </h2>
-              <div className="flex items-center gap-2 text-xs text-zinc-300 mt-0.5">
+              <div className="player-subtitle-meta flex items-center gap-2 text-xs text-zinc-300 mt-0.5 min-w-0">
                 {seasonId !== undefined && episodeId !== undefined && (
-                  <span className="font-semibold text-brand-orange">
+                  <span className="font-semibold text-brand-orange flex-shrink-0">
                     {t.details.season} {seasonId}, {t.details.episode} {episodeId}
                   </span>
                 )}
@@ -1233,30 +1322,30 @@ export const VideoPlayer: React.FC = () => {
           </div>
 
           {/* Top Bar Quick Actions */}
-          <div className="flex items-center gap-2 no-drag flex-shrink-0">
+          <div className="player-controls-group flex items-center gap-2 no-drag flex-shrink-0">
             {isPinned && (
               <>
                 <div
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] text-zinc-200 text-xs font-semibold select-none cursor-grab active:cursor-grabbing border border-white/15 drag-region"
+                  className="player-move-pill flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.1] text-zinc-200 text-xs font-semibold select-none cursor-grab active:cursor-grabbing border border-white/15 drag-region"
                   title={t.player.pinnedDragTip}
                 >
                   <Move className="w-3.5 h-3.5 text-brand-gold" />
-                  <span className="hidden sm:inline text-[11px] font-bold">{t.player.moveWindow}</span>
+                  <span className="player-btn-label-md text-[11px] font-bold">{t.player.moveWindow}</span>
                 </div>
 
                 <div className="relative">
                   <button
                     type="button"
                     onClick={() => setShowScaleMenu((prev) => !prev)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] text-zinc-200 hover:text-white text-[11px] font-bold border border-white/15 cursor-pointer"
+                    className="player-pill-btn flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] text-zinc-200 hover:text-white text-[11px] font-bold border border-white/15 cursor-pointer"
                     title={t.player.pinnedPresets}
                   >
                     <Scaling className="w-3.5 h-3.5 text-brand-orange" />
-                    <span className="hidden sm:inline">{t.player.pinnedPresets}</span>
+                    <span className="player-btn-label-md">{t.player.pinnedPresets}</span>
                   </button>
 
                   {showScaleMenu && (
-                    <div className="absolute right-0 top-full mt-2 w-44 rounded-2xl cinema-glass p-1.5 shadow-elevated z-50 animate-fadeIn space-y-1">
+                    <div className="player-scale-popup absolute right-0 top-full mt-2 w-44 rounded-2xl cinema-glass p-1.5 shadow-elevated z-50 animate-fadeIn space-y-1">
                       <div className="px-2.5 py-1 text-[10px] font-extrabold text-zinc-400 uppercase tracking-wider">
                         {t.player.pinnedPresets}
                       </div>
@@ -1288,8 +1377,8 @@ export const VideoPlayer: React.FC = () => {
               type="button"
               onClick={toggleUiLock}
               aria-label={t.player.hideUi}
-              className="p-2.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white cursor-pointer"
-              title={t.player.hideUi}
+              className="player-hide-ui-btn player-ctrl-btn p-2.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white cursor-pointer"
+              title={`${t.player.hideUi.replace(/\s*\([^)]*\)\s*$/, '')} (${formatShortcutLabel(hotkeys.toggleUi)})`}
             >
               <EyeOff className="w-4 h-4" />
             </button>
@@ -1299,12 +1388,12 @@ export const VideoPlayer: React.FC = () => {
               onClick={handleTogglePin}
               aria-label={isPinned ? t.player.unpinWindow : t.player.pinWindow}
               aria-pressed={isPinned}
-              className={`p-2.5 rounded-full border cursor-pointer ${
+              className={`player-ctrl-btn p-2.5 rounded-full border cursor-pointer ${
                 isPinned
                   ? 'btn-ember border-white/25 text-white'
                   : 'bg-[#140E12]/85 hover:bg-white/[0.2] border-white/10 text-zinc-200 hover:text-white'
               }`}
-              title={isPinned ? t.player.unpinWindow : t.player.pinWindow}
+              title={`${(isPinned ? t.player.unpinWindow : t.player.pinWindow).replace(/\s*\([^)]*\)\s*$/, '')} (${formatShortcutLabel(hotkeys.togglePin)})`}
             >
               <Pin className={`w-4 h-4 ${isPinned ? 'fill-current rotate-45' : ''}`} />
             </button>
@@ -1317,14 +1406,14 @@ export const VideoPlayer: React.FC = () => {
             type="button"
             onClick={togglePlay}
             aria-label="Воспроизвести"
-            className="self-center pointer-events-auto w-20 h-20 rounded-[24px] play-squircle text-white flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-transform"
+            className="player-center-play self-center pointer-events-auto play-squircle text-white flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-transform"
           >
-            <Play className="w-9 h-9 fill-white ml-1" aria-hidden="true" />
+            <Play className="fill-white ml-1" aria-hidden="true" />
           </button>
         )}
 
         {/* Bottom Cinema Controls Dock */}
-        <div className="pointer-events-auto bg-gradient-to-t from-[#070507]/95 via-[#070507]/65 to-transparent px-6 pb-5 pt-10 -m-6 mt-0 space-y-3.5">
+        <div className="player-bottom-dock pointer-events-auto bg-gradient-to-t from-[#070507]/95 via-[#070507]/65 to-transparent px-6 pb-5 pt-10 -m-6 mt-0 flex flex-col gap-3">
           {/* Ember Gradient Seekbar */}
           <div className="relative group w-full flex items-center py-1">
             <div className="relative w-full h-1.5 group-hover:h-2 bg-white/20 rounded-full overflow-hidden cursor-pointer transition-all">
@@ -1357,14 +1446,15 @@ export const VideoPlayer: React.FC = () => {
           </div>
 
           {/* Action Row */}
-          <div className="flex items-center justify-between text-white gap-3">
+          <div className="player-action-row flex items-center justify-between text-white gap-3 min-w-0">
             {/* Left Transport Controls */}
-            <div className="flex items-center gap-2">
+            <div className="player-controls-group flex items-center gap-2 min-w-0 flex-shrink">
               <button
                 type="button"
                 onClick={togglePlay}
                 aria-label={isPlaying ? 'Пауза' : 'Воспроизвести'}
-                className="p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-white cursor-pointer"
+                title={`${isPlaying ? 'Пауза' : 'Воспроизвести'} (${formatShortcutLabel(hotkeys.playPause)})`}
+                className="player-ctrl-btn p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-white cursor-pointer flex-shrink-0"
               >
                 {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 fill-white" />}
               </button>
@@ -1373,8 +1463,8 @@ export const VideoPlayer: React.FC = () => {
                 type="button"
                 onClick={() => seekDelta(-10)}
                 aria-label="10 секунд назад"
-                className="p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
-                title="10 сек. назад"
+                className="player-skip-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer flex-shrink-0"
+                title={`10 сек. назад (${formatShortcutLabel(hotkeys.seekBackward)})`}
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -1383,8 +1473,8 @@ export const VideoPlayer: React.FC = () => {
                 type="button"
                 onClick={() => seekDelta(10)}
                 aria-label="10 секунд вперед"
-                className="p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
-                title="10 сек. вперед"
+                className="player-skip-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer flex-shrink-0"
+                title={`10 сек. вперед (${formatShortcutLabel(hotkeys.seekForward)})`}
               >
                 <RotateCw className="w-4 h-4" />
               </button>
@@ -1394,7 +1484,7 @@ export const VideoPlayer: React.FC = () => {
                   type="button"
                   onClick={handleNextEpisode}
                   aria-label="Следующая серия"
-                  className="p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
+                  className="player-next-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer flex-shrink-0"
                   title="Следующая серия"
                 >
                   <SkipForward className="w-4 h-4" />
@@ -1403,15 +1493,15 @@ export const VideoPlayer: React.FC = () => {
 
               {/* Volume Control */}
               <div
-                className="flex items-center gap-2 group relative py-1 ml-1"
+                className="flex items-center gap-2 group relative py-1 ml-0.5 flex-shrink-0"
                 onWheel={handleVolumeWheel}
                 title={`Громкость: ${effectivePercent}% (колесико мыши)`}
               >
                 <button
                   type="button"
                   onClick={toggleMute}
-                  className="p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
-                  title={isMuted || volume === 0 ? 'Включить звук (M)' : 'Выключить звук (M)'}
+                  className="player-ctrl-btn p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
+                  title={`${isMuted || volume === 0 ? 'Включить звук' : 'Выключить звук'} (${formatShortcutLabel(hotkeys.mute)})`}
                   aria-label="Тумблер звука"
                 >
                   {isMuted || volume === 0 ? (
@@ -1423,7 +1513,7 @@ export const VideoPlayer: React.FC = () => {
                   )}
                 </button>
 
-                <div className="relative flex items-center w-24 h-6">
+                <div className="player-vol-track relative flex items-center w-24 h-6">
                   <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-75"
@@ -1449,30 +1539,36 @@ export const VideoPlayer: React.FC = () => {
                   />
                 </div>
 
-                <span className="text-[11px] font-bold text-zinc-300 w-8 select-none tabular-nums font-mono">
+                <span className="player-vol-pct text-[11px] font-bold text-zinc-300 w-8 select-none tabular-nums font-mono">
                   {effectivePercent}%
                 </span>
               </div>
 
-              <span className="text-xs font-mono font-semibold text-zinc-300 tabular-nums ml-1">
-                {formatDuration(currentTime)} <span className="text-zinc-500">/</span> {formatDuration(duration)}
+              <span className="player-time text-xs font-mono font-semibold text-zinc-300 tabular-nums ml-1 whitespace-nowrap truncate">
+                {formatDuration(currentTime)}
+                <span className="player-time-total">
+                  {' '}
+                  <span className="text-zinc-500">/</span> {formatDuration(duration)}
+                </span>
               </span>
             </div>
 
             {/* Right Cinema Controls */}
-            <div className="flex items-center gap-2 relative">
+            <div className="player-controls-group flex items-center gap-2 relative flex-shrink-0">
               {mediaDetails?.seasons && mediaDetails.seasons.length > 0 && (
                 <button
                   type="button"
                   onClick={() => setActiveMenu(activeMenu === 'episodes' ? 'none' : 'episodes')}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border cursor-pointer ${
+                  aria-label={t.player.episodes}
+                  title={t.player.episodes}
+                  className={`player-episodes-btn player-pill-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border cursor-pointer ${
                     activeMenu === 'episodes'
                       ? 'btn-ember border-white/25 text-white'
                       : 'bg-white/[0.08] border-white/15 text-zinc-200 hover:text-white hover:bg-white/[0.15]'
                   }`}
                 >
-                  <Tv className="w-3.5 h-3.5" />
-                  <span>Серии</span>
+                  <Tv className="w-3.5 h-3.5 flex-shrink-0" />
+                  <span className="player-btn-label-md">Серии</span>
                 </button>
               )}
 
@@ -1480,14 +1576,16 @@ export const VideoPlayer: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setActiveMenu(activeMenu === 'translator' ? 'none' : 'translator')}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border cursor-pointer ${
+                  aria-label={activeTranslator ? activeTranslator.name : t.player.audio}
+                  title={activeTranslator ? activeTranslator.name : t.player.audio}
+                  className={`player-pill-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border cursor-pointer ${
                     activeMenu === 'translator'
                       ? 'btn-ember border-white/25 text-white'
                       : 'bg-white/[0.08] border-white/15 text-zinc-200 hover:text-white hover:bg-white/[0.15]'
                   }`}
                 >
-                  <Sliders className="w-3.5 h-3.5 text-brand-orange" />
-                  <span className="max-w-[145px] truncate">
+                  <Sliders className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" />
+                  <span className="player-translator-label max-w-[145px] truncate">
                     {activeTranslator ? activeTranslator.name : 'Озвучка'}
                   </span>
                 </button>
@@ -1498,7 +1596,7 @@ export const VideoPlayer: React.FC = () => {
                   type="button"
                   onClick={() => setActiveMenu(activeMenu === 'subtitles' ? 'none' : 'subtitles')}
                   aria-label="Субтитры"
-                  className={`p-2 rounded-full hover:bg-white/[0.15] cursor-pointer ${
+                  className={`player-subtitles-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.15] cursor-pointer ${
                     subtitleTrack ? 'text-brand-orange' : 'text-zinc-200'
                   }`}
                   title="Субтитры"
@@ -1510,7 +1608,7 @@ export const VideoPlayer: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveMenu(activeMenu === 'quality' ? 'none' : 'quality')}
-                className="px-3 py-1.5 rounded-full logo-pill text-xs font-display font-black text-white hover:border-brand-orange/60 cursor-pointer"
+                className="player-quality-btn player-pill-btn px-3 py-1.5 rounded-full logo-pill text-xs font-display font-black text-white hover:border-brand-orange/60 cursor-pointer whitespace-nowrap"
               >
                 {currentQuality}
               </button>
@@ -1518,7 +1616,7 @@ export const VideoPlayer: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setActiveMenu(activeMenu === 'speed' ? 'none' : 'speed')}
-                className="px-2.5 py-1.5 rounded-full hover:bg-white/[0.12] text-xs font-mono font-bold text-zinc-200 hover:text-white cursor-pointer"
+                className="player-speed-btn px-2.5 py-1.5 rounded-full hover:bg-white/[0.12] text-xs font-mono font-bold text-zinc-200 hover:text-white cursor-pointer"
               >
                 {playbackSpeed}x
               </button>
@@ -1526,8 +1624,8 @@ export const VideoPlayer: React.FC = () => {
               <button
                 type="button"
                 onClick={cycleVideoFit}
-                className="px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-xs font-bold text-zinc-200 hover:text-white border border-white/15 cursor-pointer"
-                title={t.player.scale}
+                className="player-scale-btn px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-xs font-bold text-zinc-200 hover:text-white border border-white/15 cursor-pointer whitespace-nowrap"
+                title={`${t.player.scale.replace(/\s*\([^)]*\)\s*$/, '')} (${formatShortcutLabel(hotkeys.cycleScale)})`}
               >
                 {videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? 'Кадр' : videoFit === 'fill' ? 'Растянуть' : videoFit}
               </button>
@@ -1536,8 +1634,8 @@ export const VideoPlayer: React.FC = () => {
                 type="button"
                 onClick={toggleFullscreen}
                 aria-label="Полный экран"
-                className="p-2 rounded-full hover:bg-white/[0.15] text-zinc-200 hover:text-white cursor-pointer"
-                title="Полный экран (F)"
+                className="player-ctrl-btn p-2 rounded-full hover:bg-white/[0.15] text-zinc-200 hover:text-white cursor-pointer"
+                title={`Полный экран (${formatShortcutLabel(hotkeys.fullscreen)})`}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
               </button>
@@ -1547,7 +1645,7 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Quality Menu Popup */}
         {activeMenu === 'quality' && streamData?.streams && (
-          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[155px] space-y-1">
+          <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[155px] space-y-1">
             <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
               Качество
             </div>
@@ -1571,7 +1669,7 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Speed Menu Popup */}
         {activeMenu === 'speed' && (
-          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[140px] space-y-1">
+          <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[140px] space-y-1">
             <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
               Скорость
             </div>
@@ -1598,7 +1696,7 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Subtitles Menu Popup */}
         {activeMenu === 'subtitles' && streamData?.subtitles && (
-          <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[165px] space-y-1">
+          <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[165px] space-y-1">
             <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
               Субтитры
             </div>
@@ -1639,7 +1737,7 @@ export const VideoPlayer: React.FC = () => {
         {/* Translator Menu Popup (uses HorizontalSlider when many voiceovers) */}
         {activeMenu === 'translator' && mediaDetails?.translators && (
           mediaDetails.translators.length > 8 ? (
-            <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[420px] max-w-[92vw] space-y-2.5">
+            <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[420px] space-y-2.5">
               <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-1">
                 <span>Выбор озвучки</span>
                 <span className="font-mono text-zinc-400 tabular-nums">{mediaDetails.translators.length}</span>
@@ -1655,10 +1753,7 @@ export const VideoPlayer: React.FC = () => {
                     key={tr.id}
                     type="button"
                     aria-pressed={translatorId === tr.id}
-                    onClick={() => {
-                      switchTranslator(tr.id, videoRef.current?.currentTime || 0);
-                      setActiveMenu('none');
-                    }}
+                    onClick={() => handleSwitchTranslator(tr.id)}
                     className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
                       translatorId === tr.id
                         ? 'btn-ember text-white'
@@ -1672,7 +1767,7 @@ export const VideoPlayer: React.FC = () => {
               </HorizontalSlider>
             </div>
           ) : (
-            <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[260px] max-w-[340px] max-h-72 overflow-y-auto space-y-1">
+            <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto w-[min(320px,calc(100%-1.5rem))] space-y-1">
               <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
                 <span>Выбор озвучки</span>
                 <span className="font-mono text-zinc-500">{mediaDetails.translators.length}</span>
@@ -1682,10 +1777,7 @@ export const VideoPlayer: React.FC = () => {
                   key={tr.id}
                   type="button"
                   aria-pressed={translatorId === tr.id}
-                  onClick={() => {
-                    switchTranslator(tr.id, videoRef.current?.currentTime || 0);
-                    setActiveMenu('none');
-                  }}
+                  onClick={() => handleSwitchTranslator(tr.id)}
                   className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
                     translatorId === tr.id
                       ? 'btn-ember text-white'
@@ -1708,7 +1800,7 @@ export const VideoPlayer: React.FC = () => {
             mediaDetails.seasons[0];
           const eps = menuSeason?.episodes || [];
           return (
-            <div className="absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[360px] max-w-[90vw] space-y-3">
+            <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[360px] space-y-3">
               <div className="flex items-center justify-between">
                 <div className="font-display text-xs font-black text-white">
                   Серии ({menuSeason.title || `Сезон ${menuSeason.id}`})
@@ -1753,10 +1845,7 @@ export const VideoPlayer: React.FC = () => {
                       key={ep.episodeId}
                       type="button"
                       aria-pressed={seasonId === menuSeason.id && episodeId === ep.episodeId}
-                      onClick={() => {
-                        switchEpisode(menuSeason.id, ep.episodeId);
-                        setActiveMenu('none');
-                      }}
+                      onClick={() => handleSwitchEpisode(menuSeason.id, ep.episodeId)}
                       className={`py-2 px-1 text-center rounded-xl text-xs font-bold cursor-pointer ${
                         seasonId === menuSeason.id && episodeId === ep.episodeId
                           ? 'btn-ember text-white'
@@ -1768,15 +1857,12 @@ export const VideoPlayer: React.FC = () => {
                   ))}
                 </HorizontalSlider>
               ) : (
-                <div className="grid grid-cols-4 gap-2 max-h-60 overflow-y-auto">
+                <div className="grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-2 max-h-60 overflow-y-auto">
                   {eps.map((ep) => (
                     <button
                       key={ep.episodeId}
                       type="button"
-                      onClick={() => {
-                        switchEpisode(menuSeason.id, ep.episodeId);
-                        setActiveMenu('none');
-                      }}
+                      onClick={() => handleSwitchEpisode(menuSeason.id, ep.episodeId)}
                       className={`py-2 px-1 text-center rounded-xl text-xs font-bold cursor-pointer ${
                         seasonId === menuSeason.id && episodeId === ep.episodeId
                           ? 'btn-ember text-white'
@@ -1793,10 +1879,10 @@ export const VideoPlayer: React.FC = () => {
         })()}
       </div>
 
-      {/* Persistent top drag handle when pinned */}
+      {/* Persistent top drag handle when pinned (below OSD so top-bar buttons stay clickable) */}
       {isPinned && (
         <div
-          className="absolute top-0 left-0 right-0 h-6 drag-region pointer-events-auto z-40 cursor-grab active:cursor-grabbing"
+          className="absolute top-0 left-0 right-0 h-5 drag-region pointer-events-auto z-20 cursor-grab active:cursor-grabbing"
           title={t.player.pinnedDragTip}
         />
       )}

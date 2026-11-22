@@ -169,6 +169,21 @@ export interface SearchHistoryEntry {
   searchedAt: number;
 }
 
+export type HotkeyAction =
+  | 'playPause'
+  | 'seekBackward'
+  | 'seekForward'
+  | 'volumeUp'
+  | 'volumeDown'
+  | 'fullscreen'
+  | 'mute'
+  | 'toggleUi'
+  | 'togglePin'
+  | 'cycleScale'
+  | 'focusSearch';
+
+export type HotkeysConfig = Record<HotkeyAction, string>;
+
 export interface UserSettings {
   theme: 'dark' | 'light' | 'oled' | 'system';
   cardSize: 'small' | 'medium' | 'large';
@@ -191,6 +206,7 @@ export interface UserSettings {
     volume: number;
     fullscreenOnPlay: boolean;
   };
+  hotkeys: HotkeysConfig;
   app: {
     autoLaunch: boolean;
     checkUpdatesOnStart: boolean;

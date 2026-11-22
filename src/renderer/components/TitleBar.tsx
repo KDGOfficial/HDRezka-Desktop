@@ -12,14 +12,18 @@ export const TitleBar: React.FC = () => {
   const { setPage } = useMediaStore();
 
   useEffect(() => {
-    const checkMax = async () => {
+    const checkWindowState = async () => {
       if (window.api) {
-        const max = await window.api.isMaximized();
+        const [max, pinned] = await Promise.all([
+          window.api.isMaximized(),
+          window.api.isAlwaysOnTop ? window.api.isAlwaysOnTop() : Promise.resolve(false),
+        ]);
         setIsMax(max);
+        setIsPinned(pinned);
       }
     };
-    checkMax();
-    const interval = setInterval(checkMax, 1000);
+    checkWindowState();
+    const interval = setInterval(checkWindowState, 1000);
     return () => clearInterval(interval);
   }, []);
 
@@ -44,6 +48,7 @@ export const TitleBar: React.FC = () => {
       }
     };
     const handleKey = (e: KeyboardEvent) => {
+      if (document.documentElement.dataset.recordingShortcut === 'true') return;
       if (!window.api?.getZoomFactor || !window.api?.setZoomFactor) return;
       if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
         e.preventDefault();

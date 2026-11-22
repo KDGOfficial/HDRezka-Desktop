@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { StreamData, VideoQualityStream, SubtitleTrack, MediaDetails } from '../../shared/types';
+import { getResumableTime } from '../../shared/utils';
 
 interface PlayerState {
   isOpen: boolean;
@@ -26,6 +27,7 @@ interface PlayerState {
     seasonId?: number;
     episodeId?: number;
     startTime?: number;
+    silentResume?: boolean;
   }) => Promise<void>;
   closePlayer: () => void;
   dismissResumeOffer: () => void;
@@ -34,7 +36,7 @@ interface PlayerState {
   setSubtitle: (language: string) => void;
   setPlaybackSpeed: (speed: number) => void;
   setVolume: (volume: number) => void;
-  switchEpisode: (seasonId: number, episodeId: number) => Promise<void>;
+  switchEpisode: (seasonId: number, episodeId: number, startFromZero?: boolean) => Promise<void>;
   switchTranslator: (translatorId: number, resumeAt?: number) => Promise<void>;
   retryPlayback: () => Promise<void>;
 }
@@ -60,7 +62,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   error: null,
   trailerUrl: undefined,
 
-  openPlayer: async ({ details, translatorId, seasonId, episodeId, startTime }) => {
+  openPlayer: async ({ details, translatorId, seasonId, episodeId, startTime, silentResume = false }) => {
     const seq = ++playRequestSeq;
     const explicitStart = typeof startTime === 'number' && Number.isFinite(startTime) ? Math.max(0, startTime) : 0;
     set({
@@ -75,17 +77,17 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       currentStreamUrl: '',
       trailerUrl: undefined,
       initialTime: explicitStart,
-      resumeOfferTime: null,
+      resumeOfferTime: !silentResume && explicitStart >= 5 ? explicitStart : null,
     });
 
     try {
-      // Always start cleanly from 0:00 unless caller explicitly requested a resume timestamp;
-      // offer saved progress as a 1-click pill instead of silently cutting the movie intro.
+      // Auto-resume unfinished movies and episodes from saved position when caller did not specify startTime
       if (startTime === undefined && window.api) {
         const prog = await window.api.getProgress(details.id, seasonId || 0, episodeId || 0);
         if (seq !== playRequestSeq) return;
-        if (prog && prog.currentTime >= 45 && prog.duration > 120 && prog.currentTime < prog.duration - 60) {
-          set({ resumeOfferTime: prog.currentTime });
+        const resumed = getResumableTime(prog?.currentTime, prog?.duration);
+        if (resumed > 0) {
+          set({ initialTime: resumed, resumeOfferTime: silentResume ? null : resumed });
         }
       }
 
@@ -206,7 +208,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   setPlaybackSpeed: (speed: number) => set({ playbackSpeed: speed }),
   setVolume: (volume: number) => set({ volume }),
 
-  switchEpisode: async (seasonId: number, episodeId: number) => {
+  switchEpisode: async (seasonId: number, episodeId: number, startFromZero = false) => {
     const { mediaDetails, translatorId } = get();
     if (!mediaDetails) return;
     await get().openPlayer({
@@ -214,13 +216,23 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       translatorId,
       seasonId,
       episodeId,
-      startTime: 0,
+      startTime: startFromZero ? 0 : undefined,
     });
   },
 
   switchTranslator: async (translatorId: number, resumeAt?: number) => {
-    const { mediaDetails, seasonId, episodeId } = get();
+    const { mediaDetails, seasonId, episodeId, initialTime } = get();
     if (!mediaDetails) return;
+    const reqSeq = ++playRequestSeq;
+
+    const effectiveStart =
+      typeof resumeAt === 'number' && Number.isFinite(resumeAt) && resumeAt > 0
+        ? resumeAt
+        : resumeAt === 0
+          ? 0
+          : initialTime > 0
+            ? initialTime
+            : undefined;
 
     let updatedDetails = { ...mediaDetails, currentTranslatorId: translatorId };
     if (
@@ -229,41 +241,48 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     ) {
       try {
         const newSeasons = await window.api.getSeriesEpisodes(mediaDetails.id, translatorId);
+        if (reqSeq !== playRequestSeq) return;
         if (newSeasons && newSeasons.length > 0) {
           updatedDetails.seasons = newSeasons;
         }
       } catch (_) {}
     }
 
+    if (reqSeq !== playRequestSeq) return;
     await get().openPlayer({
       details: updatedDetails,
       translatorId,
       seasonId,
       episodeId,
-      startTime: typeof resumeAt === 'number' && resumeAt > 0 ? resumeAt : 0,
+      startTime: effectiveStart,
+      silentResume: true,
     });
   },
 
   retryPlayback: async () => {
-    const { mediaDetails, translatorId, seasonId, episodeId } = get();
+    const { mediaDetails, translatorId, seasonId, episodeId, initialTime } = get();
     if (!mediaDetails) return;
+    const reqSeq = ++playRequestSeq;
 
     let detailsToUse = mediaDetails;
     if (window.api && (!mediaDetails.translators || mediaDetails.translators.length === 0)) {
       try {
         const fresh = await window.api.getDetails(mediaDetails.id);
+        if (reqSeq !== playRequestSeq) return;
         if (fresh && fresh.translators && fresh.translators.length > 0) {
           detailsToUse = fresh;
         }
       } catch (_) {}
     }
 
+    if (reqSeq !== playRequestSeq) return;
     await get().openPlayer({
       details: detailsToUse,
-      translatorId: detailsToUse.currentTranslatorId || translatorId || detailsToUse.translators?.[0]?.id || 56,
+      translatorId: detailsToUse.currentTranslatorId ?? translatorId ?? detailsToUse.translators?.[0]?.id ?? 0,
       seasonId,
       episodeId,
-      startTime: 0,
+      startTime: initialTime > 0 ? initialTime : undefined,
+      silentResume: true,
     });
   },
 }));

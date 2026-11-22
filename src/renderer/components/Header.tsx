@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Search, Bell, Sparkles, X, Star, Settings, Globe, ArrowLeft, Film, Sun, Moon, Wand2 } from 'lucide-react';
 import { useMediaStore } from '../stores/useMediaStore';
+import { usePlayerStore } from '../stores/usePlayerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
-import { debounce, getT9Correction } from '../../shared/utils';
+import { debounce, getT9Correction, matchesShortcut, formatShortcutLabel, parseShortcut } from '../../shared/utils';
+import { DEFAULT_HOTKEYS } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
 
 export const Header: React.FC = () => {
@@ -55,18 +57,30 @@ export const Header: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Keyboard shortcut Ctrl+K or / to focus search
+  const focusSearchBinding = settings.hotkeys?.focusSearch || DEFAULT_HOTKEYS.focusSearch;
+  const focusSearchLabel = formatShortcutLabel(focusSearchBinding);
+
+  // Keyboard shortcut (customizable, default Ctrl+K) or / to focus search
   useEffect(() => {
+    const parsedBinding = parseShortcut(focusSearchBinding);
+    const hasModifier = Boolean(parsedBinding?.ctrl || parsedBinding?.alt);
     const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (document.activeElement as HTMLElement | null)?.tagName;
-      if ((e.ctrlKey && e.key.toLowerCase() === 'k') || (e.key === '/' && tag !== 'INPUT' && tag !== 'TEXTAREA')) {
+      if (document.documentElement.dataset.recordingShortcut === 'true') return;
+      if (usePlayerStore.getState().isOpen) return;
+      const activeEl = document.activeElement as HTMLElement | null;
+      const isEditing =
+        Boolean(activeEl) &&
+        (activeEl!.tagName === 'INPUT' || activeEl!.tagName === 'TEXTAREA' || activeEl!.isContentEditable);
+      const matchesFocusBinding = matchesShortcut(e, focusSearchBinding) && (hasModifier || !isEditing);
+      const matchesSlash = e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey && !isEditing;
+      if (matchesFocusBinding || matchesSlash) {
         e.preventDefault();
         inputRef.current?.focus();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [focusSearchBinding]);
 
   const fetchSuggestions = useRef(
     debounce(async (query: string, corpus: string[]) => {
@@ -185,8 +199,8 @@ export const Header: React.FC = () => {
                 <X className="w-3.5 h-3.5" />
               </button>
             ) : (
-              <kbd className="hidden sm:inline-flex items-center px-2 py-0.5 text-[10px] font-mono font-semibold text-zinc-400 bg-white/[0.06] border border-white/[0.08] rounded-full">
-                Ctrl+K
+              <kbd className="hidden sm:inline-flex items-center px-2 py-0.5 text-[10px] font-mono font-semibold text-zinc-400 bg-white/[0.06] border border-white/[0.08] rounded-full whitespace-nowrap">
+                {focusSearchLabel}
               </kbd>
             )}
           </div>
