@@ -69,11 +69,31 @@ export function createMainWindow(): BrowserWindow {
       url.includes('redcdn.org') ||
       url.includes('threnet.xyz') ||
       url.includes('kinobase.org') ||
+      url.includes('kinovod.pro') ||
       url.includes('mvapspdmpg.com') ||
       url.includes('tazaromikaz.link')
     ) {
-      details.requestHeaders['Referer'] = 'https://kinobase.org/';
-      details.requestHeaders['Origin'] = 'https://kinobase.org';
+      const origin = url.includes('kinovod.pro') ? 'https://kinovod.pro' : 'https://kinobase.org';
+      details.requestHeaders['Referer'] = `${origin}/`;
+      details.requestHeaders['Origin'] = origin;
+      details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+
+    if (
+      url.includes('insertunit.ws') ||
+      url.includes('delivembed.cc') ||
+      url.includes('interkh.com')
+    ) {
+      details.requestHeaders['Referer'] = 'https://apiplayers.insertunit.ws/';
+      details.requestHeaders['Origin'] = 'https://apiplayers.insertunit.ws';
+      details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+
+    if (url.includes('hdstudio.org')) {
+      details.requestHeaders['Referer'] = 'http://hdstudio.org/';
+      details.requestHeaders['Origin'] = 'http://hdstudio.org';
       details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
       return callback({ requestHeaders: details.requestHeaders });
     }

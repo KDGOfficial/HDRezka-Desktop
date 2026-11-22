@@ -26,7 +26,9 @@ import { BROWSER_USER_AGENT } from '../../shared/constants';
 
 const PORTALS = [
   { id: 'kinobase', label: 'Kinobase', base: 'https://kinobase.org/', search: (q: string) => `https://kinobase.org/search?query=${encodeURIComponent(q)}` },
+  { id: 'kinovod', label: 'Kinovod', base: 'https://kinovod.pro/', search: (q: string) => `https://kinovod.pro/search?query=${encodeURIComponent(q)}` },
   { id: 'kinogo', label: 'Kinogo', base: 'https://kinogo.film/', search: (q: string) => `https://kinogo.film/?do=search&subaction=search&story=${encodeURIComponent(q)}` },
+  { id: 'hdstudio', label: 'HDStudio', base: 'http://hdstudio.org/', search: (q: string) => `http://hdstudio.org/?do=search&subaction=search&story=${encodeURIComponent(q)}` },
   { id: 'yummyanime', label: 'YummyAnime', base: 'https://yummyanime.tv/', search: (q: string) => `https://yummyanime.tv/index.php?do=search&subaction=search&story=${encodeURIComponent(q)}` },
   { id: 'animego', label: 'AnimeGO', base: 'https://animego.me/', search: (q: string) => `https://animego.me/search/anime?q=${encodeURIComponent(q)}` },
   { id: 'uakino', label: 'UAKino', base: 'https://uakino.biz/ua/', search: (q: string) => `https://uakino.biz/ua/` },
@@ -156,6 +158,8 @@ function isPlayableMediaPage(url: string): boolean {
   if (!url) return false;
   return (
     /kinobase\.org\/(?:film|serial)\/\d+/i.test(url) ||
+    /kinovod\.pro\/(?:film|serial)\/\d+/i.test(url) ||
+    /hdstudio\.org\/(?:serial|film)\/[^/]+\/\d+-\d+-\d+-\d+/i.test(url) ||
     /kinogo\.[^/]+\/\d+-[^/]+\.html/i.test(url) ||
     /animego\.[^/]+\/anime\/[^/?#]+/i.test(url) ||
     /uakino\.[^/]+\/[^/]+\/.*\d+-[^/]+\.html/i.test(url) ||

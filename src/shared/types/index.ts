@@ -61,6 +61,7 @@ export interface StreamData {
   trailerUrl?: string;
   upgradedMirror?: boolean;
   upgradedFromQuality?: string;
+  audioTrackIndex?: number;
 }
 
 export interface MediaReview {

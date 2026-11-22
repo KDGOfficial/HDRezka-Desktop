@@ -124,7 +124,11 @@ export function registerIpcHandlers(): void {
     const cleanStatuses = statuses.filter((s) => s.isAvailable && !s.needsVerification);
 
     if (cleanStatuses.length > 0) {
-      const isRezkaOpen = (url: string) => !url.includes('kinobase.org') && !url.includes('kinogo.');
+      const isRezkaOpen = (url: string) =>
+        !url.includes('kinobase.org') &&
+        !url.includes('kinovod.pro') &&
+        !url.includes('kinogo.') &&
+        !url.includes('hdstudio.org');
       const sortedClean = cleanStatuses.slice().sort((a, b) => {
         const aRezka = isRezkaOpen(a.url) ? 0 : 1;
         const bRezka = isRezkaOpen(b.url) ? 0 : 1;

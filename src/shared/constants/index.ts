@@ -1,7 +1,7 @@
 import { UserSettings } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.49';
+export const APP_VERSION = '0.0.50';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -31,8 +31,10 @@ export function isCamRipText(text?: string): boolean {
 
 export const OPEN_MIRROR_SEEDS = [
   'https://kinobase.org',
-  'https://www.kinobase.org',
+  'https://kinovod.pro',
   'https://kinogo.film',
+  'http://hdstudio.org',
+  'https://www.kinobase.org',
 ];
 
 export const ANIME_MIRROR_SEEDS = [
@@ -51,7 +53,7 @@ const AD_PATH_RE =
   /(?:\/(?:vast|vpaid|vmap|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|branding\/|reklama|doubleclick|pcode\/adfox|pagead\/|ads\/|adv\/)|\/(?:pop|popunder|clickunder|vast|vmap)\.(?:js|xml|json)(?:$|\?)|[?&](?:vast|vpaid|vmap|ad_tag|ad_url|preroll|popunder|clickunder)=)/i;
 
 const TRUSTED_MEDIA_PORTAL_RE =
-  /(?:^|\.)(?:kinobase\.org|kinogo\.[a-z]+|yummyanime\.[a-z]+|yummyani\.[a-z]+|yani\.tv|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
+  /(?:^|\.)(?:kinobase\.org|kinovod\.pro|hdstudio\.org|insertunit\.ws|delivembed\.cc|kinogo\.[a-z]+|yummyanime\.[a-z]+|yummyani\.[a-z]+|yani\.tv|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
 
 const GOOGLE_SEARCH_HOST_RE = /(?:^|\.)google\.[a-z]{2,}(?:\.[a-z]{2})?$/i;
 
@@ -103,8 +105,10 @@ export const HDREZKA_MIRRORS = [
 
 export const DEFAULT_MIRRORS = [
   'https://kinobase.org',
-  'https://www.kinobase.org',
+  'https://kinovod.pro',
   'https://kinogo.film',
+  'http://hdstudio.org',
+  'https://www.kinobase.org',
 ];
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {

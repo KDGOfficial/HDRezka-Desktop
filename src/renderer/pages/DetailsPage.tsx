@@ -82,9 +82,9 @@ export const DetailsPage: React.FC = () => {
       setLoadingEpisodes(true);
       try {
         const newSeasons = await window.api.getSeriesEpisodes(details.id, trId);
-        setSeasons(newSeasons || []);
         if (newSeasons && newSeasons.length > 0) {
-          setSelectedSeasonId(newSeasons[0].id);
+          setSeasons(newSeasons);
+          setSelectedSeasonId((prev) => (newSeasons.some((s: Season) => s.id === prev) ? prev : newSeasons[0].id));
         }
       } catch (err) {
         console.error(err);

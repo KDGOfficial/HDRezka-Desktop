@@ -495,9 +495,32 @@ export const VideoPlayer: React.FC = () => {
           }
         }
 
+        // Select requested multi-audio HLS track (e.g. Collaps / HDStudio / InsertUnit dubbings)
+        if (
+          typeof streamData?.audioTrackIndex === 'number' &&
+          hls.audioTracks &&
+          streamData.audioTrackIndex >= 0 &&
+          streamData.audioTrackIndex < hls.audioTracks.length
+        ) {
+          hls.audioTrack = streamData.audioTrackIndex;
+        }
+
         // Start loading explicitly from resumeStartPos (0:00 on fresh playback, current time on CDN failover)
         hls.startLoad(resumeStartPos);
         video.play().catch(() => setIsPlaying(false));
+      });
+
+      hls.on(Hls.Events.AUDIO_TRACKS_UPDATED, () => {
+        if (cleanedUp) return;
+        if (
+          typeof streamData?.audioTrackIndex === 'number' &&
+          hls.audioTracks &&
+          streamData.audioTrackIndex >= 0 &&
+          streamData.audioTrackIndex < hls.audioTracks.length &&
+          hls.audioTrack !== streamData.audioTrackIndex
+        ) {
+          hls.audioTrack = streamData.audioTrackIndex;
+        }
       });
 
       // Record fragment 0 start on playlist load; run one-shot intro guard once first media actually buffers/plays
