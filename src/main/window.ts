@@ -120,6 +120,19 @@ export function createMainWindow(): BrowserWindow {
       return callback({ requestHeaders: details.requestHeaders });
     }
 
+    if (
+      url.includes('libria.fun') ||
+      url.includes('aniliberty.top') ||
+      url.includes('anilibria.wtf') ||
+      url.includes('animetop.info') ||
+      url.includes('animevost.org')
+    ) {
+      delete details.requestHeaders['Referer'];
+      delete details.requestHeaders['Origin'];
+      details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+
     const isStreamOrApi =
       details.resourceType === 'media' ||
       details.resourceType === 'xhr' ||

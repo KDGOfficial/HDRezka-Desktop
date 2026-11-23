@@ -144,6 +144,7 @@ export const VideoPlayer: React.FC = () => {
   } = usePlayerStore();
 
   const customHotkeys = useSettingsStore((s) => s.settings.hotkeys);
+  const isSearchingMirrors = useSettingsStore((s) => s.isFindingMirrors || s.isCheckingMirrors);
   const hotkeys = { ...DEFAULT_HOTKEYS, ...(customHotkeys || {}) };
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1136,13 +1137,17 @@ export const VideoPlayer: React.FC = () => {
 
       {/* Cinema Loading Overlay */}
       {isLoading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#070507] z-20 pointer-events-none">
+        <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#070507] z-20 pointer-events-none" role="status" aria-live="polite">
           <div className="relative w-20 h-20 mb-5 flex items-center justify-center">
             <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
             <img src={appLogo} alt="" className="w-12 h-12 rounded-full object-cover shadow-glow" />
           </div>
           <span className="font-display text-white text-sm font-black tracking-wide">{t.player.loading}</span>
-          <span className="text-zinc-500 text-xs mt-1.5">Поиск доступного потока в сети...</span>
+          <span className="text-zinc-500 text-xs mt-1.5">
+            {isSearchingMirrors
+              ? t.settings.findingOnlineMirrors
+              : 'Поиск доступного потока в сети...'}
+          </span>
         </div>
       )}
 
@@ -1254,14 +1259,16 @@ export const VideoPlayer: React.FC = () => {
               type="button"
               onClick={async () => {
                 showToast('Поиск рабочих зеркал в сети...');
-                if (window.api?.findOnlineMirrors) {
-                  await window.api.findOnlineMirrors();
-                }
+                await useSettingsStore.getState().findOnlineMirrors();
                 retryPlayback();
               }}
               className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.08] text-white text-xs font-bold hover:bg-white/[0.16] border border-white/10 cursor-pointer"
             >
-              <Globe className="w-4 h-4 text-brand-orange" />
+              {isSearchingMirrors ? (
+                <span className="w-4 h-4 rounded-full border-2 border-brand-orange/30 border-t-brand-orange animate-spin" aria-hidden="true" />
+              ) : (
+                <Globe className="w-4 h-4 text-brand-orange" />
+              )}
               <span>Зеркала в сети</span>
             </button>
             <button

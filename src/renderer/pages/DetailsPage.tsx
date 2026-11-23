@@ -38,10 +38,13 @@ export const DetailsPage: React.FC = () => {
     openBrowser,
   } = useMediaStore();
   const { openPlayer } = usePlayerStore();
+  const { isFindingMirrors, isCheckingMirrors } = useSettingsStore();
+  const isSearchingMirrors = isFindingMirrors || isCheckingMirrors;
   const { t } = useTranslation();
 
   const [details, setDetails] = useState<MediaDetails | null>(selectedMediaDetails);
   const [loading, setLoading] = useState<boolean>(!selectedMediaDetails);
+  const [isFetchingDetails, setIsFetchingDetails] = useState<boolean>(false);
   const [selectedTranslatorId, setSelectedTranslatorId] = useState<number>(selectedMediaDetails?.currentTranslatorId ?? 56);
   const [selectedSeasonId, setSelectedSeasonId] = useState<number>(1);
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -83,6 +86,7 @@ export const DetailsPage: React.FC = () => {
 
   const loadMediaDetails = async (idOrUrl: string) => {
     if (!window.api) return;
+    setIsFetchingDetails(true);
     if (!details && !selectedMediaDetails) {
       setLoading(true);
     }
@@ -113,6 +117,7 @@ export const DetailsPage: React.FC = () => {
       console.error('Failed to load details:', err);
     } finally {
       setLoading(false);
+      setIsFetchingDetails(false);
     }
   };
 
@@ -193,12 +198,14 @@ export const DetailsPage: React.FC = () => {
 
   if (loading && !details) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[540px]">
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[540px]" role="status" aria-live="polite">
         <div className="relative w-20 h-20 mb-5 flex items-center justify-center">
           <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
           <img src={appLogo} alt="" className="w-12 h-12 rounded-full object-cover shadow-glow" />
         </div>
-        <span className="text-zinc-300 text-xs font-bold tracking-wider uppercase">{t.home.loadingCatalog}</span>
+        <span className="text-zinc-300 text-xs font-bold tracking-wider uppercase">
+          {isSearchingMirrors ? t.settings.findingOnlineMirrors : t.home.loadingCatalog}
+        </span>
       </div>
     );
   }
@@ -400,6 +407,21 @@ export const DetailsPage: React.FC = () => {
                 <span>Найти в сети</span>
               </button>
             </div>
+
+            {/* Circular loading indicator while mirrors or full details are still resolving */}
+            {(isSearchingMirrors || isFetchingDetails) && (
+              <div
+                role="status"
+                aria-live="polite"
+                className="mb-5 inline-flex items-center gap-2.5 px-4 py-2 rounded-full cinema-glass border border-brand-ember/40 text-xs font-bold text-zinc-200"
+              >
+                <span
+                  className="w-4 h-4 rounded-full border-[2.5px] border-brand-crimson/25 border-t-brand-orange border-r-brand-crimson animate-spin flex-shrink-0"
+                  aria-hidden="true"
+                />
+                <span>{isSearchingMirrors ? t.settings.findingOnlineMirrors : t.home.loadingCatalog}</span>
+              </div>
+            )}
 
             {/* Anti-bot notice */}
             {details.antiBot && (

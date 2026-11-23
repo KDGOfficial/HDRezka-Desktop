@@ -151,7 +151,7 @@ test('What to Watch picker respects category, genre override, and non-repeating 
   assert.equal(animePick.item.id, 'a1', 'Category filter must pick anime');
 });
 
-test('Renamed "Новое на HDRezka", "Что посмотреть" nav, and v0.0.54 version sync + scriptless NSIS updater', () => {
+test('Renamed "Новое на HDRezka", "Что посмотреть" nav, and v0.0.55 version sync + scriptless NSIS updater', () => {
   assert.equal(translations.ru.home.expected, 'Новое на HDRezka');
   assert.equal(translations.ru.settings.secExpected, 'Новое на HDRezka');
   assert.equal(translations.uk.home.expected, 'Нове на HDRezka');
@@ -164,17 +164,17 @@ test('Renamed "Новое на HDRezka", "Что посмотреть" nav, and 
   assert.equal(translations.en.nav.whatToWatch, 'What to Watch');
 
   // Version sync across all 5 locations
-  assert.equal(APP_VERSION, '0.0.54');
+  assert.equal(APP_VERSION, '0.0.55');
   const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
   const providerSrc = fs.readFileSync(path.resolve(__dirname, '../src/core/providers/rezka/provider.ts'), 'utf8');
   const readmeSrc = fs.readFileSync(path.resolve(__dirname, '../README.md'), 'utf8');
   const ipcSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/ipc/index.ts'), 'utf8');
   const workflowSrc = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/release.yml'), 'utf8');
-  assert.equal(pkg.version, '0.0.54');
-  assert.match(providerSrc, /public version = '0\.0\.54'/);
-  assert.match(readmeSrc, /version-0\.0\.54-crimson/);
-  assert.match(readmeSrc, /HDREZKA-Setup-0\.0\.54\.exe/);
-  assert.match(readmeSrc, /HDREZKA-Portable-0\.0\.54\.exe/);
+  assert.equal(pkg.version, '0.0.55');
+  assert.match(providerSrc, /public version = '0\.0\.55'/);
+  assert.match(readmeSrc, /version-0\.0\.55-crimson/);
+  assert.match(readmeSrc, /HDREZKA-Setup-0\.0\.55\.exe/);
+  assert.match(readmeSrc, /HDREZKA-Portable-0\.0\.55\.exe/);
   assert.match(readmeSrc, /Code Signing Policy/);
 
   // Auto-updater must launch NSIS directly without generating temporary .bat/.vbs scripts

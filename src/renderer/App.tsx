@@ -36,7 +36,10 @@ export const App: React.FC = () => {
     setUpdateModalOpen,
     isInterestsModalOpen,
     setInterestsModalOpen,
+    isFindingMirrors,
+    isCheckingMirrors,
   } = useSettingsStore();
+  const isSearchingMirrors = isFindingMirrors || isCheckingMirrors;
   const { t } = useTranslation();
   const [isWhatsNewOpen, setIsWhatsNewOpen] = React.useState(false);
   const [whatsNewChecked, setWhatsNewChecked] = React.useState(false);
@@ -202,6 +205,21 @@ export const App: React.FC = () => {
           </main>
         </div>
       </div>
+
+      {/* Floating circular indicator when user selected a page/item while mirrors are still searching */}
+      {isSearchingMirrors && currentPage !== 'settings' && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2.5 px-4 py-2.5 rounded-full cinema-glass border border-brand-ember/45 shadow-elevated text-xs font-bold text-zinc-100 pointer-events-none select-none animate-fadeIn"
+        >
+          <span
+            className="w-4 h-4 rounded-full border-[2.5px] border-brand-crimson/25 border-t-brand-orange border-r-brand-crimson animate-spin flex-shrink-0"
+            aria-hidden="true"
+          />
+          <span>{t.settings.findingOnlineMirrors}</span>
+        </div>
+      )}
 
       {/* Overlays & Native Modal Dialogs */}
       <VideoPlayer />

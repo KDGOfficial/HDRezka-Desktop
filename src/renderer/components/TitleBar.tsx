@@ -8,7 +8,8 @@ export const TitleBar: React.FC = () => {
   const [isMax, setIsMax] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [zoomFactor, setZoomFactor] = useState(100);
-  const { settings, mirrorsStatus, updateInfo, setUpdateModalOpen } = useSettingsStore();
+  const { settings, mirrorsStatus, isFindingMirrors, isCheckingMirrors, updateInfo, setUpdateModalOpen } = useSettingsStore();
+  const isSearchingMirrors = isFindingMirrors || isCheckingMirrors;
   const { setPage } = useMediaStore();
 
   useEffect(() => {
@@ -144,20 +145,29 @@ export const TitleBar: React.FC = () => {
         <button
           type="button"
           onClick={() => setPage('settings')}
-          title="Настройки зеркала"
+          title={isSearchingMirrors ? 'Поиск рабочих зеркал...' : 'Настройки зеркала'}
           className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.08] text-[10px] text-zinc-300 hover:text-white cursor-pointer"
         >
-          <span
-            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
-              !isAvailable
-                ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.85)]'
-                : needsVerification
-                ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.85)]'
-                : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)]'
-            }`}
-          />
-          <span className="truncate max-w-[140px] font-mono text-[10px]">{cleanMirror}</span>
-          {mirrorStatus && mirrorStatus.latencyMs < 9000 && (
+          {isSearchingMirrors ? (
+            <span
+              className="w-3 h-3 rounded-full border-[2px] border-brand-orange/25 border-t-brand-orange border-r-brand-crimson animate-spin flex-shrink-0"
+              aria-hidden="true"
+            />
+          ) : (
+            <span
+              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${
+                !isAvailable
+                  ? 'bg-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.85)]'
+                  : needsVerification
+                  ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.85)]'
+                  : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.85)]'
+              }`}
+            />
+          )}
+          <span className="truncate max-w-[140px] font-mono text-[10px]">
+            {isSearchingMirrors ? 'Поиск зеркал...' : cleanMirror}
+          </span>
+          {!isSearchingMirrors && mirrorStatus && mirrorStatus.latencyMs < 9000 && (
             <span className="text-zinc-500 font-mono text-[9px] tabular-nums">{mirrorStatus.latencyMs}ms</span>
           )}
         </button>

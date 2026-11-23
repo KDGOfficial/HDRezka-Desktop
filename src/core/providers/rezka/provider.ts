@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.54';
+  public version = '0.0.55';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -1210,6 +1210,16 @@ export class RezkaProvider implements IProvider {
     return target.includes('api.yani.tv') || target.includes('yummyanime.') || target.includes('yummyani.me');
   }
 
+  private isAniLiberty(urlOrMirror?: string): boolean {
+    const target = (urlOrMirror || '').toLowerCase();
+    return target.includes('aniliberty.top') || target.includes('anilibria.wtf') || /^aniliberty-\d+$/i.test(target);
+  }
+
+  private isAnimeVost(urlOrMirror?: string): boolean {
+    const target = (urlOrMirror || '').toLowerCase();
+    return target.includes('api.animetop.info') || target.includes('api.animevost.org') || /^animevost-\d+$/i.test(target);
+  }
+
   private isAnimeGo(urlOrMirror?: string): boolean {
     const target = (urlOrMirror || '').toLowerCase();
     return target.includes('animego.');
@@ -1221,7 +1231,297 @@ export class RezkaProvider implements IProvider {
   }
 
   private isAnimeMirror(urlOrMirror?: string): boolean {
-    return this.isYummyAnime(urlOrMirror) || this.isAnimeGo(urlOrMirror) || this.isUaKino(urlOrMirror);
+    return (
+      this.isAniLiberty(urlOrMirror) ||
+      this.isAnimeVost(urlOrMirror) ||
+      this.isYummyAnime(urlOrMirror) ||
+      this.isAnimeGo(urlOrMirror) ||
+      this.isUaKino(urlOrMirror)
+    );
+  }
+
+  private static readonly ANILIBERTY_BASES = ['https://aniliberty.top', 'https://anilibria.wtf'];
+  private static readonly ANIMEVOST_BASES = ['https://api.animetop.info', 'https://api.animevost.org'];
+
+  private async fetchAniLibertyJson(path: string, timeoutMs = 4500): Promise<{ data: any; origin: string } | null> {
+    for (const base of RezkaProvider.ANILIBERTY_BASES) {
+      try {
+        const res = await appFetch(`${base}${path}`, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data) return { data, origin: base };
+      } catch {}
+    }
+    return null;
+  }
+
+  private async fetchAnimeVostJson(
+    path: string,
+    formBody?: Record<string, string>,
+    timeoutMs = 4500
+  ): Promise<any | null> {
+    for (const base of RezkaProvider.ANIMEVOST_BASES) {
+      try {
+        const res = await appFetch(`${base}${path}`, {
+          method: formBody ? 'POST' : 'GET',
+          headers: {
+            'User-Agent': BROWSER_USER_AGENT,
+            'Accept': 'application/json',
+            ...(formBody ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+          },
+          ...(formBody ? { body: new URLSearchParams(formBody).toString() } : {}),
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) continue;
+        const data = await res.json();
+        if (data) return data;
+      } catch {}
+    }
+    return null;
+  }
+
+  public parseAniLibertyItems(list: any[], origin = 'https://aniliberty.top'): MediaItem[] {
+    if (!Array.isArray(list)) return [];
+    const items: MediaItem[] = [];
+    const seen = new Set<string>();
+    const cleanOrigin = origin.replace(/\/$/, '');
+    for (const raw of list) {
+      if (!raw || !raw.id) continue;
+      const title = String(raw.name?.main || raw.name?.english || '').trim();
+      if (!title) continue;
+      const id = `aniliberty-${raw.id}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const rawPoster = raw.poster?.optimized?.src || raw.poster?.src || raw.poster?.preview || '';
+      const poster = rawPoster
+        ? rawPoster.startsWith('http')
+          ? rawPoster
+          : `${cleanOrigin}${rawPoster.startsWith('/') ? '' : '/'}${rawPoster}`
+        : '';
+      const yearNum = Number(raw.year || 0);
+      const ratingNum =
+        typeof raw.rating === 'number'
+          ? raw.rating
+          : Number(raw.rating?.average || raw.shikimori?.rating || 0);
+      const url = `${cleanOrigin}/api/v1/anime/releases/${raw.id}`;
+      const item: MediaItem = {
+        id,
+        title,
+        origTitle: raw.name?.english ? String(raw.name.english).trim() : undefined,
+        url,
+        poster,
+        year: yearNum > 1900 ? yearNum : undefined,
+        type: 'animation',
+        rating: ratingNum > 0 && ratingNum <= 10 ? Math.round(ratingNum * 10) / 10 : undefined,
+        info: `AniLiberty${yearNum > 1900 ? ` · ${yearNum}` : ''}`,
+      };
+      this.mediaCache.set(url, item);
+      this.mediaCache.set(id, item);
+      this.mediaUrlCache.set(id, url);
+      items.push(item);
+    }
+    return this.filterNonCamRipItems(items);
+  }
+
+  private async searchAniLiberty(query: string): Promise<MediaItem[]> {
+    const q = query.trim();
+    if (!q) return [];
+    const res = await this.fetchAniLibertyJson(`/api/v1/app/search/releases?query=${encodeURIComponent(q)}`, 3800);
+    if (!res) return [];
+    const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
+    return this.parseAniLibertyItems(list, res.origin);
+  }
+
+  public parseAnimeVostItems(list: any[]): MediaItem[] {
+    if (!Array.isArray(list)) return [];
+    const items: MediaItem[] = [];
+    const seen = new Set<string>();
+    for (const raw of list) {
+      if (!raw || !raw.id || !raw.title) continue;
+      const id = `animevost-${raw.id}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const rawTitle = String(raw.title).replace(/\s*\[[^\]]*\]\s*/g, ' ').replace(/\s+/g, ' ').trim();
+      const parts = rawTitle.split(/\s+\/\s+/);
+      const title = (parts[0] || rawTitle).trim();
+      const origTitle = parts[1]?.trim() || undefined;
+      if (!title) continue;
+      const yearNum = parseInt(String(raw.year || ''), 10) || 0;
+      const votes = Number(raw.votes || 0);
+      const rawRating = Number(raw.rating || 0);
+      // AnimeVost stores sum of 1..5 star ratings; convert to 10-point scale
+      const ratingNum = votes > 0 && rawRating > 0 ? Math.min(10, Math.round((rawRating / votes) * 2 * 10) / 10) : 0;
+      const poster = String(raw.urlImagePreview || '').trim();
+      const url = `https://api.animetop.info/v1/info?id=${raw.id}`;
+      const item: MediaItem = {
+        id,
+        title,
+        origTitle,
+        url,
+        poster,
+        year: yearNum > 1900 ? yearNum : undefined,
+        type: 'animation',
+        rating: ratingNum > 0 ? ratingNum : undefined,
+        info: `AnimeVost${yearNum > 1900 ? ` · ${yearNum}` : ''}`,
+      };
+      this.mediaCache.set(url, item);
+      this.mediaCache.set(id, item);
+      this.mediaUrlCache.set(id, url);
+      items.push(item);
+    }
+    return this.filterNonCamRipItems(items);
+  }
+
+  private async searchAnimeVost(query: string): Promise<MediaItem[]> {
+    const q = query.trim();
+    if (!q) return [];
+    const json = await this.fetchAnimeVostJson('/v1/search', { name: q }, 3800);
+    return this.parseAnimeVostItems(json?.data || []);
+  }
+
+  private pickBestAnimeMatch(
+    candidates: MediaItem[],
+    title?: string,
+    origTitle?: string,
+    year?: number
+  ): MediaItem | null {
+    if (!candidates || candidates.length === 0) return null;
+    const norm = (s?: string) =>
+      (s || '')
+        .toLowerCase()
+        .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim();
+    const targets = [norm(title), norm(origTitle)].filter((t) => t.length >= 2);
+    if (targets.length === 0) return candidates[0];
+
+    let best: MediaItem | null = null;
+    let bestScore = 0;
+    for (const c of candidates) {
+      const cNames = [norm(c.title), norm(c.origTitle)].filter(Boolean);
+      let score = 0;
+      for (const t of targets) {
+        const tWords = t.split(' ').filter((w) => w.length >= 2);
+        for (const cn of cNames) {
+          if (cn === t) score = Math.max(score, 100);
+          else if (cn.includes(t) || t.includes(cn)) score = Math.max(score, 75);
+          else if (tWords.length > 0) {
+            const cWords = cn.split(' ').filter((w) => w.length >= 2);
+            const overlap = tWords.filter((w) => cWords.includes(w)).length;
+            const ratio = overlap / Math.max(tWords.length, 1);
+            if (ratio >= 0.5) score = Math.max(score, Math.round(ratio * 65));
+          }
+        }
+      }
+      if (score > 0 && year && c.year && Math.abs(c.year - year) <= 1) {
+        score += 10;
+      }
+      if (score > bestScore) {
+        bestScore = score;
+        best = c;
+      }
+    }
+    return bestScore >= 40 ? best : null;
+  }
+
+  public async getAniLibertyStream(params: {
+    mediaId?: string;
+    title?: string;
+    origTitle?: string;
+    year?: number;
+    episode?: number;
+  }): Promise<StreamData | null> {
+    try {
+      let releaseId = params.mediaId?.match(/aniliberty-(\d+)/i)?.[1] || '';
+      if (!releaseId) {
+        const queries = [params.title, params.origTitle]
+          .filter((q): q is string => Boolean(q && q.trim().length >= 2))
+          .map((q) => q.replace(/\s*\(\d{4}\).*$/, '').trim());
+        for (const q of queries) {
+          const hits = await this.searchAniLiberty(q);
+          const match = this.pickBestAnimeMatch(hits, params.title, params.origTitle, params.year);
+          if (match) {
+            releaseId = match.id.replace(/^aniliberty-/i, '');
+            break;
+          }
+        }
+      }
+      if (!releaseId) return null;
+      const res = await this.fetchAniLibertyJson(`/api/v1/anime/releases/${releaseId}`, 4500);
+      const episodes: any[] = res?.data?.episodes || [];
+      if (episodes.length === 0) return null;
+      const epNum = Math.max(1, params.episode || 1);
+      const ep =
+        episodes.find((e) => Number(e?.ordinal) === epNum) ||
+        episodes[epNum - 1] ||
+        episodes[0];
+      if (!ep) return null;
+      const streams: VideoQualityStream[] = [];
+      if (ep.hls_1080) streams.push({ quality: '1080p', hls: ep.hls_1080, mp4: '' });
+      if (ep.hls_720) streams.push({ quality: '720p', hls: ep.hls_720, mp4: '' });
+      if (ep.hls_480) streams.push({ quality: '480p', hls: ep.hls_480, mp4: '' });
+      if (streams.length === 0) return null;
+      return {
+        streams,
+        subtitles: [],
+        isAlternative: true,
+        sourceName: 'AniLiberty HLS',
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  public async getAnimeVostStream(params: {
+    mediaId?: string;
+    title?: string;
+    origTitle?: string;
+    year?: number;
+    episode?: number;
+  }): Promise<StreamData | null> {
+    try {
+      let animeId = params.mediaId?.match(/animevost-(\d+)/i)?.[1] || '';
+      if (!animeId) {
+        const queries = [params.title, params.origTitle]
+          .filter((q): q is string => Boolean(q && q.trim().length >= 2))
+          .map((q) => q.replace(/\s*\(\d{4}\).*$/, '').trim());
+        for (const q of queries) {
+          const hits = await this.searchAnimeVost(q);
+          const match = this.pickBestAnimeMatch(hits, params.title, params.origTitle, params.year);
+          if (match) {
+            animeId = match.id.replace(/^animevost-/i, '');
+            break;
+          }
+        }
+      }
+      if (!animeId) return null;
+      const playlist = await this.fetchAnimeVostJson('/v1/playlist', { id: animeId }, 4500);
+      if (!Array.isArray(playlist) || playlist.length === 0) return null;
+      const epNum = Math.max(1, params.episode || 1);
+      const ep =
+        playlist.find((e: any) => {
+          const m = String(e?.name || '').match(/(\d+)/);
+          return m && parseInt(m[1], 10) === epNum;
+        }) ||
+        playlist[epNum - 1] ||
+        playlist[0];
+      if (!ep) return null;
+      const streams: VideoQualityStream[] = [];
+      if (ep.hd) streams.push({ quality: '720p', hls: '', mp4: String(ep.hd) });
+      if (ep.std) streams.push({ quality: '480p', hls: '', mp4: String(ep.std) });
+      if (streams.length === 0) return null;
+      return {
+        streams,
+        subtitles: [],
+        isAlternative: true,
+        sourceName: 'AnimeVost MP4',
+      };
+    } catch {
+      return null;
+    }
   }
 
   public parseYummyAnimeItems(list: any[]): MediaItem[] {
@@ -1422,12 +1722,16 @@ export class RezkaProvider implements IProvider {
   }
 
   private async searchAnimeMirrors(query: string): Promise<MediaItem[]> {
-    const [yaniRes, goRes, uaRes] = await Promise.allSettled([
+    const [libRes, vostRes, yaniRes, goRes, uaRes] = await Promise.allSettled([
+      this.searchAniLiberty(query),
+      this.searchAnimeVost(query),
       this.searchYummyAnime(query),
       this.searchAnimeGo(query),
       this.searchUaKino(query),
     ]);
     const combined: MediaItem[] = [
+      ...(libRes.status === 'fulfilled' ? libRes.value : []),
+      ...(vostRes.status === 'fulfilled' ? vostRes.value : []),
       ...(yaniRes.status === 'fulfilled' ? yaniRes.value : []),
       ...(goRes.status === 'fulfilled' ? goRes.value : []),
       ...(uaRes.status === 'fulfilled' ? uaRes.value : []),
@@ -1459,9 +1763,26 @@ export class RezkaProvider implements IProvider {
     try {
       const offset = Math.max(0, (filter.page - 1) * 24);
       const sort = filter.sort === 'popular' || filter.sort === 'rating' ? 'top' : filter.sort === 'watching' ? 'views' : 'year';
-      const [yaniRes, uaRes] = await Promise.allSettled([
+      const libSort =
+        filter.sort === 'popular' || filter.sort === 'rating'
+          ? 'RATING_DESC'
+          : 'FRESH_AT_DESC';
+      const [libRes, vostRes, yaniRes, uaRes] = await Promise.allSettled([
         (async () => {
-          const r = await appFetch(`https://api.yani.tv/anime?limit=24&offset=${offset}&sort=${sort}`, {
+          const res = await this.fetchAniLibertyJson(
+            `/api/v1/anime/catalog/releases?limit=16&page=${filter.page}&f[sorting]=${libSort}`,
+            4000
+          );
+          if (!res) return [];
+          const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
+          return this.parseAniLibertyItems(list, res.origin);
+        })(),
+        (async () => {
+          const json = await this.fetchAnimeVostJson(`/v1/last?page=${filter.page}&quantity=16`, undefined, 4000);
+          return this.parseAnimeVostItems(json?.data || []);
+        })(),
+        (async () => {
+          const r = await appFetch(`https://api.yani.tv/anime?limit=16&offset=${offset}&sort=${sort}`, {
             headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
             signal: AbortSignal.timeout(4000),
           });
@@ -1481,6 +1802,8 @@ export class RezkaProvider implements IProvider {
           : Promise.resolve([]),
       ]);
       const items = this.dedupeMediaItems([
+        ...(libRes.status === 'fulfilled' ? libRes.value : []),
+        ...(vostRes.status === 'fulfilled' ? vostRes.value : []),
         ...(yaniRes.status === 'fulfilled' ? yaniRes.value : []),
         ...(uaRes.status === 'fulfilled' ? uaRes.value : []),
       ]);
@@ -1504,6 +1827,141 @@ export class RezkaProvider implements IProvider {
   private async getAnimeMirrorDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails | null> {
     const target = meta?.url || urlOrId;
     try {
+      // AniLiberty / AniLibria JSON API details (direct 1080p HLS, no captcha)
+      if (this.isAniLiberty(target) || this.isAniLiberty(urlOrId)) {
+        const idMatch = target.match(/\/releases\/(\d+)/) || urlOrId.match(/aniliberty-(\d+)/i);
+        const releaseId = idMatch?.[1];
+        if (!releaseId) return null;
+        const res = await this.fetchAniLibertyJson(`/api/v1/anime/releases/${releaseId}`, 4500);
+        const raw = res?.data;
+        if (!raw?.name?.main && !raw?.name?.english) return null;
+        const origin = res!.origin;
+        const rawPoster = raw.poster?.optimized?.src || raw.poster?.src || meta?.poster || '';
+        const poster = rawPoster
+          ? rawPoster.startsWith('http')
+            ? rawPoster
+            : `${origin}${rawPoster.startsWith('/') ? '' : '/'}${rawPoster}`
+          : '';
+        const title = String(raw.name?.main || raw.name?.english).trim();
+        const origTitle = String(raw.name?.english || meta?.origTitle || '').trim();
+        const year = Number(raw.year || meta?.year || 0);
+        const genres = Array.isArray(raw.genres)
+          ? raw.genres.map((g: any) => g?.name).filter(Boolean)
+          : ['Аниме'];
+        const rawEps: any[] = Array.isArray(raw.episodes) ? raw.episodes : [];
+        const episodes = rawEps
+          .map((e: any, idx: number) => {
+            const epNum = Number(e?.ordinal) || idx + 1;
+            return {
+              id: epNum,
+              episodeId: epNum,
+              seasonId: 1,
+              title: e?.name ? `${epNum}. ${String(e.name).trim()}` : `Серия ${epNum}`,
+            };
+          })
+          .sort((a, b) => a.episodeId - b.episodeId);
+        const seasons = episodes.length > 0 ? [{ id: 1, title: 'Сезон 1', episodes }] : undefined;
+        const [kpReviews, criticReviews] = await Promise.all([
+          this.fetchKinopoiskReviews(title, year, origTitle),
+          this.fetchCriticReviews(title, year, { ratingRezka: meta?.rating, genres }),
+        ]);
+        return {
+          id: `aniliberty-${releaseId}`,
+          title,
+          origTitle,
+          poster,
+          backdrop: poster,
+          year,
+          country: 'Япония',
+          genres,
+          type: 'animation',
+          ratingRezka: meta?.rating,
+          description: String(raw.description || '').replace(/<[^>]+>/g, '').trim(),
+          directors: [],
+          actors: [],
+          translators: [{ id: 1, name: 'AniLibria (1080p)', premium: false }],
+          currentTranslatorId: 1,
+          seasons,
+          similar: [],
+          reviews: [...kpReviews, ...criticReviews],
+          url: `${origin}/api/v1/anime/releases/${releaseId}`,
+          antiBot: false,
+        };
+      }
+
+      // AnimeVost JSON API details (direct HD MP4, no captcha)
+      if (this.isAnimeVost(target) || this.isAnimeVost(urlOrId)) {
+        const idMatch = target.match(/[?&]id=(\d+)/) || urlOrId.match(/animevost-(\d+)/i);
+        const animeId = idMatch?.[1];
+        if (!animeId) return null;
+        const [infoJson, playlist] = await Promise.all([
+          this.fetchAnimeVostJson('/v1/info', { id: animeId }, 4500),
+          this.fetchAnimeVostJson('/v1/playlist', { id: animeId }, 4500),
+        ]);
+        const raw = Array.isArray(infoJson?.data) ? infoJson.data[0] : infoJson?.data;
+        if (!raw && !meta?.title) return null;
+        const rawTitle = String(raw?.title || meta?.title || '')
+          .replace(/\s*\[[^\]]*\]\s*/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const parts = rawTitle.split(/\s+\/\s+/);
+        const title = (parts[0] || rawTitle).trim();
+        const origTitle = parts[1]?.trim() || meta?.origTitle || '';
+        const year = parseInt(String(raw?.year || meta?.year || ''), 10) || 0;
+        const poster = String(raw?.urlImagePreview || meta?.poster || '').trim();
+        const genres = raw?.genre
+          ? String(raw.genre)
+              .split(',')
+              .map((g: string) => g.trim())
+              .filter(Boolean)
+          : ['Аниме'];
+        const votes = Number(raw?.votes || 0);
+        const rawRating = Number(raw?.rating || 0);
+        const ratingRezka =
+          votes > 0 && rawRating > 0 ? Math.min(10, Math.round((rawRating / votes) * 2 * 10) / 10) : meta?.rating;
+        const episodes = Array.isArray(playlist)
+          ? playlist
+              .map((e: any, idx: number) => {
+                const m = String(e?.name || '').match(/(\d+)/);
+                const epNum = m ? parseInt(m[1], 10) : idx + 1;
+                return {
+                  id: epNum,
+                  episodeId: epNum,
+                  seasonId: 1,
+                  title: String(e?.name || `Серия ${epNum}`).trim(),
+                };
+              })
+              .sort((a, b) => a.episodeId - b.episodeId)
+          : [];
+        const seasons = episodes.length > 0 ? [{ id: 1, title: 'Сезон 1', episodes }] : undefined;
+        const [kpReviews, criticReviews] = await Promise.all([
+          this.fetchKinopoiskReviews(title, year, origTitle),
+          this.fetchCriticReviews(title, year, { ratingRezka, genres }),
+        ]);
+        return {
+          id: `animevost-${animeId}`,
+          title,
+          origTitle,
+          poster,
+          backdrop: poster,
+          year,
+          country: 'Япония',
+          genres,
+          type: 'animation',
+          ratingRezka,
+          description: String(raw?.description || '').replace(/<[^>]+>/g, '').trim(),
+          directors: raw?.director ? [String(raw.director).trim()] : [],
+          actors: [],
+          translators: [{ id: 1, name: 'AnimeVost (HD)', premium: false }],
+          currentTranslatorId: 1,
+          seasons,
+          similar: [],
+          reviews: [...kpReviews, ...criticReviews],
+          url: `https://api.animetop.info/v1/info?id=${animeId}`,
+          antiBot: false,
+        };
+      }
+
       // YummyAnime JSON API details
       if (this.isYummyAnime(target) || /^yani-\d+$/i.test(urlOrId)) {
         const idMatch = target.match(/\/anime\/(\d+)/) || urlOrId.match(/yani-(\d+)/i);
@@ -3855,7 +4313,11 @@ export class RezkaProvider implements IProvider {
     // Route by explicit item URL/origin FIRST so clicking a Kinogo/HDStudio/Anime item works regardless of activeMirror
     const explicitUrl = urlOrId.startsWith('http') ? urlOrId : cachedMeta?.url || this.mediaUrlCache.get(urlOrId) || '';
 
-    if (this.isAnimeMirror(urlOrId) || this.isAnimeMirror(explicitUrl) || /^yani-\d+$/i.test(urlOrId)) {
+    if (
+      this.isAnimeMirror(urlOrId) ||
+      this.isAnimeMirror(explicitUrl) ||
+      /^(?:yani|aniliberty|animevost)-\d+$/i.test(urlOrId)
+    ) {
       const ad = await this.getAnimeMirrorDetails(urlOrId, cachedMeta);
       if (ad) return ad;
     }
@@ -4814,6 +5276,48 @@ export class RezkaProvider implements IProvider {
     };
 
     const cachedUrl = this.mediaUrlCache.get(params.mediaId) || cachedItem?.url || '';
+    const isAnimeItem =
+      this.isAnimeMirror(params.mediaId) ||
+      this.isAnimeMirror(cachedUrl) ||
+      /^(?:yani|aniliberty|animevost)-\d+$/i.test(params.mediaId) ||
+      cachedItem?.type === 'animation' ||
+      cachedUrl.includes('/animation/') ||
+      cachedUrl.includes('/anime');
+
+    // Open captcha-free anime mirrors (AniLiberty 1080p HLS & AnimeVost 720p MP4)
+    if (isAnimeItem) {
+      if (this.isAnimeVost(params.mediaId) || this.isAnimeVost(cachedUrl)) {
+        const vostDirect = await this.getAnimeVostStream({
+          mediaId: params.mediaId,
+          title: metaForResolve.title,
+          origTitle: metaForResolve.origTitle,
+          year: metaForResolve.year,
+          episode: params.episode,
+        });
+        if (considerStream(vostDirect)) return state.best;
+      }
+
+      const libStream = await this.getAniLibertyStream({
+        mediaId: params.mediaId,
+        title: metaForResolve.title,
+        origTitle: metaForResolve.origTitle,
+        year: metaForResolve.year,
+        episode: params.episode,
+      });
+      if (considerStream(libStream)) return state.best;
+
+      if (!this.isAnimeVost(params.mediaId) && !this.isAnimeVost(cachedUrl)) {
+        const vostStream = await this.getAnimeVostStream({
+          mediaId: params.mediaId,
+          title: metaForResolve.title,
+          origTitle: metaForResolve.origTitle,
+          year: metaForResolve.year,
+          episode: params.episode,
+        });
+        if (considerStream(vostStream)) return state.best;
+      }
+    }
+
     const isHdStudioItem =
       forceCollapsByOffset ||
       this.isHdStudio(params.mediaId) ||
@@ -5025,7 +5529,7 @@ export class RezkaProvider implements IProvider {
       this.isAnimeMirror(params.mediaId) ||
       this.isAnimeMirror(cachedItem?.url) ||
       this.isAnimeMirror(this.mediaUrlCache.get(params.mediaId) || this.mediaUrlCache.get(normId)) ||
-      /^yani-\d+$/i.test(params.mediaId)
+      /^(?:yani|aniliberty|animevost)-\d+$/i.test(params.mediaId)
     ) {
       const altStream = await this.findAlternativeStream({
         mediaId: params.mediaId,
