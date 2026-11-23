@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Tag or version to release (e.g. v0.0.12)'
+        description: 'Tag or version to release (e.g. v0.0.54)'
         required: false
         default: ''
 
@@ -39,6 +39,66 @@ jobs:
         run: npm run dist
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+      - name: Sign Executables via Azure Trusted Signing (if configured)
+        if: ${{ secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' && secrets.AZURE_SIGNING_ENDPOINT != '' && secrets.AZURE_SIGNING_ACCOUNT != '' && secrets.AZURE_SIGNING_CERT_PROFILE != '' }}
+        uses: azure/trusted-signing-action@v0.5.7
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          trusted-signing-account-name: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_SIGNING_CERT_PROFILE }}
+          files-folder: release
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Upload Unsigned Executables for SignPath (if configured)
+        id: upload-unsigned
+        if: ${{ secrets.SIGNPATH_API_TOKEN != '' && secrets.SIGNPATH_ORG_ID != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-executables
+          path: |
+            release/HDREZKA-Setup-*.exe
+            release/HDREZKA-Portable-*.exe
+          retention-days: 1
+
+      - name: Sign Executables via SignPath Foundation (if configured)
+        if: ${{ secrets.SIGNPATH_API_TOKEN != '' && secrets.SIGNPATH_ORG_ID != '' }}
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORG_ID }}
+          project-slug: ${{ secrets.SIGNPATH_PROJECT_SLUG || 'hdrezka-desktop' }}
+          signing-policy-slug: ${{ secrets.SIGNPATH_POLICY_SLUG || 'release-signing' }}
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: release/signed
+
+      - name: Unpack SignPath Signed Executables (if signed)
+        if: ${{ secrets.SIGNPATH_API_TOKEN != '' && secrets.SIGNPATH_ORG_ID != '' }}
+        shell: pwsh
+        run: |
+          $signedZip = Get-ChildItem -Path release/signed -Filter "*.zip" | Select-Object -First 1
+          if ($signedZip) {
+            Expand-Archive -Path $signedZip.FullName -DestinationPath release -Force
+          } else {
+            Copy-Item -Path release/signed/*.exe -Destination release/ -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Generate SHA-256 Checksums
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path release -Filter "HDREZKA-*.exe" | ForEach-Object {
+            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Out-File -FilePath release/SHA256SUMS.txt -Encoding utf8
 
       - name: Publish GitHub Release with Executables
         uses: softprops/action-gh-release@v2
@@ -46,6 +106,7 @@ jobs:
           files: |
             release/HDREZKA-Setup-*.exe
             release/HDREZKA-Portable-*.exe
+            release/SHA256SUMS.txt
           draft: false
           prerelease: false
           generate_release_notes: true

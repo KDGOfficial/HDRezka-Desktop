@@ -323,10 +323,35 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         status: 'installing',
       },
     });
+    const unsubscribe = window.api.onUpdateProgress((progress) => {
+      set({ updateProgress: progress });
+    });
     try {
-      await window.api.installUpdate();
-    } catch (err) {
+      const ok = await window.api.installUpdate();
+      if (!ok && get().updateProgress?.status === 'installing') {
+        set({
+          updateProgress: {
+            percent: 0,
+            transferredBytes: 0,
+            totalBytes: 0,
+            status: 'error',
+            error: 'Не удалось запустить установщик обновления. Скачайте релиз вручную на GitHub.',
+          },
+        });
+      }
+    } catch (err: any) {
       console.error('Failed to install update:', err);
+      set({
+        updateProgress: {
+          percent: 0,
+          transferredBytes: 0,
+          totalBytes: 0,
+          status: 'error',
+          error: err?.message || 'Failed to launch installer',
+        },
+      });
+    } finally {
+      unsubscribe();
     }
   },
 

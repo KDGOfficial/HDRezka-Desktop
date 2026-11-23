@@ -1,6 +1,6 @@
 {
   "name": "hdrezka-desktop",
-  "version": "0.0.53",
+  "version": "0.0.54",
   "description": "HDREZKA Desktop — Unofficial Windows Client",
   "main": "dist/main/main.js",
   "author": "HDRezka Desktop Team",
@@ -71,13 +71,19 @@
           ]
         }
       ],
-      "icon": "resources/icon.ico"
+      "icon": "resources/icon.ico",
+      "publisherName": [
+        "KDGOfficial"
+      ],
+      "signAndEditExecutable": true
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
       "shortcutName": "HDREZKA Desktop",
       "artifactName": "HDREZKA-Setup-${version}.${ext}"
     },

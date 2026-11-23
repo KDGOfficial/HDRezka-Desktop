@@ -832,7 +832,7 @@ export function registerIpcHandlers(): void {
     }
   );
 
-  let justUpdatedFlag = process.argv.includes('--just-updated');
+  let justUpdatedFlag = process.argv.includes('--just-updated') || process.argv.includes('--updated');
 
   ipcMain.handle(IPC_CHANNELS.CHECK_JUST_UPDATED, () => {
     const flag = justUpdatedFlag;
@@ -861,6 +861,7 @@ export function registerIpcHandlers(): void {
       }
     }
     const win = getMainWindow();
+    const installerPath = downloadedUpdatePath;
     try {
       // Notify UI that installation process has begun
       win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
@@ -870,77 +871,74 @@ export function registerIpcHandlers(): void {
         status: 'installing',
       } as UpdateProgress);
 
-      const pid = process.pid;
-      const installerPath = downloadedUpdatePath;
-      const tempDir = app.getPath('temp');
-      const targetExe = process.env.PORTABLE_EXECUTABLE_FILE || app.getPath('exe');
+      // Launch the NSIS installer directly without generating temporary .bat/.vbs scripts in %TEMP%.
+      // NSIS built-in flags:
+      //   /S           - silent update without wizard dialogs
+      //   --updated    - waits for the running app to close, keeps shortcuts & user data, passes --updated on relaunch
+      //   --force-run  - automatically relaunches HDREZKA Desktop.exe once installation finishes
+      const launchResult = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
+        let settled = false;
+        const done = (res: { ok: boolean; error?: string }) => {
+          if (settled) return;
+          settled = true;
+          resolve(res);
+        };
 
-      const batPath = path.join(tempDir, 'hdrezka-update-runner.bat');
-      const vbsPath = path.join(tempDir, 'hdrezka-update-runner.vbs');
+        try {
+          const child = spawn(installerPath, ['/S', '--updated', '--force-run'], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+          });
 
-      const batContent = `@echo off
-setlocal
-set "PARENT_PID=${pid}"
-set "INSTALLER=${installerPath}"
-set "APP_EXE=${targetExe}"
+          child.once('error', (err: NodeJS.ErrnoException) => {
+            done({ ok: false, error: err?.message || String(err) });
+          });
 
-:wait_pid
-timeout /t 1 /nobreak >nul
-tasklist /fi "PID eq %PARENT_PID%" 2>nul | find "%PARENT_PID%" >nul
-if not errorlevel 1 goto wait_pid
+          child.once('exit', (code) => {
+            // Immediate non-zero exit before app.quit() indicates OS policy block (e.g. Smart App Control / UAC denial)
+            if (code !== null && code !== 0) {
+              done({ ok: false, error: `Installer exited immediately with code ${code}` });
+            }
+          });
 
-:: Run installer silently to apply update quickly without dialog deadlocks
-start /wait "" "%INSTALLER%" /S
+          child.once('spawn', () => {
+            child.unref();
+            // Brief grace check to catch synchronous OS policy blocks before quitting the running app
+            setTimeout(() => done({ ok: true }), 450);
+          });
+        } catch (err: any) {
+          done({ ok: false, error: err?.message || String(err) });
+        }
+      });
 
-:: Give the system a brief moment to finish writing files
-timeout /t 2 /nobreak >nul
-
-:: Relaunch the updated application
-if exist "%APP_EXE%" (
-    start "" "%APP_EXE%" --just-updated
-    exit
-)
-
-set "DEFAULT_EXE=%LOCALAPPDATA%\\Programs\\hdrezka-desktop\\HDREZKA Desktop.exe"
-if exist "%DEFAULT_EXE%" (
-    start "" "%DEFAULT_EXE%" --just-updated
-    exit
-)
-
-set "PROG_EXE=%ProgramFiles%\\HDREZKA Desktop\\HDREZKA Desktop.exe"
-if exist "%PROG_EXE%" (
-    start "" "%PROG_EXE%" --just-updated
-    exit
-)
-exit
-`;
-      fs.writeFileSync(batPath, batContent, 'utf-8');
-
-      // VBS wrapper to run the batch script completely hidden (no black CMD popup)
-      const vbsContent = `Set WshShell = CreateObject("WScript.Shell")\nWshShell.Run Chr(34) & "${batPath.replace(/\\/g, '\\\\')}" & Chr(34), 0, False\n`;
-      fs.writeFileSync(vbsPath, vbsContent, 'utf-8');
-
-      try {
-        const runner = spawn('wscript.exe', [vbsPath], {
-          detached: true,
-          stdio: 'ignore',
-        });
-        runner.unref();
-      } catch {
-        // Fallback to direct cmd spawn if wscript is restricted
-        const runner = spawn('cmd.exe', ['/c', batPath], {
-          detached: true,
-          stdio: 'ignore',
-        });
-        runner.unref();
+      if (!launchResult.ok) {
+        const msg =
+          'Windows заблокировал запуск установщика (Smart App Control / политика безопасности). Откройте страницу релиза на GitHub для ручной установки.';
+        win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
+          percent: 0,
+          transferredBytes: 0,
+          totalBytes: 0,
+          status: 'error',
+          error: msg,
+        } as UpdateProgress);
+        console.error('[AutoUpdate] Native installer launch failed:', launchResult.error);
+        return false;
       }
 
       setTimeout(() => {
         app.quit();
-      }, 1500);
+      }, 600);
       return true;
-    } catch (e) {
+    } catch (e: any) {
       console.error('[AutoUpdate] Launch installer failed:', e);
+      win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
+        percent: 0,
+        transferredBytes: 0,
+        totalBytes: 0,
+        status: 'error',
+        error: e?.message || 'Не удалось запустить установщик обновления.',
+      } as UpdateProgress);
       return false;
     }
   });
