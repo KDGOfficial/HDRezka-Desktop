@@ -77,3 +77,34 @@ test('parseAnimeVostItems strips episode brackets, splits origTitle, and scales 
   assert.equal(items[0].rating, 9);
   assert.equal(items[0].type, 'animation');
 });
+
+test('YummyAnime ignores source material ("Игра", "Манга") in raw.original and pickBestAnimeMatch rejects unrelated titles', () => {
+  const provider = new RezkaProvider();
+  const parsed = provider.parseYummyAnimeItems([
+    {
+      anime_id: 12597,
+      title: 'Genshin Impact: Сумеру',
+      original: 'Игра',
+      other_titles: ['【原神】スメールPV', 'Genshin Impact: Sumeru PV'],
+      year: 2022,
+    },
+  ]);
+  assert.equal(parsed.length, 1);
+  assert.equal(parsed[0].origTitle, 'Genshin Impact: Sumeru PV');
+  assert.notEqual(parsed[0].origTitle, 'Игра');
+
+  // Even if stale origTitle="Игра" is passed, pickBestAnimeMatch must never match unrelated anime
+  const wrongCandidates = [
+    { id: 'aniliberty-1', title: 'Игра друзей', origTitle: 'Tomodachi Game', year: 2022, url: 'u1', poster: '', type: 'animation' },
+    { id: 'aniliberty-2', title: 'Игра', origTitle: 'The Game', year: 2022, url: 'u2', poster: '', type: 'animation' },
+  ];
+  assert.equal(provider.pickBestAnimeMatch(wrongCandidates, 'Genshin Impact: Сумеру', 'Игра', 2022), null);
+
+  // Exact/close anime title match still works
+  const rightCandidates = [
+    ...wrongCandidates,
+    { id: 'aniliberty-99', title: 'Магическая битва', origTitle: 'Jujutsu Kaisen', year: 2020, url: 'u3', poster: '', type: 'animation' },
+  ];
+  const matched = provider.pickBestAnimeMatch(rightCandidates, 'Магическая битва', 'Jujutsu Kaisen', 2020);
+  assert.equal(matched?.id, 'aniliberty-99');
+});

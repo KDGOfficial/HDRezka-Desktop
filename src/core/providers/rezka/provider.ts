@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.56';
+  public version = '0.0.57';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -1382,7 +1382,29 @@ export class RezkaProvider implements IProvider {
     return this.parseAnimeVostItems(json?.data || []);
   }
 
-  private pickBestAnimeMatch(
+  private static readonly NON_TITLE_SOURCE_RE =
+    /^(?:игра|манга|ранобэ|веб-?манга|визуальная\s+новелла|новелла|оригинал|книга|комикс|музыка|4-?кома|другое|лайт-?новелла|game|manga|novel|light\s+novel|original|other)$/i;
+
+  public extractYummyOrigTitle(raw: any): string | undefined {
+    // In api.yani.tv, raw.original is the source material ("Игра", "Манга", "Ранобэ"), NOT the title
+    const others: unknown[] = Array.isArray(raw?.other_titles) ? raw.other_titles : [];
+    const latin = others.find(
+      (t): t is string =>
+        typeof t === 'string' &&
+        /[a-zA-Z]{3,}/.test(t) &&
+        !RezkaProvider.NON_TITLE_SOURCE_RE.test(t.trim())
+    );
+    if (latin) return latin.trim();
+    const fallback = others.find(
+      (t): t is string =>
+        typeof t === 'string' &&
+        t.trim().length >= 3 &&
+        !RezkaProvider.NON_TITLE_SOURCE_RE.test(t.trim())
+    );
+    return fallback ? fallback.trim() : undefined;
+  }
+
+  public pickBestAnimeMatch(
     candidates: MediaItem[],
     title?: string,
     origTitle?: string,
@@ -1395,24 +1417,44 @@ export class RezkaProvider implements IProvider {
         .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
         .replace(/[^\p{L}\p{N}]+/gu, ' ')
         .trim();
-    const targets = [norm(title), norm(origTitle)].filter((t) => t.length >= 2);
-    if (targets.length === 0) return candidates[0];
+    const safeOrig =
+      origTitle && !RezkaProvider.NON_TITLE_SOURCE_RE.test(origTitle.trim()) ? origTitle : undefined;
+    const targets = [norm(title), norm(safeOrig)].filter((t) => t.length >= 2);
+    if (targets.length === 0) return null;
 
     let best: MediaItem | null = null;
     let bestScore = 0;
     for (const c of candidates) {
+      if (year && year > 1900 && c.year && c.year > 1900 && Math.abs(c.year - year) >= 2) {
+        continue;
+      }
       const cNames = [norm(c.title), norm(c.origTitle)].filter(Boolean);
       let score = 0;
       for (const t of targets) {
         const tWords = t.split(' ').filter((w) => w.length >= 2);
         for (const cn of cNames) {
-          if (cn === t) score = Math.max(score, 100);
-          else if (cn.includes(t) || t.includes(cn)) score = Math.max(score, 75);
-          else if (tWords.length > 0) {
+          if (cn === t) {
+            score = Math.max(score, 100);
+            continue;
+          }
+          const minLen = Math.min(cn.length, t.length);
+          const maxLen = Math.max(cn.length, t.length);
+          if (
+            minLen >= 4 &&
+            minLen / maxLen >= 0.6 &&
+            (cn.startsWith(`${t} `) || t.startsWith(`${cn} `))
+          ) {
+            score = Math.max(score, 78);
+            continue;
+          }
+          if (tWords.length > 0) {
             const cWords = cn.split(' ').filter((w) => w.length >= 2);
             const overlap = tWords.filter((w) => cWords.includes(w)).length;
-            const ratio = overlap / Math.max(tWords.length, 1);
-            if (ratio >= 0.5) score = Math.max(score, Math.round(ratio * 65));
+            const minRequired = tWords.length >= 2 ? 2 : 1;
+            const ratio = overlap / Math.max(tWords.length, cWords.length, 1);
+            if (overlap >= minRequired && ratio >= 0.65) {
+              score = Math.max(score, Math.round(ratio * 85));
+            }
           }
         }
       }
@@ -1424,7 +1466,7 @@ export class RezkaProvider implements IProvider {
         best = c;
       }
     }
-    return bestScore >= 40 ? best : null;
+    return bestScore >= 60 ? best : null;
   }
 
   public async getAniLibertyStream(params: {
@@ -1437,12 +1479,16 @@ export class RezkaProvider implements IProvider {
     try {
       let releaseId = params.mediaId?.match(/aniliberty-(\d+)/i)?.[1] || '';
       if (!releaseId) {
-        const queries = [params.title, params.origTitle]
+        const safeOrig =
+          params.origTitle && !RezkaProvider.NON_TITLE_SOURCE_RE.test(params.origTitle.trim())
+            ? params.origTitle
+            : undefined;
+        const queries = [params.title, safeOrig]
           .filter((q): q is string => Boolean(q && q.trim().length >= 2))
           .map((q) => q.replace(/\s*\(\d{4}\).*$/, '').trim());
         for (const q of queries) {
           const hits = await this.searchAniLiberty(q);
-          const match = this.pickBestAnimeMatch(hits, params.title, params.origTitle, params.year);
+          const match = this.pickBestAnimeMatch(hits, params.title, safeOrig, params.year);
           if (match) {
             releaseId = match.id.replace(/^aniliberty-/i, '');
             break;
@@ -1485,12 +1531,16 @@ export class RezkaProvider implements IProvider {
     try {
       let animeId = params.mediaId?.match(/animevost-(\d+)/i)?.[1] || '';
       if (!animeId) {
-        const queries = [params.title, params.origTitle]
+        const safeOrig =
+          params.origTitle && !RezkaProvider.NON_TITLE_SOURCE_RE.test(params.origTitle.trim())
+            ? params.origTitle
+            : undefined;
+        const queries = [params.title, safeOrig]
           .filter((q): q is string => Boolean(q && q.trim().length >= 2))
           .map((q) => q.replace(/\s*\(\d{4}\).*$/, '').trim());
         for (const q of queries) {
           const hits = await this.searchAnimeVost(q);
-          const match = this.pickBestAnimeMatch(hits, params.title, params.origTitle, params.year);
+          const match = this.pickBestAnimeMatch(hits, params.title, safeOrig, params.year);
           if (match) {
             animeId = match.id.replace(/^animevost-/i, '');
             break;
@@ -1542,7 +1592,7 @@ export class RezkaProvider implements IProvider {
       const item: MediaItem = {
         id,
         title: String(raw.title).trim(),
-        origTitle: raw.original ? String(raw.original).trim() : undefined,
+        origTitle: this.extractYummyOrigTitle(raw),
         url,
         poster,
         year: yearNum > 1900 ? yearNum : undefined,
@@ -1984,7 +2034,7 @@ export class RezkaProvider implements IProvider {
         const rawPoster = raw.poster?.fullsize || raw.poster?.big || meta?.poster || '';
         const poster = rawPoster.startsWith('//') ? `https:${rawPoster}` : rawPoster;
         const title = String(raw.title).trim();
-        const origTitle = String(raw.original || meta?.origTitle || '').trim();
+        const origTitle = this.extractYummyOrigTitle(raw) || String(meta?.origTitle || '').trim();
         const year = Number(raw.year || meta?.year || 0);
         const ratingRezka = Number(raw.rating?.average || raw.rating?.shikimori_rating || 0) || undefined;
         const ratingKp = Number(raw.rating?.kp_rating || 0) || undefined;
@@ -5244,12 +5294,15 @@ export class RezkaProvider implements IProvider {
     translatorName?: string;
   }): Promise<StreamData | null> {
     const cachedItem = this.mediaCache.get(params.mediaId);
+    const rawOrig = params.origTitle || cachedItem?.origTitle;
+    const safeOrigTitle =
+      rawOrig && !RezkaProvider.NON_TITLE_SOURCE_RE.test(rawOrig.trim()) ? rawOrig : undefined;
     const metaForResolve = {
       ...cachedItem,
       title: params.title || cachedItem?.title,
-      origTitle: params.origTitle || cachedItem?.origTitle,
+      origTitle: safeOrigTitle,
       year: params.year || cachedItem?.year,
-      type: params.season ? ('series' as ContentType) : cachedItem?.type,
+      type: cachedItem?.type === 'animation' ? ('animation' as ContentType) : params.season ? ('series' as ContentType) : cachedItem?.type,
     };
 
     const forceKinogoByOffset = params.translatorId !== undefined && params.translatorId >= 1000 && params.translatorId < 2000;
