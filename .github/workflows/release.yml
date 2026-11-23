@@ -62,7 +62,7 @@ jobs:
 
       - name: Sign Executables via Azure Trusted Signing
         if: steps.signing-config.outputs.has_azure == 'true'
-        uses: azure/trusted-signing-action@v0.5.7
+        uses: azure/trusted-signing-action@v2
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
@@ -89,7 +89,7 @@ jobs:
 
       - name: Sign Executables via SignPath Foundation
         if: steps.signing-config.outputs.has_signpath == 'true'
-        uses: signpath/github-action-submit-signing-request@v1
+        uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORG_ID }}
