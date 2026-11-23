@@ -59,6 +59,8 @@ export interface StreamData {
   isAlternative?: boolean;
   sourceName?: string;
   trailerUrl?: string;
+  embedUrl?: string;
+  embedReferer?: string;
   upgradedMirror?: boolean;
   upgradedFromQuality?: string;
   audioTrackIndex?: number;

@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.57';
+  public version = '0.0.58';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -1572,6 +1572,139 @@ export class RezkaProvider implements IProvider {
     } catch {
       return null;
     }
+  }
+
+  public normalizeYummyEmbedUrl(rawUrl: string): string {
+    const trimmed = (rawUrl || '').trim();
+    if (!trimmed) return '';
+    const full = trimmed.startsWith('//')
+      ? `https:${trimmed}`
+      : trimmed.startsWith('http://') || trimmed.startsWith('https://')
+        ? trimmed
+        : '';
+    if (!full) return '';
+    try {
+      const u = new URL(full);
+      if (/(?:^|\.)youtube(?:-nocookie)?\.com$/i.test(u.hostname) && u.pathname.includes('/embed/')) {
+        if (!u.searchParams.has('autoplay')) u.searchParams.set('autoplay', '1');
+        if (!u.searchParams.has('rel')) u.searchParams.set('rel', '0');
+        return u.toString();
+      }
+      return u.toString();
+    } catch {
+      return full;
+    }
+  }
+
+  public async getYummyAnimeStream(params: {
+    mediaId?: string;
+    title?: string;
+    origTitle?: string;
+    year?: number;
+    episode?: number;
+    translatorName?: string;
+  }): Promise<StreamData | null> {
+    let animeId =
+      params.mediaId?.match(/yani-(\d+)/i)?.[1] ||
+      params.mediaId?.match(/api\.yani\.tv\/anime\/(\d+)/i)?.[1] ||
+      '';
+    if (!animeId) {
+      const safeOrig =
+        params.origTitle && !RezkaProvider.NON_TITLE_SOURCE_RE.test(params.origTitle.trim())
+          ? params.origTitle
+          : undefined;
+      const queries = [params.title, safeOrig]
+        .filter((q): q is string => Boolean(q && q.trim().length >= 2))
+        .map((q) => q.replace(/\s*\(\d{4}\).*$/, '').trim());
+      for (const q of queries) {
+        const hits = await this.searchYummyAnime(q);
+        const match = this.pickBestAnimeMatch(hits, params.title, safeOrig, params.year);
+        if (match) {
+          animeId = match.id.replace(/^yani-/i, '');
+          break;
+        }
+      }
+    }
+    if (!animeId) return null;
+
+    let vids: any[] = [];
+    try {
+      const vr = await appFetch(`https://api.yani.tv/anime/${animeId}/videos`, {
+        headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+        signal: AbortSignal.timeout(4500),
+      });
+      if (vr.ok) {
+        const vj: any = await vr.json();
+        vids = Array.isArray(vj?.response) ? vj.response : [];
+      }
+    } catch {
+      return null;
+    }
+
+    const valid = vids.filter((v) => v?.iframe_url && String(v.iframe_url).trim().length > 4);
+    if (valid.length === 0) {
+      try {
+        const ir = await appFetch(`https://api.yani.tv/anime/${animeId}`, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(3500),
+        });
+        if (ir.ok) {
+          const raw = ((await ir.json()) as any)?.response;
+          if (raw?.anime_status?.alias === 'announcement') {
+            throw new Error(
+              `Аниме «${raw.title || params.title || 'Аниме'}» ещё не вышло (статус: анонс). Серии появятся после релиза.`
+            );
+          }
+        }
+      } catch (err: any) {
+        if (err?.message?.includes('анонс')) throw err;
+      }
+      return null;
+    }
+
+    const epNum = Math.max(1, params.episode || 1);
+    const epMatched = valid.filter((v) => parseInt(String(v?.number || '1'), 10) === epNum);
+    const pool = epMatched.length > 0 ? epMatched : valid;
+
+    const normDub = (s?: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    const targetDub = normDub(params.translatorName);
+    let dubPool = pool;
+    if (targetDub && !/^(?:озвучка\s*\/\s*субтитры|дубляж\s*\/\s*озвучка)$/i.test(targetDub)) {
+      const exactDub = pool.filter((v) => normDub(v?.data?.dubbing || v?.data?.player) === targetDub);
+      if (exactDub.length > 0) {
+        dubPool = exactDub;
+      } else {
+        const partialDub = pool.filter((v) => {
+          const d = normDub(v?.data?.dubbing || v?.data?.player);
+          return d.length >= 2 && (d.includes(targetDub) || targetDub.includes(d));
+        });
+        if (partialDub.length > 0) dubPool = partialDub;
+      }
+    }
+
+    const playerRank = (v: any) => {
+      const p = String(v?.data?.player || '').toLowerCase();
+      const u = String(v?.iframe_url || '').toLowerCase();
+      if (p.includes('youtube') || u.includes('youtube')) return 5;
+      if (p.includes('kodik') || u.includes('kodik')) return 4;
+      if (p.includes('aksor') || u.includes('aksor')) return 3;
+      if (p.includes('alloha') || u.includes('alloha')) return 2;
+      if (p.includes('cvh') || u.includes('iframecvh')) return 1;
+      return 0;
+    };
+
+    const chosen = [...dubPool].sort((a, b) => playerRank(b) - playerRank(a))[0];
+    const embedUrl = this.normalizeYummyEmbedUrl(String(chosen?.iframe_url || ''));
+    if (!embedUrl) return null;
+
+    return {
+      streams: [],
+      subtitles: [],
+      embedUrl,
+      embedReferer: 'https://yummyani.me/',
+      isAlternative: true,
+      sourceName: String(chosen?.data?.player || 'YummyAnime').trim(),
+    };
   }
 
   public parseYummyAnimeItems(list: any[]): MediaItem[] {
@@ -5337,8 +5470,37 @@ export class RezkaProvider implements IProvider {
       cachedUrl.includes('/animation/') ||
       cachedUrl.includes('/anime');
 
-    // Open captcha-free anime mirrors (AniLiberty 1080p HLS & AnimeVost 720p MP4)
+    // Open captcha-free anime mirrors (AniLiberty 1080p HLS, AnimeVost 720p MP4, YummyAnime YouTube/Kodik/Aksor embeds)
+    let triedYummy = false;
+    const isYummyDirect =
+      this.isYummyAnime(params.mediaId) ||
+      this.isYummyAnime(cachedUrl) ||
+      /^yani-\d+$/i.test(params.mediaId);
+    const wantsSpecificYummyDub = Boolean(
+      isYummyDirect &&
+        params.translatorName &&
+        !/^(?:anilibria|animevost|озвучка\s*\/\s*субтитры|дубляж\s*\/\s*озвучка)$/i.test(
+          params.translatorName.trim()
+        )
+    );
+
     if (isAnimeItem) {
+      // Respect the exact dubbing the user picked on a YummyAnime card (e.g. pancakeser / Filama / Kodik dubs)
+      if (wantsSpecificYummyDub) {
+        triedYummy = true;
+        const yStream = await this.getYummyAnimeStream({
+          mediaId: params.mediaId,
+          title: metaForResolve.title,
+          origTitle: metaForResolve.origTitle,
+          year: metaForResolve.year,
+          episode: params.episode,
+          translatorName: params.translatorName,
+        });
+        if (yStream?.embedUrl || (yStream?.streams && yStream.streams.length > 0)) {
+          return yStream;
+        }
+      }
+
       if (this.isAnimeVost(params.mediaId) || this.isAnimeVost(cachedUrl)) {
         const vostDirect = await this.getAnimeVostStream({
           mediaId: params.mediaId,
@@ -5368,6 +5530,21 @@ export class RezkaProvider implements IProvider {
           episode: params.episode,
         });
         if (considerStream(vostStream)) return state.best;
+      }
+
+      if (isYummyDirect && !triedYummy && !state.best) {
+        triedYummy = true;
+        const yStream = await this.getYummyAnimeStream({
+          mediaId: params.mediaId,
+          title: metaForResolve.title,
+          origTitle: metaForResolve.origTitle,
+          year: metaForResolve.year,
+          episode: params.episode,
+          translatorName: params.translatorName,
+        });
+        if (yStream?.embedUrl || (yStream?.streams && yStream.streams.length > 0)) {
+          return yStream;
+        }
       }
     }
 
@@ -5527,6 +5704,21 @@ export class RezkaProvider implements IProvider {
       }
     }
 
+    // Final safety net for any anime without direct HLS/MP4: resolve YummyAnime embed player
+    if (!state.best && isAnimeItem && !triedYummy) {
+      const yFallback = await this.getYummyAnimeStream({
+        mediaId: params.mediaId,
+        title: metaForResolve.title,
+        origTitle: metaForResolve.origTitle,
+        year: metaForResolve.year,
+        episode: params.episode,
+        translatorName: params.translatorName,
+      });
+      if (yFallback?.embedUrl || (yFallback?.streams && yFallback.streams.length > 0)) {
+        return yFallback;
+      }
+    }
+
     return state.best;
   }
 
@@ -5594,7 +5786,7 @@ export class RezkaProvider implements IProvider {
         translatorId: params.translatorId,
         translatorName: params.translatorName,
       });
-      if (altStream && altStream.streams.length > 0) {
+      if (altStream && (altStream.streams.length > 0 || altStream.embedUrl)) {
         return altStream;
       }
       throw new Error(
@@ -5770,10 +5962,12 @@ export class RezkaProvider implements IProvider {
           translatorId: params.translatorId,
           translatorName: params.translatorName,
         });
-        if (altStream && altStream.streams && altStream.streams.length > 0) {
+        if (altStream && ((altStream.streams && altStream.streams.length > 0) || altStream.embedUrl)) {
           return altStream;
         }
-      } catch (_) {}
+      } catch (err: any) {
+        if (err?.message?.includes('анонс')) throw err;
+      }
     }
 
     if (isUnreleasedMovie) {

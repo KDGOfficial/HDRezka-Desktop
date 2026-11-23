@@ -33,7 +33,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { HorizontalSlider } from './HorizontalSlider';
 import { useTranslation } from '../i18n';
 import { formatDuration, matchesShortcut, formatShortcutLabel } from '../../shared/utils';
-import { DEFAULT_HOTKEYS } from '../../shared/constants';
+import { DEFAULT_HOTKEYS, BROWSER_USER_AGENT } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
 
 function getHlsLevelQualityRank(level: { width?: number; height?: number }): number {
@@ -123,6 +123,8 @@ export const VideoPlayer: React.FC = () => {
     streamData,
     currentQuality,
     currentStreamUrl,
+    currentEmbedUrl,
+    currentEmbedReferer,
     isHls,
     currentSubtitle,
     playbackSpeed,
@@ -1070,7 +1072,91 @@ export const VideoPlayer: React.FC = () => {
         </div>
       )}
 
-      {/* Video Element */}
+      {/* Embedded Anime / YouTube / Kodik Player (with built-in AdBlock partition) */}
+      {currentEmbedUrl && !isLoading && !error ? (
+        <div className="w-full h-full flex flex-col bg-[#070507] z-10">
+          <div className="h-14 px-4 flex items-center justify-between gap-3 bg-[#0B070A] border-b border-white/[0.08] flex-shrink-0 drag-region">
+            <div className="flex items-center gap-3 min-w-0 no-drag">
+              <button
+                type="button"
+                onClick={handleClose}
+                aria-label={t.player.back}
+                className="p-2 rounded-full bg-[#140E12] hover:bg-white/[0.16] border border-white/10 text-white cursor-pointer active:scale-95 flex-shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4" />
+              </button>
+              <div className="min-w-0">
+                <h2 className="font-display text-sm font-black text-white leading-tight truncate">
+                  {mediaDetails?.title}
+                </h2>
+                <div className="flex items-center gap-2 text-[11px] text-zinc-400 truncate">
+                  {seasonId !== undefined && episodeId !== undefined && (
+                    <span className="font-semibold text-brand-orange">
+                      {t.details.season} {seasonId}, {t.details.episode} {episodeId}
+                    </span>
+                  )}
+                  {streamData?.sourceName && (
+                    <span className="text-zinc-400">· {streamData.sourceName}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 no-drag flex-shrink-0">
+              {mediaDetails?.translators && mediaDetails.translators.length > 1 && (
+                <div className="hidden md:flex items-center gap-1.5 max-w-[380px] overflow-x-auto no-scrollbar">
+                  {mediaDetails.translators.slice(0, 8).map((tr) => (
+                    <button
+                      key={tr.id}
+                      type="button"
+                      onClick={() => handleSwitchTranslator(tr.id)}
+                      className={`px-3 py-1 rounded-full text-[11px] font-bold whitespace-nowrap cursor-pointer ${
+                        translatorId === tr.id
+                          ? 'btn-ember text-white'
+                          : 'bg-white/[0.07] hover:bg-white/[0.15] text-zinc-300 border border-white/10'
+                      }`}
+                    >
+                      {tr.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {nextEpisode && (
+                <button
+                  type="button"
+                  onClick={handleNextEpisode}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.16] border border-white/10 text-xs font-bold text-white cursor-pointer"
+                >
+                  <SkipForward className="w-3.5 h-3.5 text-brand-orange" />
+                  <span>{t.player.nextEpisode}</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'На весь экран'}
+                className="p-2 rounded-full bg-[#140E12] hover:bg-white/[0.16] border border-white/10 text-zinc-200 hover:text-white cursor-pointer"
+              >
+                {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex-1 w-full h-full bg-black relative">
+            {/* @ts-ignore Electron webview element */}
+            <webview
+              key={currentEmbedUrl}
+              src={currentEmbedUrl}
+              httpreferrer={currentEmbedReferer || 'https://yummyani.me/'}
+              partition="persist:cinema-browser"
+              useragent={BROWSER_USER_AGENT}
+              allowpopups={false as any}
+              style={{ width: '100%', height: '100%', display: 'flex', border: 'none' }}
+            />
+          </div>
+        </div>
+      ) : (
+      /* Video Element */
       <video
         ref={videoRef}
         className={`cursor-pointer transition-all duration-200 ${
@@ -1134,6 +1220,7 @@ export const VideoPlayer: React.FC = () => {
           <track key={subtitleTrack.url} kind="subtitles" src={subtitleTrack.url} default srcLang="ru" label={subtitleTrack.language} />
         )}
       </video>
+      )}
 
       {/* Cinema Loading Overlay */}
       {isLoading && (
@@ -1292,6 +1379,7 @@ export const VideoPlayer: React.FC = () => {
       )}
 
       {/* Cinema OSD Controls Overlay (visibility:hidden when faded out prevents software compositor overdraw) */}
+      {!currentEmbedUrl && (
       <div
         className={`player-osd absolute inset-0 z-30 flex flex-col justify-between p-6 pointer-events-none transition-opacity duration-300 ${
           showControls && !error ? 'opacity-100 visible' : 'opacity-0 invisible'
@@ -1885,6 +1973,7 @@ export const VideoPlayer: React.FC = () => {
           );
         })()}
       </div>
+      )}
 
       {/* Persistent top drag handle when pinned (below OSD so top-bar buttons stay clickable) */}
       {isPinned && (

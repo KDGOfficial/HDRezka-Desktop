@@ -108,3 +108,47 @@ test('YummyAnime ignores source material ("Игра", "Манга") in raw.origi
   const matched = provider.pickBestAnimeMatch(rightCandidates, 'Магическая битва', 'Jujutsu Kaisen', 2020);
   assert.equal(matched?.id, 'aniliberty-99');
 });
+
+test('getYummyAnimeStream resolves chosen dubbing embed URL and reports unreleased announcements', async () => {
+  const provider = new RezkaProvider();
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    if (s.includes('/anime/12597/videos')) {
+      return new Response(
+        JSON.stringify({
+          response: [
+            { number: '1', data: { player: 'Плеер YouTube', dubbing: 'Озвучка  pancakeser' }, iframe_url: '//www.youtube.com/embed/K1oFJMn8oL8' },
+            { number: '1', data: { player: 'Плеер YouTube', dubbing: 'Озвучка Filama' }, iframe_url: '//www.youtube.com/embed/QUIwQgUC5-c' },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    if (s.includes('/anime/23776/videos')) {
+      return new Response(JSON.stringify({ response: [] }), { status: 200 });
+    }
+    if (s.includes('/anime/23776')) {
+      return new Response(
+        JSON.stringify({ response: { title: 'Genshin Impact', anime_status: { alias: 'announcement', title: 'анонс' } } }),
+        { status: 200 }
+      );
+    }
+    return new Response('', { status: 404 });
+  };
+  try {
+    const s1 = await provider.getYummyAnimeStream({ mediaId: 'yani-12597', episode: 1, translatorName: 'Озвучка Filama' });
+    assert.ok(s1?.embedUrl?.includes('QUIwQgUC5-c'));
+    assert.ok(s1?.embedUrl?.includes('autoplay=1'));
+
+    const s2 = await provider.getYummyAnimeStream({ mediaId: 'yani-12597', episode: 1, translatorName: 'Озвучка pancakeser' });
+    assert.ok(s2?.embedUrl?.includes('K1oFJMn8oL8'));
+
+    await assert.rejects(
+      () => provider.getYummyAnimeStream({ mediaId: 'yani-23776', title: 'Genshin Impact', episode: 1 }),
+      /анонс/i
+    );
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

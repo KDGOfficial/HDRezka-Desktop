@@ -12,6 +12,8 @@ interface PlayerState {
   streamData: StreamData | null;
   currentQuality: string;
   currentStreamUrl: string;
+  currentEmbedUrl: string;
+  currentEmbedReferer: string;
   isHls: boolean;
   currentSubtitle: string; // subtitle language or 'off' (kept across episodes/translators)
   playbackSpeed: number;
@@ -53,6 +55,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
   streamData: null,
   currentQuality: '1080p',
   currentStreamUrl: '',
+  currentEmbedUrl: '',
+  currentEmbedReferer: '',
   isHls: false,
   currentSubtitle: 'off',
   playbackSpeed: 1.0,
@@ -76,6 +80,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       error: null,
       streamData: null,
       currentStreamUrl: '',
+      currentEmbedUrl: '',
+      currentEmbedReferer: '',
       trailerUrl: undefined,
       initialTime: explicitStart,
       resumeOfferTime: !silentResume && explicitStart >= 5 ? explicitStart : null,
@@ -113,8 +119,24 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       });
       if (seq !== playRequestSeq) return;
 
-      if (!stream || !stream.streams || stream.streams.length === 0) {
+      if (!stream || ((!stream.streams || stream.streams.length === 0) && !stream.embedUrl)) {
         throw new Error('Потоки для данного перевода временно недоступны.');
+      }
+
+      // Embedded player fallback (e.g. YummyAnime YouTube / Kodik / Aksor / Alloha embeds)
+      if (stream.embedUrl && (!stream.streams || stream.streams.length === 0)) {
+        set({
+          streamData: stream,
+          currentQuality: 'HD',
+          currentStreamUrl: '',
+          currentEmbedUrl: stream.embedUrl,
+          currentEmbedReferer: stream.embedReferer || 'https://yummyani.me/',
+          isHls: false,
+          trailerUrl: stream.trailerUrl,
+          isLoading: false,
+        });
+        useSettingsStore.getState().recordTasteSignal(details, 'watch');
+        return;
       }
 
       // Prefer crisp FullHD/4K/HD quality first; avoid auto-selecting low/camrip streams
@@ -131,6 +153,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         streamData: stream,
         currentQuality: targetQuality.quality,
         currentStreamUrl: streamUrl,
+        currentEmbedUrl: '',
+        currentEmbedReferer: '',
         isHls: useHls,
         trailerUrl: stream.trailerUrl,
         isLoading: false,
@@ -169,6 +193,8 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       mediaDetails: null,
       streamData: null,
       currentStreamUrl: '',
+      currentEmbedUrl: '',
+      currentEmbedReferer: '',
       trailerUrl: undefined,
       initialTime: 0,
       resumeOfferTime: null,
