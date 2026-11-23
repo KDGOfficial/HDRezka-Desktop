@@ -35,6 +35,24 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Detect Configured Code Signing
+        id: signing-config
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ secrets.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ secrets.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_CERT_PROFILE: ${{ secrets.AZURE_SIGNING_CERT_PROFILE }}
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORG_ID: ${{ secrets.SIGNPATH_ORG_ID }}
+        run: |
+          $hasAzure = [bool]($env:AZURE_TENANT_ID -and $env:AZURE_CLIENT_ID -and $env:AZURE_CLIENT_SECRET -and $env:AZURE_SIGNING_ENDPOINT -and $env:AZURE_SIGNING_ACCOUNT -and $env:AZURE_SIGNING_CERT_PROFILE)
+          $hasSignPath = [bool]($env:SIGNPATH_API_TOKEN -and $env:SIGNPATH_ORG_ID)
+          "has_azure=$($hasAzure.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          "has_signpath=$($hasSignPath.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
       - name: Build Application & Windows Distribution
         run: npm run dist
         env:
@@ -42,8 +60,8 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
 
-      - name: Sign Executables via Azure Trusted Signing (if configured)
-        if: ${{ secrets.AZURE_TENANT_ID != '' && secrets.AZURE_CLIENT_ID != '' && secrets.AZURE_CLIENT_SECRET != '' && secrets.AZURE_SIGNING_ENDPOINT != '' && secrets.AZURE_SIGNING_ACCOUNT != '' && secrets.AZURE_SIGNING_CERT_PROFILE != '' }}
+      - name: Sign Executables via Azure Trusted Signing
+        if: steps.signing-config.outputs.has_azure == 'true'
         uses: azure/trusted-signing-action@v0.5.7
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -58,9 +76,9 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
 
-      - name: Upload Unsigned Executables for SignPath (if configured)
+      - name: Upload Unsigned Executables for SignPath
         id: upload-unsigned
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' && secrets.SIGNPATH_ORG_ID != '' }}
+        if: steps.signing-config.outputs.has_signpath == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-executables
@@ -69,8 +87,8 @@ jobs:
             release/HDREZKA-Portable-*.exe
           retention-days: 1
 
-      - name: Sign Executables via SignPath Foundation (if configured)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' && secrets.SIGNPATH_ORG_ID != '' }}
+      - name: Sign Executables via SignPath Foundation
+        if: steps.signing-config.outputs.has_signpath == 'true'
         uses: signpath/github-action-submit-signing-request@v1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
@@ -81,8 +99,8 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: release/signed
 
-      - name: Unpack SignPath Signed Executables (if signed)
-        if: ${{ secrets.SIGNPATH_API_TOKEN != '' && secrets.SIGNPATH_ORG_ID != '' }}
+      - name: Unpack SignPath Signed Executables
+        if: steps.signing-config.outputs.has_signpath == 'true'
         shell: pwsh
         run: |
           $signedZip = Get-ChildItem -Path release/signed -Filter "*.zip" | Select-Object -First 1
