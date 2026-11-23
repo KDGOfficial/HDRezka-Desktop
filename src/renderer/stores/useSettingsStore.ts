@@ -1,9 +1,16 @@
 import { create } from 'zustand';
-import { UserSettings, MirrorStatus, UpdateInfo, UpdateProgress } from '../../shared/types';
+import { UserSettings, MirrorStatus, UpdateInfo, UpdateProgress, ContentType, UserInterestsProfile } from '../../shared/types';
 import { DEFAULT_USER_SETTINGS } from '../../shared/constants';
+import {
+  InteractionKind,
+  createEmptyInterestsProfile,
+  normalizeInterestsProfile,
+  recordTasteInteraction,
+} from '../../shared/recommendations';
 
 interface SettingsState {
   settings: UserSettings;
+  settingsLoaded: boolean;
   mirrorsStatus: MirrorStatus[];
   isCheckingMirrors: boolean;
   isFindingMirrors: boolean;
@@ -15,8 +22,18 @@ interface SettingsState {
   updateProgress: UpdateProgress | null;
   isUpdateModalOpen: boolean;
 
+  // Adaptive Interests Modal
+  isInterestsModalOpen: boolean;
+
   loadSettings: () => Promise<void>;
   updateSettings: (newSettings: Partial<UserSettings>) => Promise<void>;
+  setInterestsModalOpen: (open: boolean) => void;
+  saveUserInterests: (favoriteGenres: string[], favoriteTypes: ContentType[], completed?: boolean) => Promise<void>;
+  recordTasteSignal: (
+    item: { id?: string; genres?: string[]; url?: string; info?: string; type?: ContentType },
+    kind: InteractionKind
+  ) => void;
+  resetUserInterests: () => Promise<void>;
   checkMirrors: () => Promise<void>;
   findOnlineMirrors: () => Promise<number>;
   verifyMirror: (targetUrl?: string) => Promise<boolean>;
@@ -29,6 +46,8 @@ interface SettingsState {
   setUpdateModalOpen: (open: boolean) => void;
 }
 
+const recentSignalKeys = new Map<string, number>();
+
 function getInitialTheme(): UserSettings['theme'] {
   try {
     const saved = localStorage.getItem('color-scheme');
@@ -39,6 +58,7 @@ function getInitialTheme(): UserSettings['theme'] {
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   settings: { ...DEFAULT_USER_SETTINGS, theme: getInitialTheme() },
+  settingsLoaded: false,
   mirrorsStatus: [],
   isCheckingMirrors: false,
   isFindingMirrors: false,
@@ -48,12 +68,13 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   isCheckingUpdate: false,
   updateProgress: null,
   isUpdateModalOpen: false,
+  isInterestsModalOpen: false,
 
   loadSettings: async () => {
     if (window.api) {
       try {
         const s = await window.api.getSettings();
-        set({ settings: s });
+        set({ settings: s, settingsLoaded: true });
 
         // Auto check updates on start if enabled
         if (s.app?.checkUpdatesOnStart) {
@@ -61,19 +82,62 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
+        set({ settingsLoaded: true });
       }
+    } else {
+      set({ settingsLoaded: true });
     }
   },
 
   updateSettings: async (newSettings) => {
-    if (window.api) {
+    if (typeof window !== 'undefined' && typeof window.api?.saveSettings === 'function') {
       try {
         const saved = await window.api.saveSettings(newSettings);
         set({ settings: saved });
       } catch (err) {
         console.error('Failed to save settings:', err);
       }
+    } else {
+      set((state) => ({
+        settings: { ...state.settings, ...newSettings },
+      }));
     }
+  },
+
+  setInterestsModalOpen: (open: boolean) => set({ isInterestsModalOpen: open }),
+
+  saveUserInterests: async (favoriteGenres, favoriteTypes, completed = true) => {
+    const current = normalizeInterestsProfile(get().settings.interests);
+    const nextInterests: UserInterestsProfile = {
+      ...current,
+      onboardingCompleted: completed,
+      favoriteGenres: Array.from(new Set(favoriteGenres.filter(Boolean))),
+      favoriteTypes: Array.from(new Set(favoriteTypes)),
+      updatedAt: Date.now(),
+    };
+    await get().updateSettings({ interests: nextInterests });
+  },
+
+  recordTasteSignal: (item, kind) => {
+    const dedupeKey = `${kind}:${item.id || item.url || ''}`;
+    const now = Date.now();
+    const lastTs = recentSignalKeys.get(dedupeKey);
+    // Avoid double-counting the same title within 10 minutes
+    if (item.id && lastTs && now - lastTs < 10 * 60 * 1000) return;
+    if (item.id) recentSignalKeys.set(dedupeKey, now);
+
+    const nextInterests = recordTasteInteraction(get().settings.interests, item, kind, now);
+    get().updateSettings({ interests: nextInterests });
+  },
+
+  resetUserInterests: async () => {
+    const resetProfile: UserInterestsProfile = {
+      ...createEmptyInterestsProfile(),
+      onboardingCompleted: true,
+      updatedAt: Date.now(),
+    };
+    recentSignalKeys.clear();
+    await get().updateSettings({ interests: resetProfile });
   },
 
   checkMirrors: async () => {

@@ -14,6 +14,7 @@ import {
   Globe,
   PanelLeftClose,
   PanelLeftOpen,
+  Wand2,
 } from 'lucide-react';
 import { useMediaStore, AppPage } from '../stores/useMediaStore';
 import { useTranslation, Locale } from '../i18n';
@@ -29,6 +30,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { id: 'home', key: 'home', icon: Home, section: 'main' },
+  { id: 'whatToWatch', key: 'whatToWatch', icon: Wand2, section: 'main' },
   { id: 'catalog', key: 'catalog', icon: Compass, section: 'main' },
   { id: 'films', key: 'films', icon: Film, section: 'main' },
   { id: 'series', key: 'series', icon: Tv, section: 'main' },

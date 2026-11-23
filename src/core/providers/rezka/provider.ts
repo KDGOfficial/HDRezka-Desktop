@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.52';
+  public version = '0.0.53';
 
   private activeMirror: string;
   private mirrors: string[];

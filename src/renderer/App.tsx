@@ -7,6 +7,7 @@ import { VideoPlayer } from './components/VideoPlayer';
 import { CollectionModal } from './components/CollectionModal';
 import { UpdateModal } from './components/UpdateModal';
 import { WhatsNewModal } from './components/WhatsNewModal';
+import { InterestsModal } from './components/InterestsModal';
 import { useMediaStore } from './stores/useMediaStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useTranslation } from './i18n';
@@ -14,6 +15,7 @@ import { APP_VERSION } from '../shared/constants';
 
 // Pages
 import { HomePage } from './pages/HomePage';
+import { WhatToWatchPage } from './pages/WhatToWatchPage';
 import { CatalogPage } from './pages/CatalogPage';
 import { DetailsPage } from './pages/DetailsPage';
 import { SearchPage } from './pages/SearchPage';
@@ -25,9 +27,38 @@ import { BrowserPage } from './pages/BrowserPage';
 
 export const App: React.FC = () => {
   const { currentPage, loadFavorites, loadWatchHistory } = useMediaStore();
-  const { settings, loadSettings, updateInfo, isUpdateModalOpen, setUpdateModalOpen } = useSettingsStore();
+  const {
+    settings,
+    settingsLoaded,
+    loadSettings,
+    updateInfo,
+    isUpdateModalOpen,
+    setUpdateModalOpen,
+    isInterestsModalOpen,
+    setInterestsModalOpen,
+  } = useSettingsStore();
   const { t } = useTranslation();
   const [isWhatsNewOpen, setIsWhatsNewOpen] = React.useState(false);
+  const [whatsNewChecked, setWhatsNewChecked] = React.useState(false);
+  const promptedInterestsRef = React.useRef(false);
+
+  // Prompt user once about their favorite genres/categories when onboarding hasn't been completed yet
+  useEffect(() => {
+    if (!settingsLoaded || !whatsNewChecked || promptedInterestsRef.current) return;
+    if (isWhatsNewOpen || isUpdateModalOpen || isInterestsModalOpen) return;
+    if (!settings.interests?.onboardingCompleted) {
+      promptedInterestsRef.current = true;
+      setInterestsModalOpen(true);
+    }
+  }, [
+    settingsLoaded,
+    whatsNewChecked,
+    settings.interests?.onboardingCompleted,
+    isWhatsNewOpen,
+    isUpdateModalOpen,
+    isInterestsModalOpen,
+    setInterestsModalOpen,
+  ]);
 
   // Apply light / dark / system color-scheme cleanly and listen for OS changes
   useEffect(() => {
@@ -65,15 +96,19 @@ export const App: React.FC = () => {
 
     // Check if the application was just updated and show What's New modal
     const checkUpdateFlag = async () => {
-      let justUpdated = false;
-      if (window.api?.checkJustUpdated) {
-        justUpdated = await window.api.checkJustUpdated();
+      try {
+        let justUpdated = false;
+        if (window.api?.checkJustUpdated) {
+          justUpdated = await window.api.checkJustUpdated();
+        }
+        const lastSeen = localStorage.getItem('hdrezka_seen_version');
+        if (justUpdated || (lastSeen && lastSeen !== APP_VERSION)) {
+          setIsWhatsNewOpen(true);
+        }
+        localStorage.setItem('hdrezka_seen_version', APP_VERSION);
+      } finally {
+        setWhatsNewChecked(true);
       }
-      const lastSeen = localStorage.getItem('hdrezka_seen_version');
-      if (justUpdated || (lastSeen && lastSeen !== APP_VERSION)) {
-        setIsWhatsNewOpen(true);
-      }
-      localStorage.setItem('hdrezka_seen_version', APP_VERSION);
     };
     checkUpdateFlag();
 
@@ -96,6 +131,8 @@ export const App: React.FC = () => {
     switch (currentPage) {
       case 'home':
         return <HomePage />;
+      case 'whatToWatch':
+        return <WhatToWatchPage />;
       case 'catalog':
         return <CatalogPage initialType="films" />;
       case 'films':
@@ -171,6 +208,7 @@ export const App: React.FC = () => {
       <CollectionModal />
       <UpdateModal />
       <WhatsNewModal isOpen={isWhatsNewOpen} onClose={() => setIsWhatsNewOpen(false)} />
+      <InterestsModal />
     </div>
   );
 };

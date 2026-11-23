@@ -89,6 +89,9 @@ export const DetailsPage: React.FC = () => {
     try {
       const data = await window.api.getDetails(idOrUrl, selectedMediaDetails || undefined);
       setDetails(data);
+      if (data && !data.antiBot) {
+        useSettingsStore.getState().recordTasteSignal(data, 'view');
+      }
       if (data.translators && data.translators.length > 0) {
         setSelectedTranslatorId(data.currentTranslatorId ?? data.translators[0].id);
       }

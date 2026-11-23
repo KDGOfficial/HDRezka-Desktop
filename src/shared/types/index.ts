@@ -184,6 +184,20 @@ export type HotkeyAction =
 
 export type HotkeysConfig = Record<HotkeyAction, string>;
 
+export interface TasteSignal {
+  weight: number;
+  updatedAt: number;
+}
+
+export interface UserInterestsProfile {
+  onboardingCompleted: boolean;
+  favoriteGenres: string[];
+  favoriteTypes: ContentType[];
+  genreScores: Record<string, TasteSignal>;
+  typeScores: Partial<Record<ContentType, TasteSignal>>;
+  updatedAt: number;
+}
+
 export interface UserSettings {
   theme: 'dark' | 'light' | 'oled' | 'system';
   cardSize: 'small' | 'medium' | 'large';
@@ -207,6 +221,7 @@ export interface UserSettings {
     fullscreenOnPlay: boolean;
   };
   hotkeys: HotkeysConfig;
+  interests?: UserInterestsProfile;
   app: {
     autoLaunch: boolean;
     checkUpdatesOnStart: boolean;

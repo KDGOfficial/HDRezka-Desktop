@@ -1,59 +1,143 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { Play, Plus, Heart, Star, Info, ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Play,
+  Pause,
+  Plus,
+  Heart,
+  Star,
+  Info,
+  ChevronLeft,
+  ChevronRight,
+  Sparkles,
+  Flame,
+  Wand2,
+} from 'lucide-react';
 import { MediaItem } from '../../shared/types';
+import { DynamicHeroSlide } from '../../shared/recommendations';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
 
 interface HeroBannerProps {
   item: MediaItem;
-  slides?: MediaItem[];
+  slides?: DynamicHeroSlide[];
 }
+
+const SLIDE_INTERVAL_MS = 7500;
 
 export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
   const { openDetails, favorites, toggleFavorite, openCollectionModal } = useMediaStore();
-  const { t } = useTranslation();
+  const { t, translateGenre } = useTranslation();
 
-  const items = useMemo(() => {
-    const raw = slides && slides.length > 0 ? [item, ...slides] : [item];
+  const deck: DynamicHeroSlide[] = useMemo(() => {
+    const raw: DynamicHeroSlide[] =
+      slides && slides.length > 0 ? slides : [{ item, kind: 'premiere' }];
     const seen = new Set<string>();
-    const unique: MediaItem[] = [];
+    const unique: DynamicHeroSlide[] = [];
     for (const entry of raw) {
-      if (!entry) continue;
-      const key = (entry.id || entry.title || '').toLowerCase();
+      if (!entry?.item) continue;
+      const key = (entry.item.id || entry.item.title || '').toLowerCase();
       if (!key || seen.has(key)) continue;
       seen.add(key);
       unique.push(entry);
-      if (unique.length >= 5) break;
+      if (unique.length >= 6) break;
     }
-    return unique.length > 0 ? unique : [item];
+    return unique.length > 0 ? unique : [{ item, kind: 'premiere' }];
   }, [item, slides]);
 
   const [activeIndex, setActiveIndex] = useState(0);
-  const [isPaused, setIsPaused] = useState(false);
+  const [isHoveredOrFocused, setIsHoveredOrFocused] = useState(false);
+  const [isUserPaused, setIsUserPaused] = useState(false);
+  const [reducedMotion, setReducedMotion] = useState(false);
+  const [statusAnnouncement, setStatusAnnouncement] = useState('');
+  const manualNavigationRef = useRef(false);
+
+  const deckKey = deck.map((s) => s.item.id || s.item.title).join('|');
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [item.id]);
+    setStatusAnnouncement('');
+  }, [deckKey]);
 
   useEffect(() => {
-    if (items.length <= 1 || isPaused) return;
-    const timer = setInterval(() => {
-      setActiveIndex((prev) => (prev + 1) % items.length);
-    }, 9000);
-    return () => clearInterval(timer);
-  }, [items.length, isPaused]);
+    const mql = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    if (!mql) return;
+    setReducedMotion(mql.matches);
+    const onChange = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
+    mql.addEventListener?.('change', onChange);
+    return () => mql.removeEventListener?.('change', onChange);
+  }, []);
 
-  const activeItem = items[activeIndex] || item;
+  const isAutoPaused = isHoveredOrFocused || isUserPaused || reducedMotion;
+
+  useEffect(() => {
+    if (deck.length <= 1 || isAutoPaused) return;
+    const timer = setInterval(() => {
+      manualNavigationRef.current = false;
+      setActiveIndex((prev) => (prev + 1) % deck.length);
+    }, SLIDE_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [deck.length, isAutoPaused]);
+
+  const safeIndex = activeIndex < deck.length ? activeIndex : 0;
+  const activeSlide = deck[safeIndex] || deck[0];
+  const activeItem = activeSlide.item;
   const isFav = favorites.some((f) => f.mediaId === activeItem.id);
 
-  const goPrev = () => setActiveIndex((prev) => (prev - 1 + items.length) % items.length);
-  const goNext = () => setActiveIndex((prev) => (prev + 1) % items.length);
+  useEffect(() => {
+    if (!manualNavigationRef.current) return;
+    const pos = t.home.slidePosition
+      .replace('{current}', String(safeIndex + 1))
+      .replace('{total}', String(deck.length));
+    setStatusAnnouncement(`${activeItem.title} — ${pos}`);
+  }, [safeIndex, deck.length, activeItem.title, t.home.slidePosition]);
+
+  const navigateTo = (nextIdx: number) => {
+    manualNavigationRef.current = true;
+    setActiveIndex(nextIdx);
+  };
+
+  const goPrev = () => navigateTo((safeIndex - 1 + deck.length) % deck.length);
+  const goNext = () => navigateTo((safeIndex + 1) % deck.length);
+
+  const badgeMeta = useMemo(() => {
+    if (activeSlide.kind === 'new') {
+      return {
+        label: t.home.newBadge,
+        icon: Flame,
+      };
+    }
+    if (activeSlide.kind === 'recommended') {
+      const topMatched = activeSlide.matchedGenres?.[0];
+      return {
+        label: topMatched
+          ? `${t.home.recommendedForYou} · ${translateGenre(topMatched)}`
+          : t.home.recommendedForYou,
+        icon: Wand2,
+      };
+    }
+    return {
+      label: t.home.premiere,
+      icon: Sparkles,
+    };
+  }, [activeSlide, t.home.newBadge, t.home.recommendedForYou, t.home.premiere, translateGenre]);
+
+  const BadgeIcon = badgeMeta.icon;
+  const slideLabel = t.home.slidePosition
+    .replace('{current}', String(safeIndex + 1))
+    .replace('{total}', String(deck.length));
 
   return (
     <section
-      aria-label={activeItem.title}
-      onMouseEnter={() => setIsPaused(true)}
-      onMouseLeave={() => setIsPaused(false)}
+      aria-roledescription="carousel"
+      aria-label={t.settings.secHero}
+      onMouseEnter={() => setIsHoveredOrFocused(true)}
+      onMouseLeave={() => setIsHoveredOrFocused(false)}
+      onFocusCapture={() => setIsHoveredOrFocused(true)}
+      onBlurCapture={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+          setIsHoveredOrFocused(false);
+        }
+      }}
       className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 min-h-[clamp(360px,46dvh,540px)] overflow-hidden select-none border-b border-white/[0.06]"
     >
       {/* Full-Bleed Atmospheric Cinema Backdrop */}
@@ -63,7 +147,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
           src={(activeItem as any).backdrop || activeItem.poster}
           alt=""
           aria-hidden="true"
-          className="w-full h-full object-cover object-center scale-110 filter blur-2xl opacity-45 brightness-[0.65] saturate-125 transition-all duration-700"
+          className="w-full h-full object-cover object-center scale-110 filter blur-2xl opacity-45 brightness-[0.65] saturate-125 transition-all duration-700 animate-fadeIn"
         />
         {/* Warm Neon Ember Cinema Ambient Glow (mirrors logo halo) */}
         <div
@@ -80,21 +164,32 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
       <div className="absolute inset-0 bg-gradient-to-r from-[#0B070A] via-[#0B070A]/88 via-52% to-[#0B070A]/25 pointer-events-none" />
       <div className="absolute inset-0 bg-gradient-to-t from-[#0B070A] via-[#0B070A]/25 to-[#070507]/45 pointer-events-none" />
 
+      {/* Polite status region for assistive technology */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {statusAnnouncement}
+      </p>
+
       {/* Main Content Stage */}
-      <div className="relative z-10 w-full h-full min-h-[clamp(360px,46dvh,540px)] px-7 lg:px-12 py-8 lg:py-10 flex items-center justify-between gap-8">
+      <div
+        key={`slide-${activeItem.id || safeIndex}`}
+        role="group"
+        aria-roledescription="slide"
+        aria-label={slideLabel}
+        className="relative z-10 w-full h-full min-h-[clamp(360px,46dvh,540px)] px-7 lg:px-12 py-8 lg:py-10 flex items-center justify-between gap-8 animate-fadeIn"
+      >
         {/* Left: Editorial Cinema Typography & Actions */}
         <div className="max-w-2xl flex flex-col justify-end text-left flex-1 min-w-0">
-          {/* Logo-inspired Metadata Pill Row */}
+          {/* Logo-inspired Dynamic Metadata Pill Row */}
           <div className="flex items-center flex-wrap gap-2 mb-4">
             <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full btn-ember text-[11px] font-display font-black uppercase tracking-[0.12em]">
-              <Sparkles className="w-3 h-3 text-[#FFE29A]" aria-hidden="true" />
-              <span>{t.home.premiere}</span>
+              <BadgeIcon className="w-3 h-3 text-[#FFE29A]" aria-hidden="true" />
+              <span>{badgeMeta.label}</span>
             </span>
 
-            {activeItem.rating && (
+            {Boolean(activeItem.rating && activeItem.rating > 0) && (
               <span className="logo-pill inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-brand-gold text-xs font-extrabold tabular-nums">
                 <Star className="w-3.5 h-3.5 fill-brand-gold" aria-hidden="true" />
-                <span>{activeItem.rating.toFixed(1)}</span>
+                <span>{activeItem.rating!.toFixed(1)}</span>
               </span>
             )}
 
@@ -172,45 +267,77 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
             </button>
           </div>
 
-          {/* Slide Navigation Dots (Modern Streaming Hero Switcher) */}
-          {items.length > 1 && (
-            <div className="flex items-center gap-3 mt-8">
-              <div className="flex items-center gap-1.5">
-                {items.map((slide, idx) => {
-                  const active = idx === activeIndex;
+          {/* Slide Navigation Dots & Controls (WCAG >=24x24px hit targets + animated progress bar) */}
+          {deck.length > 1 && (
+            <div className="flex items-center flex-wrap gap-3 mt-7">
+              <div className="flex items-center gap-0.5">
+                {deck.map((slide, idx) => {
+                  const active = idx === safeIndex;
                   return (
                     <button
-                      key={slide.id || idx}
+                      key={slide.item.id || idx}
                       type="button"
-                      onClick={() => setActiveIndex(idx)}
-                      aria-label={slide.title}
+                      onClick={() => navigateTo(idx)}
+                      aria-label={`${slide.item.title} (${idx + 1}/${deck.length})`}
                       aria-current={active ? 'true' : undefined}
-                      className={`h-1.5 rounded-full transition-all duration-300 cursor-pointer ${
-                        active
-                          ? 'w-9 bg-gradient-to-r from-brand-crimson via-brand-ember to-brand-orange shadow-glow-sm'
-                          : 'w-2.5 bg-white/25 hover:bg-white/50'
-                      }`}
-                    />
+                      className="min-w-[24px] min-h-[24px] px-1 flex items-center justify-center cursor-pointer rounded-full touch-manipulation"
+                    >
+                      <span
+                        className={`block h-1.5 rounded-full overflow-hidden transition-all duration-300 ${
+                          active
+                            ? 'w-11 bg-white/25 ring-1 ring-brand-orange/45'
+                            : 'w-2.5 bg-white/30 hover:bg-white/60'
+                        }`}
+                      >
+                        {active && (
+                          <span
+                            key={`prog-${safeIndex}-${isAutoPaused ? 'p' : 'r'}`}
+                            className="block h-full rounded-full bg-gradient-to-r from-brand-crimson via-brand-ember to-brand-orange"
+                            style={{
+                              width: '100%',
+                              transformOrigin: 'left center',
+                              animation: isAutoPaused
+                                ? 'none'
+                                : `heroSlideProgress ${SLIDE_INTERVAL_MS}ms linear forwards`,
+                            }}
+                          />
+                        )}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
 
-              <div className="flex items-center gap-1 ml-2">
+              <div className="flex items-center gap-1.5 ml-1">
                 <button
                   type="button"
                   onClick={goPrev}
-                  aria-label="Предыдущий слайд"
-                  className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.08] text-zinc-300 hover:text-white cursor-pointer"
+                  aria-label={t.home.prevSlide}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.18] border border-white/[0.12] text-zinc-200 hover:text-white cursor-pointer touch-manipulation"
                 >
-                  <ChevronLeft className="w-3.5 h-3.5" />
+                  <ChevronLeft className="w-4 h-4" aria-hidden="true" />
                 </button>
                 <button
                   type="button"
                   onClick={goNext}
-                  aria-label="Следующий слайд"
-                  className="p-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.08] text-zinc-300 hover:text-white cursor-pointer"
+                  aria-label={t.home.nextSlide}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.18] border border-white/[0.12] text-zinc-200 hover:text-white cursor-pointer touch-manipulation"
                 >
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsUserPaused((p) => !p)}
+                  aria-label={isUserPaused ? t.home.resumeRotation : t.home.pauseRotation}
+                  aria-pressed={isUserPaused}
+                  title={isUserPaused ? t.home.resumeRotation : t.home.pauseRotation}
+                  className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.18] border border-white/[0.12] text-zinc-200 hover:text-white cursor-pointer touch-manipulation"
+                >
+                  {isUserPaused ? (
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" aria-hidden="true" />
+                  ) : (
+                    <Pause className="w-3.5 h-3.5" aria-hidden="true" />
+                  )}
                 </button>
               </div>
             </div>

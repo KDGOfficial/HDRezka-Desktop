@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { StreamData, VideoQualityStream, SubtitleTrack, MediaDetails } from '../../shared/types';
 import { getResumableTime } from '../../shared/utils';
+import { useSettingsStore } from './useSettingsStore';
 
 interface PlayerState {
   isOpen: boolean;
@@ -134,6 +135,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
         trailerUrl: stream.trailerUrl,
         isLoading: false,
       });
+      useSettingsStore.getState().recordTasteSignal(details, 'watch');
     } catch (err: any) {
       if (seq !== playRequestSeq) return;
       console.error('[usePlayerStore] Open error:', err);

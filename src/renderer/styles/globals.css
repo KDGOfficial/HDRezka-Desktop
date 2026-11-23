@@ -729,6 +729,15 @@ video::cue {
   }
 }
 
+@keyframes heroSlideProgress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
 .animate-fade-in {
   animation: fadeInScale 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

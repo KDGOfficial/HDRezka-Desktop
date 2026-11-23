@@ -10,7 +10,7 @@ import {
   SearchHistoryEntry,
   UserSettings,
 } from '../../shared/types';
-import { DEFAULT_USER_SETTINGS, DEFAULT_HOTKEYS } from '../../shared/constants';
+import { DEFAULT_USER_SETTINGS, DEFAULT_HOTKEYS, DEFAULT_USER_INTERESTS } from '../../shared/constants';
 
 let DatabaseSync: any = null;
 try {
@@ -168,6 +168,7 @@ export class AppDatabase {
                 ...DEFAULT_USER_SETTINGS,
                 ...(parsed.settings || {}),
                 hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.settings?.hotkeys || {}) },
+                interests: { ...DEFAULT_USER_INTERESTS, ...(parsed.settings?.interests || {}) },
               },
             };
             return sanitizeStorageMojibake(data);
@@ -761,11 +762,12 @@ export class AppDatabase {
             homeSections: { ...DEFAULT_USER_SETTINGS.homeSections, ...(parsed.homeSections || {}) },
             player: { ...DEFAULT_USER_SETTINGS.player, ...(parsed.player || {}) },
             hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.hotkeys || {}) },
+            interests: { ...DEFAULT_USER_INTERESTS, ...(parsed.interests || {}) },
             app: { ...DEFAULT_USER_SETTINGS.app, ...(parsed.app || {}) },
           };
         } catch {}
       }
-      return { ...DEFAULT_USER_SETTINGS, hotkeys: { ...DEFAULT_HOTKEYS } };
+      return { ...DEFAULT_USER_SETTINGS, hotkeys: { ...DEFAULT_HOTKEYS }, interests: { ...DEFAULT_USER_INTERESTS } };
     }
     const stored = this.storage?.settings || ({} as Partial<UserSettings>);
     return {
@@ -774,6 +776,7 @@ export class AppDatabase {
       homeSections: { ...DEFAULT_USER_SETTINGS.homeSections, ...(stored.homeSections || {}) },
       player: { ...DEFAULT_USER_SETTINGS.player, ...(stored.player || {}) },
       hotkeys: { ...DEFAULT_HOTKEYS, ...(stored.hotkeys || {}) },
+      interests: { ...DEFAULT_USER_INTERESTS, ...(stored.interests || {}) },
       app: { ...DEFAULT_USER_SETTINGS.app, ...(stored.app || {}) },
     };
   }
@@ -786,6 +789,9 @@ export class AppDatabase {
       homeSections: { ...current.homeSections, ...(settings.homeSections || {}) },
       player: { ...current.player, ...(settings.player || {}) },
       hotkeys: { ...DEFAULT_HOTKEYS, ...current.hotkeys, ...(settings.hotkeys || {}) },
+      interests: settings.interests
+        ? { ...DEFAULT_USER_INTERESTS, ...(current.interests || {}), ...settings.interests }
+        : { ...DEFAULT_USER_INTERESTS, ...(current.interests || {}) },
       app: { ...current.app, ...(settings.app || {}) },
     };
 

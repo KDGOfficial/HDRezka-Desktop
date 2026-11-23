@@ -23,8 +23,10 @@ import {
   Code2,
   Keyboard,
   RotateCcw,
+  Wand2,
 } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
+import { getTopGenres, normalizeInterestsProfile } from '../../shared/recommendations';
 import {
   APP_VERSION,
   DEFAULT_HOTKEYS,
@@ -58,14 +60,17 @@ export const SettingsPage: React.FC = () => {
     downloadUpdate,
     installUpdate,
     updateProgress,
+    setInterestsModalOpen,
+    resetUserInterests,
   } = useSettingsStore();
 
-  const { t, language, setLanguage } = useTranslation();
+  const { t, language, setLanguage, translateGenre } = useTranslation();
 
   const [customMirror, setCustomMirror] = useState('');
   const [cacheCleared, setCacheCleared] = useState(false);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [findMirrorsStatus, setFindMirrorsStatus] = useState<string | null>(null);
+  const [interestsResetDone, setInterestsResetDone] = useState(false);
   const [recordingAction, setRecordingAction] = useState<HotkeyAction | null>(null);
   const [hotkeyNotice, setHotkeyNotice] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const hotkeyNoticeTimerRef = useRef<any>(null);
@@ -812,6 +817,93 @@ export const SettingsPage: React.FC = () => {
               );
             })}
           </div>
+        </section>
+
+        {/* Section: Interests & Adaptive Recommendations */}
+        <section className="p-6 rounded-3xl cinema-panel space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-white/[0.06] flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-brand-crimson/15 border border-brand-ember/30 flex items-center justify-center text-brand-orange flex-shrink-0">
+                <Wand2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="font-display text-sm font-black text-white">{t.interests.settingsTitle}</h2>
+                <p className="text-xs text-zinc-400 mt-0.5">{t.interests.settingsDesc}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setInterestsModalOpen(true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full btn-ember text-white text-xs font-extrabold cursor-pointer active:scale-95"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{t.interests.editBtn}</span>
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  await resetUserInterests();
+                  setInterestsResetDone(true);
+                  setTimeout(() => setInterestsResetDone(false), 3000);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-xs font-bold text-zinc-300 hover:text-white cursor-pointer active:scale-95"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-brand-orange" />
+                <span>{interestsResetDone ? t.interests.resetDone : t.interests.resetBtn}</span>
+              </button>
+            </div>
+          </div>
+
+          {(() => {
+            const profile = normalizeInterestsProfile(settings.interests);
+            const topGenres = getTopGenres(profile, 8);
+            const hasLearned = Object.keys(profile.genreScores).length > 0 || Object.keys(profile.typeScores).length > 0;
+            return (
+              <div className="space-y-3">
+                {profile.favoriteTypes.length > 0 && (
+                  <div className="flex items-center flex-wrap gap-2">
+                    {profile.favoriteTypes.map((type) => (
+                      <span
+                        key={type}
+                        className="px-3 py-1 rounded-full bg-brand-crimson/15 border border-brand-ember/35 text-xs font-bold text-white"
+                      >
+                        {t.catalog.categories[type]}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {topGenres.length > 0 ? (
+                  <div className="flex items-center flex-wrap gap-2">
+                    {topGenres.map((g) => (
+                      <span
+                        key={g.id}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.05] border border-white/[0.09] text-xs font-bold text-zinc-200"
+                      >
+                        <span>{translateGenre(g.id)}</span>
+                        {g.source === 'learned' && (
+                          <span className="text-[10px] font-semibold text-brand-orange">
+                            · {t.interests.learnedLabel}
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-400">{t.interests.noInterestsYet}</p>
+                )}
+
+                {hasLearned && (
+                  <p className="text-[11px] text-emerald-300/90 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+                    <span>{t.interests.profileAdapted}</span>
+                  </p>
+                )}
+              </div>
+            );
+          })()}
         </section>
 
         {/* Section: Home Sections */}

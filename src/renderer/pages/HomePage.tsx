@@ -1,9 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { AlertCircle, RefreshCw, ShieldCheck, Clock, Sparkles, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { AlertCircle, RefreshCw, ShieldCheck, Clock, Sparkles, Trash2, Wand2 } from 'lucide-react';
 import { HeroBanner } from '../components/HeroBanner';
 import { MediaSlider } from '../components/MediaSlider';
 import { MediaCard } from '../components/MediaCard';
 import { MediaItem } from '../../shared/types';
+import {
+  buildDynamicHeroSlides,
+  buildPersonalizedRecommendations,
+  getTopGenres,
+  getTopTypes,
+} from '../../shared/recommendations';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
@@ -11,7 +17,7 @@ import appLogo from '../assets/logo.png';
 
 export const HomePage: React.FC = () => {
   const { setPage, watchHistory, loadWatchHistory, removeFromWatchHistory } = useMediaStore();
-  const { settings, mirrorsStatus, verificationEpoch, verifyMirror } = useSettingsStore();
+  const { settings, mirrorsStatus, verificationEpoch, verifyMirror, setInterestsModalOpen } = useSettingsStore();
   const { t } = useTranslation();
 
   const [activeTab, setActiveTab] = useState<'all' | 'continue'>('all');
@@ -23,11 +29,51 @@ export const HomePage: React.FC = () => {
   const [topSeries, setTopSeries] = useState<MediaItem[]>([]);
   const [recommendations, setRecommendations] = useState<MediaItem[]>([]);
   const [expected, setExpected] = useState<MediaItem[]>([]);
+  const [tasteBoostItems, setTasteBoostItems] = useState<MediaItem[]>([]);
 
   useEffect(() => {
     loadWatchHistory();
     loadHomeData();
   }, [settings.app.activeMirror, verificationEpoch]);
+
+  // Fetch extra genre/type candidates aligned with the user's evolving taste profile
+  const tasteKey = useMemo(() => {
+    const topGenres = getTopGenres(settings.interests, 2).map((g) => g.id);
+    const topTypes = getTopTypes(settings.interests).slice(0, 1).map((x) => x.type);
+    return `${topTypes.join(',')}|${topGenres.join(',')}`;
+  }, [settings.interests]);
+
+  useEffect(() => {
+    if (!window.api) return;
+    const topGenres = getTopGenres(settings.interests, 2);
+    const topTypes = getTopTypes(settings.interests);
+    if (topGenres.length === 0 && topTypes.length === 0) {
+      setTasteBoostItems([]);
+      return;
+    }
+
+    let cancelled = false;
+    const preferredType = topTypes[0]?.type || 'films';
+    const primaryGenre = topGenres[0]?.id;
+
+    window.api
+      .getCatalog({
+        type: preferredType,
+        genre: primaryGenre,
+        sort: 'popular',
+        page: 1,
+      })
+      .then((res) => {
+        if (!cancelled && res?.items?.length) {
+          setTasteBoostItems(res.items.slice(0, 16));
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tasteKey, settings.app.activeMirror, verificationEpoch]);
 
   const loadHomeData = async () => {
     if (!window.api) return;
@@ -62,6 +108,34 @@ export const HomePage: React.FC = () => {
         : `${h.percent}% ${t.history.watched}`,
     url: h.url || h.mediaId,
   }));
+
+  const personalizedRecs = useMemo(
+    () =>
+      buildPersonalizedRecommendations(
+        [...tasteBoostItems, ...recommendations, ...topMovies, ...topSeries, ...popular, ...newReleases],
+        settings.interests,
+        watchHistory,
+        16
+      ),
+    [tasteBoostItems, recommendations, topMovies, topSeries, popular, newReleases, settings.interests, watchHistory]
+  );
+
+  const personalizedRecItems = useMemo(() => personalizedRecs.map((r) => r.item), [personalizedRecs]);
+
+  const heroSlides = useMemo(
+    () =>
+      buildDynamicHeroSlides({
+        hero,
+        newReleases,
+        expected,
+        personalizedRecs,
+        popular,
+        maxSlides: 6,
+      }),
+    [hero, newReleases, expected, personalizedRecs, popular]
+  );
+
+  const primaryHeroItem = heroSlides[0]?.item || hero;
 
   const handleRemoveContinueItem = (item: MediaItem) => {
     const targetId = item.historyId || watchHistory.find((h) => h.mediaId === item.id)?.id;
@@ -127,11 +201,9 @@ export const HomePage: React.FC = () => {
     popular.length > 0 && popular.every((p) => p.poster?.includes('unsplash.com'));
   const showVerifyBanner = Boolean(activeMirrorStatus?.needsVerification) || hasPlaceholderPosters;
 
-  const heroSlides = [...popular.slice(0, 3), ...newReleases.slice(0, 2)].filter((x) => Boolean(x?.poster));
-
   return (
     <div className="w-full pb-16 animate-fadeIn">
-      {/* Home Screen Tabs: Showcase vs Continue Watching */}
+      {/* Home Screen Tabs: Showcase vs Continue Watching + Interests Button */}
       <div className="mb-5 flex items-center justify-between flex-wrap gap-3 relative z-20">
         <div className="inline-flex items-center gap-1.5 p-1 rounded-full cinema-panel">
           <button
@@ -167,6 +239,15 @@ export const HomePage: React.FC = () => {
             )}
           </button>
         </div>
+
+        <button
+          type="button"
+          onClick={() => setInterestsModalOpen(true)}
+          className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full cinema-panel hover:border-brand-ember/50 text-xs font-bold text-zinc-200 hover:text-white cursor-pointer active:scale-95"
+        >
+          <Wand2 className="w-3.5 h-3.5 text-brand-orange" aria-hidden="true" />
+          <span>{t.home.customizeInterests}</span>
+        </button>
       </div>
 
       {activeTab === 'continue' ? (
@@ -218,10 +299,10 @@ export const HomePage: React.FC = () => {
         </section>
       ) : (
         <>
-          {/* Full-Bleed Hero Showcase */}
-          {homeSections.hero && hero && (
+          {/* Full-Bleed Dynamic Hero Showcase */}
+          {homeSections.hero && primaryHeroItem && (
             <div className="mt-6">
-              <HeroBanner item={hero} slides={heroSlides} />
+              <HeroBanner item={primaryHeroItem} slides={heroSlides} />
             </div>
           )}
 
@@ -283,8 +364,8 @@ export const HomePage: React.FC = () => {
             />
           )}
 
-          {homeSections.recommendations && recommendations.length > 0 && (
-            <MediaSlider title={t.home.recommendations} items={recommendations} />
+          {homeSections.recommendations && personalizedRecItems.length > 0 && (
+            <MediaSlider title={t.home.recommendations} items={personalizedRecItems} />
           )}
 
           {homeSections.expected && expected.length > 0 && (

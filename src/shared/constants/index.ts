@@ -1,7 +1,7 @@
 import { UserSettings, HotkeysConfig } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.52';
+export const APP_VERSION = '0.0.53';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -125,6 +125,15 @@ export const DEFAULT_HOTKEYS: HotkeysConfig = {
   focusSearch: 'Ctrl+KeyK',
 };
 
+export const DEFAULT_USER_INTERESTS = {
+  onboardingCompleted: false,
+  favoriteGenres: [] as string[],
+  favoriteTypes: [] as Array<'films' | 'series' | 'cartoons' | 'animation' | 'shows'>,
+  genreScores: {} as Record<string, { weight: number; updatedAt: number }>,
+  typeScores: {} as Partial<Record<'films' | 'series' | 'cartoons' | 'animation' | 'shows', { weight: number; updatedAt: number }>>,
+  updatedAt: 0,
+};
+
 export const DEFAULT_USER_SETTINGS: UserSettings = {
   theme: 'dark',
   cardSize: 'medium',
@@ -148,6 +157,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
     fullscreenOnPlay: false,
   },
   hotkeys: { ...DEFAULT_HOTKEYS },
+  interests: { ...DEFAULT_USER_INTERESTS },
   app: {
     autoLaunch: false,
     checkUpdatesOnStart: true,

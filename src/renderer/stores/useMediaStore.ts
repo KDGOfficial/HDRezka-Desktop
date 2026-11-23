@@ -1,8 +1,10 @@
 import { create } from 'zustand';
-import { MediaItem, MediaDetails, ContentType, FavoriteItem, WatchHistoryEntry } from '../../shared/types';
+import { MediaItem, MediaDetails, FavoriteItem, WatchHistoryEntry } from '../../shared/types';
+import { useSettingsStore } from './useSettingsStore';
 
 export type AppPage =
   | 'home'
+  | 'whatToWatch'
   | 'catalog'
   | 'films'
   | 'series'
@@ -142,6 +144,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
         set((state) => ({
           favorites: [favItem, ...state.favorites],
         }));
+        useSettingsStore.getState().recordTasteSignal(item, 'favorite');
         return true;
       }
     } catch (err) {
