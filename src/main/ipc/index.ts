@@ -100,6 +100,13 @@ export function registerIpcHandlers(): void {
     return await provider.getDetails(urlOrId, meta);
   });
 
+  ipcMain.handle(IPC_CHANNELS.PREFETCH_DETAILS, (_, items: any[]) => {
+    const provider = providerManager.getProvider();
+    if (Array.isArray(items) && items.length > 0 && typeof (provider as any).prefetchDetails === 'function') {
+      (provider as any).prefetchDetails(items);
+    }
+  });
+
   ipcMain.handle(IPC_CHANNELS.GET_SERIES_EPISODES, async (_, mediaId: string, translatorId: number) => {
     const provider = providerManager.getProvider();
     return await provider.getSeriesEpisodes(mediaId, translatorId);

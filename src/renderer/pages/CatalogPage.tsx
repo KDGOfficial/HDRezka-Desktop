@@ -41,6 +41,9 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
       });
       setItems(res.items || []);
       setHasMore(res.hasMore);
+      if (res.items?.length && window.api?.prefetchDetails) {
+        window.api.prefetchDetails(res.items.slice(0, 6));
+      }
     } catch (err) {
       console.error('Failed to load catalog:', err);
     } finally {

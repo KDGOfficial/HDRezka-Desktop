@@ -1,7 +1,7 @@
 import { UserSettings, HotkeysConfig } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.62';
+export const APP_VERSION = '0.0.63';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -187,6 +187,7 @@ export const IPC_CHANNELS = {
   GET_HOME_SECTIONS: 'provider:getHomeSections',
   GET_CATALOG: 'provider:getCatalog',
   GET_DETAILS: 'provider:getDetails',
+  PREFETCH_DETAILS: 'provider:prefetchDetails',
   GET_SERIES_EPISODES: 'provider:getSeriesEpisodes',
   GET_STREAM: 'provider:getStream',
   SEARCH_FAST: 'provider:searchFast',

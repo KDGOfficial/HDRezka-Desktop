@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Star, Heart, Play, Plus, X, Eye } from 'lucide-react';
 import { MediaItem } from '../../shared/types';
 import { getRatingColor, formatCompactNumber, inferAgeRating, getAgeRatingBadgeClass } from '../../shared/utils';
@@ -19,6 +19,28 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
   const displayTitle = useLocalizedTitle(item.title, item.origTitle);
   const ageRating = inferAgeRating(item);
   const isFav = favorites.some((f) => f.mediaId === item.id);
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+    };
+  }, []);
+
+  const schedulePrefetch = () => {
+    if (!window.api?.prefetchDetails) return;
+    if (prefetchTimerRef.current) clearTimeout(prefetchTimerRef.current);
+    prefetchTimerRef.current = setTimeout(() => {
+      window.api?.prefetchDetails?.([item]);
+    }, 90);
+  };
+
+  const cancelPrefetch = () => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+  };
 
   const sizeClasses = {
     small: 'w-36 md:w-40',
@@ -48,6 +70,9 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
   return (
     <article
       onClick={handleCardClick}
+      onMouseEnter={schedulePrefetch}
+      onMouseLeave={cancelPrefetch}
+      onFocus={schedulePrefetch}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault();

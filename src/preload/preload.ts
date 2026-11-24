@@ -29,6 +29,8 @@ export const api = {
   getHomeSections: () => ipcRenderer.invoke(IPC_CHANNELS.GET_HOME_SECTIONS),
   getCatalog: (filter: CatalogFilter) => ipcRenderer.invoke(IPC_CHANNELS.GET_CATALOG, filter),
   getDetails: (urlOrId: string, meta?: any) => ipcRenderer.invoke(IPC_CHANNELS.GET_DETAILS, urlOrId, meta),
+  prefetchDetails: (items: Array<Partial<import('../shared/types').MediaItem>>): Promise<void> =>
+    ipcRenderer.invoke(IPC_CHANNELS.PREFETCH_DETAILS, items),
   getSeriesEpisodes: (mediaId: string, translatorId: number) =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SERIES_EPISODES, mediaId, translatorId),
   getStream: (params: {

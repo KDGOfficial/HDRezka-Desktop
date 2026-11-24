@@ -220,6 +220,23 @@ if (!gotTheLock) {
         provider.pruneProtectedMirrors().then(persistBestMirror).catch(() => {});
       });
 
+    // Warm up home sections and top movie sources in the background during startup splash
+    provider
+      .getHomeSections()
+      .then((sections: any) => {
+        if (!sections) return;
+        const candidates = [
+          sections.hero,
+          ...(sections.popular || []).slice(0, 4),
+          ...(sections.newReleases || []).slice(0, 3),
+          ...(sections.topMovies || []).slice(0, 2),
+        ].filter(Boolean);
+        if (candidates.length > 0 && typeof (provider as any).prefetchDetails === 'function') {
+          (provider as any).prefetchDetails(candidates);
+        }
+      })
+      .catch(() => {});
+
     // 2. Register all IPC handlers
     registerIpcHandlers();
 

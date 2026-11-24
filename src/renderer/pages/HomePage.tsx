@@ -87,6 +87,14 @@ export const HomePage: React.FC = () => {
       setTopSeries(data.topSeries || []);
       setRecommendations(data.recommendations || []);
       setExpected(data.expected || []);
+      if (window.api?.prefetchDetails) {
+        const warmup = [
+          data.hero,
+          ...(data.popular || []).slice(0, 4),
+          ...(data.newReleases || []).slice(0, 3),
+        ].filter(Boolean);
+        if (warmup.length > 0) window.api.prefetchDetails(warmup);
+      }
     } catch (err) {
       console.error('Failed to load home sections:', err);
     } finally {

@@ -88,6 +88,12 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
   const isFav = favorites.some((f) => f.mediaId === activeItem.id);
 
   useEffect(() => {
+    if (activeItem && window.api?.prefetchDetails) {
+      window.api.prefetchDetails([activeItem]);
+    }
+  }, [activeItem?.id, activeItem?.url]);
+
+  useEffect(() => {
     if (!manualNavigationRef.current) return;
     const pos = t.home.slidePosition
       .replace('{current}', String(safeIndex + 1))

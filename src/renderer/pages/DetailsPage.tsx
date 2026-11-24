@@ -89,12 +89,17 @@ export const DetailsPage: React.FC = () => {
 
   const loadMediaDetails = async (idOrUrl: string) => {
     if (!window.api) return;
-    setIsFetchingDetails(true);
+    let settled = false;
+    const spinnerTimer = setTimeout(() => {
+      if (!settled) setIsFetchingDetails(true);
+    }, 140);
     if (!details && !selectedMediaDetails) {
       setLoading(true);
     }
     try {
       const data = await window.api.getDetails(idOrUrl, selectedMediaDetails || undefined);
+      settled = true;
+      clearTimeout(spinnerTimer);
       setDetails(data);
       if (data && !data.antiBot) {
         useSettingsStore.getState().recordTasteSignal(data, 'view');
@@ -119,6 +124,8 @@ export const DetailsPage: React.FC = () => {
     } catch (err) {
       console.error('Failed to load details:', err);
     } finally {
+      settled = true;
+      clearTimeout(spinnerTimer);
       setLoading(false);
       setIsFetchingDetails(false);
     }

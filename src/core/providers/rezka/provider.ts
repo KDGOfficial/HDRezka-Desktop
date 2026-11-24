@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.62';
+  public version = '0.0.63';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -674,6 +674,13 @@ export class RezkaProvider implements IProvider {
   private mediaCache: Map<string, Partial<MediaItem>> = new Map();
   private mediaUrlCache: Map<string, string> = new Map();
   private kpIdCache: Map<string, string> = new Map();
+  private detailsCache: Map<string, { ts: number; data: MediaDetails }> = new Map();
+  private inFlightDetails: Map<string, Promise<MediaDetails>> = new Map();
+  private homeSectionsCache: { mirror: string; ts: number; data: any } | null = null;
+  private inFlightHomeSections: { mirror: string; promise: Promise<any> } | null = null;
+  private inFlightFindMirrors: Promise<{ added: string[]; all: string[] }> | null = null;
+  private prefetchQueue: Array<{ key: string; urlOrId: string; meta?: Partial<MediaItem> }> = [];
+  private activePrefetches = 0;
   private collapsPlayerCache: Map<string, { ts: number; data: CollapsParsedData | null }> = new Map();
   private kinobasePlayerCache: Map<
     string,
@@ -732,7 +739,77 @@ export class RezkaProvider implements IProvider {
   }
 
   public setActiveMirror(mirror: string): void {
-    this.activeMirror = mirror.replace(/\/$/, '');
+    const normalized = mirror.replace(/\/$/, '');
+    if (normalized !== this.activeMirror) {
+      this.activeMirror = normalized;
+      this.homeSectionsCache = null;
+      this.inFlightHomeSections = null;
+      this.detailsCache.clear();
+    }
+  }
+
+  public getCachedDetails(urlOrId: string): MediaDetails | null {
+    if (!urlOrId) return null;
+    const now = Date.now();
+    const ttlMs = 15 * 60 * 1000;
+    const normId = urlOrId.split('/').pop()?.split('-')[0] || urlOrId;
+    for (const key of [urlOrId, normId]) {
+      const hit = key ? this.detailsCache.get(key) : undefined;
+      if (hit && now - hit.ts < ttlMs && !hit.data.antiBot) {
+        return hit.data;
+      }
+    }
+    return null;
+  }
+
+  private storeDetailsCache(urlOrId: string, details: MediaDetails): void {
+    if (!details || details.antiBot) return;
+    if (this.detailsCache.size >= 160) {
+      const oldestKey = this.detailsCache.keys().next().value;
+      if (oldestKey) this.detailsCache.delete(oldestKey);
+    }
+    const entry = { ts: Date.now(), data: details };
+    const normId = urlOrId.split('/').pop()?.split('-')[0] || urlOrId;
+    if (urlOrId) this.detailsCache.set(urlOrId, entry);
+    if (normId) this.detailsCache.set(normId, entry);
+    if (details.id) this.detailsCache.set(details.id, entry);
+    if (details.url) this.detailsCache.set(details.url, entry);
+  }
+
+  /**
+   * Low-priority background prefetcher for movie/series details & player sources.
+   * Deduplicates against detailsCache and inFlightDetails and caps concurrency so UI stays snappy.
+   */
+  public prefetchDetails(items: Array<Partial<MediaItem>>, maxConcurrency = 3): void {
+    if (!Array.isArray(items) || items.length === 0) return;
+    for (const raw of items) {
+      const urlOrId = (raw?.url || raw?.id || '').trim();
+      if (!urlOrId) continue;
+      const normId = urlOrId.split('/').pop()?.split('-')[0] || urlOrId;
+      if (this.getCachedDetails(urlOrId)) continue;
+      if (this.inFlightDetails.has(urlOrId) || this.inFlightDetails.has(normId)) continue;
+      if (this.prefetchQueue.some((q) => q.key === normId || q.urlOrId === urlOrId)) continue;
+      if (this.prefetchQueue.length >= 24) break;
+      this.prefetchQueue.push({ key: normId, urlOrId, meta: raw });
+    }
+    this.drainPrefetchQueue(maxConcurrency);
+  }
+
+  private drainPrefetchQueue(maxConcurrency = 3): void {
+    while (this.activePrefetches < maxConcurrency && this.prefetchQueue.length > 0) {
+      const next = this.prefetchQueue.shift();
+      if (!next) break;
+      if (this.getCachedDetails(next.urlOrId) || this.inFlightDetails.has(next.urlOrId)) {
+        continue;
+      }
+      this.activePrefetches++;
+      this.getDetails(next.urlOrId, next.meta)
+        .catch(() => {})
+        .finally(() => {
+          this.activePrefetches = Math.max(0, this.activePrefetches - 1);
+          this.drainPrefetchQueue(maxConcurrency);
+        });
+    }
   }
 
   public getMirrors(): string[] {
@@ -918,6 +995,19 @@ export class RezkaProvider implements IProvider {
   }
 
   public async findOnlineMirrors(): Promise<{ added: string[]; all: string[] }> {
+    if (this.inFlightFindMirrors) {
+      return await this.inFlightFindMirrors;
+    }
+    const run = this.findOnlineMirrorsUncached().finally(() => {
+      if (this.inFlightFindMirrors === run) {
+        this.inFlightFindMirrors = null;
+      }
+    });
+    this.inFlightFindMirrors = run;
+    return await run;
+  }
+
+  private async findOnlineMirrorsUncached(): Promise<{ added: string[]; all: string[] }> {
     const candidateUrls = new Set<string>([...OPEN_MIRROR_SEEDS, ...HDREZKA_MIRRORS]);
 
     // Seed list of known mirror candidates (excluding dead/hangup domains)
@@ -4201,6 +4291,34 @@ export class RezkaProvider implements IProvider {
   }
 
   public async getHomeSections() {
+    const mirror = this.activeMirror;
+    if (
+      this.homeSectionsCache &&
+      this.homeSectionsCache.mirror === mirror &&
+      Date.now() - this.homeSectionsCache.ts < 5 * 60 * 1000
+    ) {
+      return this.homeSectionsCache.data;
+    }
+    if (this.inFlightHomeSections && this.inFlightHomeSections.mirror === mirror) {
+      return await this.inFlightHomeSections.promise;
+    }
+    const promise = this.getHomeSectionsUncached()
+      .then((data) => {
+        if (data && data !== FALLBACK_HOME_SECTIONS && this.activeMirror === mirror) {
+          this.homeSectionsCache = { mirror, ts: Date.now(), data };
+        }
+        return data;
+      })
+      .finally(() => {
+        if (this.inFlightHomeSections?.promise === promise) {
+          this.inFlightHomeSections = null;
+        }
+      });
+    this.inFlightHomeSections = { mirror, promise };
+    return await promise;
+  }
+
+  private async getHomeSectionsUncached() {
     if (this.isHdStudio()) {
       const hHome =
         (await this.getHdStudioHomeSections()) ||
@@ -4531,6 +4649,31 @@ export class RezkaProvider implements IProvider {
   }
 
   public async getDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails> {
+    const cached = this.getCachedDetails(urlOrId);
+    if (cached) return cached;
+
+    const normId = urlOrId.split('/').pop()?.split('-')[0] || urlOrId;
+    const existing = this.inFlightDetails.get(urlOrId) || (normId ? this.inFlightDetails.get(normId) : undefined);
+    if (existing) return await existing;
+
+    const promise = this.getDetailsUncached(urlOrId, meta)
+      .then((details) => {
+        if (details && !details.antiBot && details.translators && details.translators.length > 0) {
+          this.storeDetailsCache(urlOrId, details);
+        }
+        return details;
+      })
+      .finally(() => {
+        this.inFlightDetails.delete(urlOrId);
+        if (normId) this.inFlightDetails.delete(normId);
+      });
+
+    this.inFlightDetails.set(urlOrId, promise);
+    if (normId) this.inFlightDetails.set(normId, promise);
+    return await promise;
+  }
+
+  private async getDetailsUncached(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails> {
     const normId = urlOrId.split('/').pop()?.split('-')[0] || urlOrId;
     let cachedMeta = meta || this.mediaCache.get(urlOrId) || this.mediaCache.get(normId);
 
