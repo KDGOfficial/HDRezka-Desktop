@@ -61,6 +61,15 @@ export interface SubtitleFetchResult {
   translated?: boolean;
 }
 
+export interface SubtitleStyle {
+  size: number; // % of base size, 50..200
+  position: number; // distance from bottom, % of player height, 0..60
+  color: string;
+  background: number; // background opacity 0..1
+  bold: boolean;
+  delay: number; // seconds, positive = later
+}
+
 export interface StreamData {
   streams: VideoQualityStream[];
   subtitles: SubtitleTrack[];
@@ -232,6 +241,7 @@ export interface UserSettings {
     fullscreenOnPlay: boolean;
   };
   hotkeys: HotkeysConfig;
+  subtitleStyle?: SubtitleStyle;
   interests?: UserInterestsProfile;
   app: {
     autoLaunch: boolean;

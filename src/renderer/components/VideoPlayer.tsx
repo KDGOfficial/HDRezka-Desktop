@@ -34,7 +34,8 @@ import { HorizontalSlider } from './HorizontalSlider';
 import { useTranslation } from '../i18n';
 import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
 import { formatDuration, matchesShortcut, formatShortcutLabel, matchSubtitleLanguageCode } from '../../shared/utils';
-import { DEFAULT_HOTKEYS, BROWSER_USER_AGENT } from '../../shared/constants';
+import { DEFAULT_HOTKEYS, BROWSER_USER_AGENT, DEFAULT_SUBTITLE_STYLE } from '../../shared/constants';
+import type { SubtitleStyle } from '../../shared/types';
 import appLogo from '../assets/logo.png';
 
 function getHlsLevelQualityRank(level: { width?: number; height?: number }): number {
@@ -173,6 +174,12 @@ export const VideoPlayer: React.FC = () => {
   const [resolvedSubtitle, setResolvedSubtitle] = useState<{ url: string; label: string; lang: string } | null>(null);
   const [isLoadingSubtitle, setIsLoadingSubtitle] = useState(false);
   const subtitleBlobRef = useRef<string | null>(null);
+  const subtitleTrackRef = useRef<HTMLTrackElement>(null);
+  const [cueText, setCueText] = useState('');
+  const savedSubtitleStyle = useSettingsStore((s) => s.settings.subtitleStyle);
+  const [subStyle, setSubStyle] = useState<SubtitleStyle>({ ...DEFAULT_SUBTITLE_STYLE, ...(savedSubtitleStyle || {}) });
+  const subStyleSaveRef = useRef<any>(null);
+  const pendingSubStyleRef = useRef<SubtitleStyle | null>(null);
   const playerDisplayTitle = useLocalizedTitle(mediaDetails?.title, mediaDetails?.origTitle);
 
   const hideTimerRef = useRef<any>(null);
@@ -391,6 +398,7 @@ export const VideoPlayer: React.FC = () => {
     if (!window.api?.getSubtitleTrack || !mediaDetails) return;
 
     setIsLoadingSubtitle(true);
+    showToast(t.player.subtitlesSearching);
     window.api
       .getSubtitleTrack({
         title: mediaDetails.title,
@@ -400,6 +408,9 @@ export const VideoPlayer: React.FC = () => {
         episode: episodeId,
         lang: currentSubtitle,
         existingSubtitles: streamData?.subtitles || [],
+        mediaId: mediaDetails.id,
+        translatorId,
+        translators: mediaDetails.translators,
       })
       .then((res) => {
         if (cancelled) return;
@@ -433,24 +444,93 @@ export const VideoPlayer: React.FC = () => {
     };
   }, [isOpen, currentSubtitle, mediaDetails?.id, seasonId, episodeId, streamData?.subtitles]);
 
-  // Cleanup subtitle blob URL on unmount
+  // Cleanup subtitle blob URL & flush any pending subtitle style save on unmount
   useEffect(() => {
     return () => {
       if (subtitleBlobRef.current) {
         URL.revokeObjectURL(subtitleBlobRef.current);
         subtitleBlobRef.current = null;
       }
+      if (subStyleSaveRef.current) {
+        clearTimeout(subStyleSaveRef.current);
+        subStyleSaveRef.current = null;
+        if (pendingSubStyleRef.current) {
+          useSettingsStore.getState().updateSettings({ subtitleStyle: pendingSubStyleRef.current });
+          pendingSubStyleRef.current = null;
+        }
+      }
     };
   }, []);
 
-  // Dynamically inserted <track default> is not always shown by Chromium; force it on
+  // Re-sync subtitle style from saved settings whenever the player opens (settings may load after mount)
   useEffect(() => {
-    const tracks = videoRef.current?.textTracks;
-    if (!tracks) return;
-    for (const track of Array.from(tracks)) {
-      track.mode = activeSubtitleTrack ? 'showing' : 'disabled';
+    if (isOpen) setSubStyle({ ...DEFAULT_SUBTITLE_STYLE, ...(useSettingsStore.getState().settings.subtitleStyle || {}) });
+  }, [isOpen]);
+
+  const updateSubStyle = (patch: Partial<SubtitleStyle>) => {
+    setSubStyle((prev) => {
+      const next = { ...prev, ...patch };
+      pendingSubStyleRef.current = next;
+      // Debounced so dragging a slider doesn't write settings on every pixel
+      if (subStyleSaveRef.current) clearTimeout(subStyleSaveRef.current);
+      subStyleSaveRef.current = setTimeout(() => {
+        subStyleSaveRef.current = null;
+        pendingSubStyleRef.current = null;
+        useSettingsStore.getState().updateSettings({ subtitleStyle: next });
+      }, 400);
+      return next;
+    });
+  };
+
+  // Subtitles are rendered by our own overlay (track mode 'hidden') so size, position, colors and delay are user-tunable
+  useEffect(() => {
+    const el = subtitleTrackRef.current;
+    const track = el?.track;
+    setCueText('');
+    // Keep any HLS-injected text tracks from rendering natively on top of our overlay
+    for (const other of Array.from(videoRef.current?.textTracks || [])) {
+      if (other !== track) other.mode = 'disabled';
     }
-  }, [activeSubtitleTrack?.url]);
+    if (!el || !track) return;
+    track.mode = 'hidden';
+    const delay = subStyle.delay || 0;
+    const extractCueText = (cue: TextTrackCue) => {
+      const vtt = cue as VTTCue;
+      const text = typeof vtt.getCueAsHTML === 'function' ? vtt.getCueAsHTML().textContent || '' : vtt.text || '';
+      return text.replace(/\{\\[^}]*\}/g, '').trim(); // drop SRT/ASS override tags like {\an8}
+    };
+    const applyDelay = () => {
+      for (const cue of Array.from(track.cues || [])) {
+        const c = cue as TextTrackCue & { _origStart?: number; _origEnd?: number };
+        if (c._origStart === undefined) {
+          c._origStart = c.startTime;
+          c._origEnd = c.endTime;
+        }
+        c.startTime = Math.max(0, c._origStart + delay);
+        c.endTime = Math.max(0, (c._origEnd ?? c._origStart) + delay);
+      }
+    };
+    const onCueChange = () => {
+      let cues = Array.from(track.activeCues || []);
+      // When paused or right after delay shift, activeCues may lag; check track.cues against currentTime
+      if (cues.length === 0 && track.cues && track.cues.length > 0 && videoRef.current) {
+        const now = videoRef.current.currentTime;
+        cues = Array.from(track.cues).filter((c) => c.startTime <= now && now <= c.endTime);
+      }
+      setCueText(cues.map(extractCueText).filter(Boolean).join('\n'));
+    };
+    const onLoad = () => {
+      applyDelay();
+      onCueChange();
+    };
+    onLoad();
+    el.addEventListener('load', onLoad);
+    track.addEventListener('cuechange', onCueChange);
+    return () => {
+      el.removeEventListener('load', onLoad);
+      track.removeEventListener('cuechange', onCueChange);
+    };
+  }, [activeSubtitleTrack?.url, subStyle.delay]);
 
   const resetHideTimer = () => {
     if (isUiLocked) return;
@@ -1308,15 +1388,39 @@ export const VideoPlayer: React.FC = () => {
       >
         {activeSubtitleTrack && (
           <track
+            ref={subtitleTrackRef}
             key={activeSubtitleTrack.url}
             kind="subtitles"
             src={activeSubtitleTrack.url}
-            default
             srcLang={activeSubtitleTrack.lang}
             label={activeSubtitleTrack.label}
           />
         )}
       </video>
+      )}
+
+      {/* Custom subtitle overlay (live preview shown while tuning settings in a silent scene) */}
+      {!currentEmbedUrl && ((cueText && activeSubtitleTrack) || activeMenu === 'subtitles') && (
+        <div
+          className="player-subtitle-overlay absolute inset-x-0 z-[15] flex justify-center px-[6%] pointer-events-none transition-[bottom] duration-200"
+          style={{ bottom: `calc(${subStyle.position}% + ${showControls ? 76 : 0}px)` }}
+          aria-live="off"
+        >
+          <span
+            className="whitespace-pre-line text-center rounded-lg px-[0.6em] py-[0.2em] leading-[1.38] font-sans"
+            style={{
+              fontSize: `calc(clamp(14px, 4.4cqh, 46px) * ${subStyle.size / 100})`,
+              fontWeight: subStyle.bold ? 700 : 500,
+              color: subStyle.color,
+              backgroundColor: `rgba(7, 5, 7, ${subStyle.background})`,
+              textShadow: '0 2px 6px rgba(0, 0, 0, 0.95), 0 0 2px rgba(0, 0, 0, 0.9)',
+              boxDecorationBreak: 'clone',
+              WebkitBoxDecorationBreak: 'clone',
+            }}
+          >
+            {cueText && activeSubtitleTrack ? cueText : t.player.subtitlePreview}
+          </span>
+        </div>
       )}
 
       {/* Cinema Loading Overlay */}
@@ -1886,7 +1990,7 @@ export const VideoPlayer: React.FC = () => {
 
         {/* Subtitles Menu Popup (universal RU/UK/EN on any voiceover + extra embedded tracks) */}
         {activeMenu === 'subtitles' && (
-          <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[190px] space-y-1">
+          <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto w-[250px] max-h-[calc(100%-8rem)] overflow-y-auto overscroll-contain space-y-1">
             <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1 flex items-center justify-between gap-2">
               <span>{t.player.subtitles}</span>
               {isLoadingSubtitle && (
@@ -1949,6 +2053,73 @@ export const VideoPlayer: React.FC = () => {
                   {sub.language}
                 </button>
               ))}
+            {/* Fine subtitle tuning: size, position, color, background, weight, sync delay */}
+            <div
+              className="border-t border-white/10 mt-1.5 pt-2 px-2 space-y-2 text-[11px] text-zinc-300"
+              onKeyDown={(e) => e.key.startsWith('Arrow') && e.stopPropagation()} // arrows tune the focused slider instead of seeking
+            >
+              <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400">
+                <span>{t.player.subtitleSettings}</span>
+                <button
+                  type="button"
+                  onClick={() => updateSubStyle({ ...DEFAULT_SUBTITLE_STYLE })}
+                  className="normal-case tracking-normal font-bold text-zinc-400 hover:text-white cursor-pointer"
+                >
+                  {t.player.subtitleReset}
+                </button>
+              </div>
+              {(
+                [
+                  { key: 'size', label: t.player.subtitleSize, min: 50, max: 200, step: 5, fmt: (v: number) => `${v}%` },
+                  { key: 'position', label: t.player.subtitlePosition, min: 0, max: 60, step: 1, fmt: (v: number) => `${v}%` },
+                  { key: 'background', label: t.player.subtitleBackground, min: 0, max: 1, step: 0.05, fmt: (v: number) => `${Math.round(v * 100)}%` },
+                  { key: 'delay', label: t.player.subtitleDelay, min: -10, max: 10, step: 0.1, fmt: (v: number) => `${v > 0 ? '+' : ''}${v.toFixed(1)}s` },
+                ] as const
+              ).map((row) => (
+                <label key={row.key} className="block space-y-0.5">
+                  <span className="flex justify-between font-bold">
+                    <span>{row.label}</span>
+                    <span className="font-mono tabular-nums text-zinc-400">{row.fmt(subStyle[row.key])}</span>
+                  </span>
+                  <input
+                    type="range"
+                    min={row.min}
+                    max={row.max}
+                    step={row.step}
+                    value={subStyle[row.key]}
+                    onChange={(e) => updateSubStyle({ [row.key]: Number(e.target.value) })}
+                    className="w-full accent-[#FF333D] cursor-pointer"
+                  />
+                </label>
+              ))}
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-bold">{t.player.subtitleColor}</span>
+                <div className="flex gap-1.5">
+                  {['#FFFFFF', '#FFE14D', '#FFB830', '#7CF7C8', '#8FD3FF'].map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={color}
+                      aria-pressed={subStyle.color === color}
+                      onClick={() => updateSubStyle({ color })}
+                      className={`w-4 h-4 rounded-full border cursor-pointer ${
+                        subStyle.color === color ? 'border-white ring-2 ring-brand-orange' : 'border-white/30'
+                      }`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <label className="flex items-center justify-between gap-2 font-bold cursor-pointer">
+                <span>{t.player.subtitleBold}</span>
+                <input
+                  type="checkbox"
+                  checked={subStyle.bold}
+                  onChange={(e) => updateSubStyle({ bold: e.target.checked })}
+                  className="accent-[#FF333D] cursor-pointer"
+                />
+              </label>
+            </div>
           </div>
         )}
 

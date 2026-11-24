@@ -64,6 +64,9 @@ export const api = {
     episode?: number;
     lang: 'ru' | 'uk' | 'en';
     existingSubtitles?: Array<{ language: string; url: string }>;
+    mediaId?: string;
+    translatorId?: number;
+    translators?: import('../shared/types').Translator[];
   }): Promise<import('../shared/types').SubtitleFetchResult | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SUBTITLE_TRACK, params),
 

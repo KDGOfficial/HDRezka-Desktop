@@ -9,7 +9,8 @@ import { getMainWindow, restoreDefaultWindowBounds } from '../window';
 import { setBrowserAdBlockEnabled, getBrowserAdBlockStats } from '../main';
 import { ProviderManager } from '../../core/providers/manager';
 import { clearStaleAnubisCookies } from '../../core/providers/rezka/provider';
-import { translateTitlesBatch, fetchSubtitleTrack } from '../../core/providers/rezka/localization';
+import { translateTitlesBatch, fetchSubtitleTrack, collectVoiceoverSubtitles } from '../../core/providers/rezka/localization';
+import { matchSubtitleLanguageCode } from '../../shared/utils';
 import { AppDatabase } from '../database';
 import { CatalogFilter, WatchHistoryEntry, FavoriteItem, CollectionItem, UserSettings, UpdateInfo, UpdateProgress } from '../../shared/types';
 
@@ -134,7 +135,38 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.GET_SUBTITLE_TRACK, async (_, params: any) => {
     if (!params || (params.lang !== 'ru' && params.lang !== 'uk' && params.lang !== 'en')) return null;
-    return await fetchSubtitleTrack(params);
+    const translators = Array.isArray(params.translators)
+      ? params.translators.filter((t: any) => t && typeof t.id === 'number').slice(0, 60)
+      : [];
+    const mediaId = typeof params.mediaId === 'string' ? params.mediaId : '';
+    // Search subtitles on every voiceover of the current mirror source, not only the playing one
+    const loadVoiceoverSubtitles =
+      mediaId && translators.length > 0
+        ? () =>
+            collectVoiceoverSubtitles(
+              translators,
+              params.translatorId,
+              async (translatorId) => {
+                const tr = translators.find((t: any) => t.id === translatorId);
+                const stream = await providerManager.getProvider().getStream({
+                  mediaId,
+                  translatorId,
+                  season: params.season,
+                  episode: params.episode,
+                  isCamRip: tr?.camrip,
+                  isAds: tr?.ads,
+                  isDirector: tr?.director,
+                  title: params.title,
+                  origTitle: params.origTitle,
+                  year: params.year,
+                  translatorName: tr?.name,
+                });
+                return stream?.subtitles;
+              },
+              { earlyStop: (s) => matchSubtitleLanguageCode(s.language) === params.lang }
+            )
+        : undefined;
+    return await fetchSubtitleTrack(params, fetch, loadVoiceoverSubtitles);
   });
 
   ipcMain.handle(IPC_CHANNELS.CHECK_MIRRORS, async () => {

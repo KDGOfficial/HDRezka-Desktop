@@ -33,18 +33,39 @@ async function translateTextGtx(
   fetchImpl: FetchLike = fetch
 ): Promise<string | null> {
   if (!text.trim()) return '';
+  const encoded = encodeURIComponent(text);
   try {
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encodeURIComponent(text)}`;
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=${targetLang}&dt=t&q=${encoded}`;
     const res = await fetchImpl(url, {
+      headers: { 'User-Agent': BROWSER_USER_AGENT },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && Array.isArray(data[0])) {
+        const joined = data[0]
+          .map((part: any) => (Array.isArray(part) && typeof part[0] === 'string' ? part[0] : ''))
+          .join('');
+        if (joined) return joined;
+      }
+    }
+  } catch {
+    // fall through to secondary Google NMT endpoint
+  }
+  try {
+    const fallbackUrl = `https://clients5.google.com/translate_a/t?client=dict-chrome-ex&sl=auto&tl=${targetLang}&q=${encoded}`;
+    const res = await fetchImpl(fallbackUrl, {
       headers: { 'User-Agent': BROWSER_USER_AGENT },
       signal: AbortSignal.timeout(6000),
     });
     if (!res.ok) return null;
     const data = await res.json();
-    if (!Array.isArray(data) || !Array.isArray(data[0])) return null;
-    return data[0]
-      .map((part: any) => (Array.isArray(part) && typeof part[0] === 'string' ? part[0] : ''))
-      .join('');
+    if (Array.isArray(data)) {
+      const first = data[0];
+      if (typeof first === 'string') return first;
+      if (Array.isArray(first) && typeof first[0] === 'string') return first[0];
+    }
+    return null;
   } catch {
     return null;
   }
@@ -143,15 +164,27 @@ export async function translateVttCues(
 
   if (cueTexts.length === 0) return vtt;
 
-  // Translate in parallel-limited batches of ~30 cues (up to 450 cues -> covers full episodes/movies cleanly)
+  // Cap each chunk by both cue count and URL-encoded byte length so Cyrillic text never hits HTTP 414
   const translatedTexts = [...cueTexts];
-  const BATCH_SIZE = 30;
+  const MAX_CUES_PER_BATCH = 25;
+  const MAX_ENCODED_LEN = 1600;
   const chunks: Array<{ start: number; items: string[] }> = [];
-  for (let start = 0; start < cueTexts.length; start += BATCH_SIZE) {
-    chunks.push({ start, items: cueTexts.slice(start, start + BATCH_SIZE) });
+  let idx = 0;
+  while (idx < cueTexts.length) {
+    const start = idx;
+    const items: string[] = [];
+    let encodedLen = 0;
+    while (idx < cueTexts.length && items.length < MAX_CUES_PER_BATCH) {
+      const itemEncodedLen = encodeURIComponent(cueTexts[idx]).length + 3;
+      if (items.length > 0 && encodedLen + itemEncodedLen > MAX_ENCODED_LEN) break;
+      items.push(cueTexts[idx]);
+      encodedLen += itemEncodedLen;
+      idx++;
+    }
+    chunks.push({ start, items });
   }
 
-  // Run up to 4 concurrent batches for fast turnaround
+  // Run up to 4 concurrent batches for fast turnaround without triggering rate limits
   const CONCURRENCY = 4;
   for (let c = 0; c < chunks.length; c += CONCURRENCY) {
     const group = chunks.slice(c, c + CONCURRENCY);
@@ -159,12 +192,23 @@ export async function translateVttCues(
       group.map(async ({ start, items }) => {
         const joined = items.join('\n');
         const out = await translateTextGtx(joined, targetLang, fetchImpl);
-        if (!out) return;
-        const lines = out.split('\n').map((s) => s.trim());
-        if (lines.length === items.length) {
-          for (let j = 0; j < items.length; j++) {
-            if (lines[j]) translatedTexts[start + j] = lines[j];
+        if (out) {
+          const lines = out.split('\n').map((s) => s.trim());
+          if (lines.length === items.length) {
+            for (let j = 0; j < items.length; j++) {
+              if (lines[j]) translatedTexts[start + j] = lines[j];
+            }
+            return;
           }
+        }
+        // Batch failed or line count drifted: translate cues in small groups of 2 so none stay untranslated or hit 429
+        for (let j = 0; j < items.length; j += 2) {
+          await Promise.all(
+            items.slice(j, j + 2).map(async (item, offset) => {
+              const single = await translateTextGtx(item, targetLang, fetchImpl);
+              if (single && single.trim()) translatedTexts[start + j + offset] = single.trim();
+            })
+          );
         }
       })
     );
@@ -178,15 +222,32 @@ export async function translateVttCues(
 }
 
 async function fetchSubtitleContent(url: string, fetchImpl: FetchLike = fetch): Promise<string | null> {
-  if (!url || !/^https?:\/\//i.test(url)) return null;
+  const resolvedUrl = url?.startsWith('//') ? `https:${url}` : url;
+  if (!resolvedUrl || !/^https?:\/\//i.test(resolvedUrl)) return null;
   try {
-    const res = await fetchImpl(url, {
-      headers: { 'User-Agent': BROWSER_USER_AGENT },
+    const headers: Record<string, string> = { 'User-Agent': BROWSER_USER_AGENT };
+    try {
+      headers.Referer = `${new URL(resolvedUrl).origin}/`;
+    } catch {}
+    const res = await fetchImpl(resolvedUrl, {
+      headers,
       signal: AbortSignal.timeout(7000),
     });
     if (!res.ok) return null;
-    const raw = await res.text();
-    if (!raw || raw.trim().startsWith('<!doctype') || raw.trim().startsWith('<html')) return null;
+    let raw: string;
+    if (typeof (res as any).arrayBuffer === 'function') {
+      const buf = new Uint8Array(await res.arrayBuffer());
+      raw = new TextDecoder('utf-8').decode(buf);
+      if (raw.includes('\uFFFD')) {
+        try {
+          raw = new TextDecoder('windows-1251').decode(buf);
+        } catch {}
+      }
+    } else {
+      raw = await res.text();
+    }
+    const trimmed = raw.trim().toLowerCase();
+    if (!trimmed || trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) return null;
     const vtt = srtToVtt(raw);
     return vtt.includes('-->') ? vtt : null;
   } catch {
@@ -256,10 +317,70 @@ async function fetchOpenSubtitlesList(
 }
 
 /**
+ * Collects subtitle tracks from OTHER voiceovers of the same mirror source.
+ * Subtitles are per-episode, not per-dub, so a track from any voiceover fits the current video.
+ * Voiceovers named "субтитры"/"оригинал"/"eng" are tried first; stops early if earlyStop matches.
+ */
+export async function collectVoiceoverSubtitles(
+  translators: Array<{ id: number; name?: string }>,
+  currentTranslatorId: number | undefined,
+  loadSubtitles: (translatorId: number) => Promise<SubtitleTrack[] | undefined>,
+  opts: { limit?: number; timeoutMs?: number; concurrency?: number; earlyStop?: (track: SubtitleTrack) => boolean } = {}
+): Promise<SubtitleTrack[]> {
+  const { limit = 10, timeoutMs = 12000, concurrency = 4, earlyStop } = opts;
+  const score = (name = '') => (/субтит|subtit|оригинал|original|англ|\beng\b|\bsub\b/i.test(name) ? 0 : 1);
+  const candidates = translators
+    .filter((t) => t && typeof t.id === 'number' && t.id !== currentTranslatorId)
+    .sort((a, b) => score(a.name) - score(b.name))
+    .slice(0, limit);
+  if (candidates.length === 0) return [];
+
+  const collected: SubtitleTrack[] = [];
+  const seen = new Set<string>();
+  let nextIdx = 0;
+  let stopped = false;
+
+  const worker = async () => {
+    while (!stopped && nextIdx < candidates.length) {
+      const t = candidates[nextIdx++];
+      try {
+        for (const s of (await loadSubtitles(t.id)) || []) {
+          if (s?.url && !seen.has(s.url)) {
+            seen.add(s.url);
+            collected.push(s);
+            if (earlyStop?.(s)) {
+              stopped = true;
+              return;
+            }
+          }
+        }
+      } catch {
+        // a voiceover failing to load must not break the subtitle search
+      }
+    }
+  };
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const workers = Array.from({ length: Math.min(concurrency, candidates.length) }, () => worker());
+  await Promise.race([
+    Promise.all(workers),
+    new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        stopped = true;
+        resolve();
+      }, timeoutMs);
+    }),
+  ]);
+  if (timer) clearTimeout(timer);
+  return [...collected];
+}
+
+/**
  * Resolves a WebVTT subtitle track in RU, UK, or EN for ANY voiceover:
  * 1) Direct match from stream's existingSubtitles
- * 2) Direct match from Stremio OpenSubtitles v3 (via Cinemeta IMDb lookup)
- * 3) Auto-translation from any available existing or OpenSubtitles track into target language
+ * 2) Direct match from other voiceovers of the same mirror source (loadVoiceoverSubtitles)
+ * 3) Direct match from Stremio OpenSubtitles v3 (via Cinemeta IMDb lookup)
+ * 4) Auto-translation from any available mirror or OpenSubtitles track into target language
  */
 export async function fetchSubtitleTrack(
   params: {
@@ -271,27 +392,45 @@ export async function fetchSubtitleTrack(
     lang: 'ru' | 'uk' | 'en';
     existingSubtitles?: SubtitleTrack[];
   },
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike = fetch,
+  loadVoiceoverSubtitles?: () => Promise<SubtitleTrack[]>
 ): Promise<SubtitleFetchResult | null> {
-  const { title, origTitle, year, season, episode, lang, existingSubtitles = [] } = params;
+  const { title, origTitle, year, season, episode, lang } = params;
+  let existingSubtitles = params.existingSubtitles || [];
   const cacheKey = `${(origTitle || title || '').toLowerCase()}|${year || ''}|${season || 0}|${episode || 0}|${lang}`;
   const cached = subtitleVttCache.get(cacheKey);
   if (cached) return cached;
 
   const displayLang = LANG_DISPLAY_NAME[lang];
 
-  // 1. Exact match from stream's embedded subtitles
-  const directExisting = existingSubtitles.find((s) => matchSubtitleLanguageCode(s.language) === lang);
-  if (directExisting?.url) {
-    const vtt = await fetchSubtitleContent(directExisting.url, fetchImpl);
-    if (vtt) {
-      const result: SubtitleFetchResult = { vtt, language: displayLang, langCode: lang, source: 'stream' };
-      cacheSubtitleResult(cacheKey, result);
-      return result;
+  const tryDirect = async (tracks: SubtitleTrack[]): Promise<SubtitleFetchResult | null> => {
+    for (const s of tracks.filter((t) => matchSubtitleLanguageCode(t.language) === lang)) {
+      const vtt = await fetchSubtitleContent(s.url, fetchImpl);
+      if (vtt) {
+        const result: SubtitleFetchResult = { vtt, language: displayLang, langCode: lang, source: 'stream' };
+        cacheSubtitleResult(cacheKey, result);
+        return result;
+      }
     }
+    return null;
+  };
+
+  // 1. Exact match from stream's embedded subtitles
+  const fromStream = await tryDirect(existingSubtitles);
+  if (fromStream) return fromStream;
+
+  // 2. Exact match from any other voiceover of the same mirror source
+  if (loadVoiceoverSubtitles) {
+    const known = new Set(existingSubtitles.map((s) => s.url));
+    const extra = (await loadVoiceoverSubtitles().catch(() => [] as SubtitleTrack[])).filter(
+      (s) => s?.url && !known.has(s.url)
+    );
+    const fromVoiceovers = await tryDirect(extra);
+    if (fromVoiceovers) return fromVoiceovers;
+    existingSubtitles = [...existingSubtitles, ...extra];
   }
 
-  // 2. Search OpenSubtitles v3 via Cinemeta IMDb ID
+  // 3. Search OpenSubtitles v3 via Cinemeta IMDb ID
   const isSeries = Boolean(season && episode);
   let searchQuery = (origTitle || '').trim();
   if (!searchQuery && title) {
@@ -302,9 +441,26 @@ export async function fetchSubtitleTrack(
 
   let openSubs: Array<{ lang: string; url: string }> = [];
   if (searchQuery) {
-    const imdbId = await resolveImdbIdViaCinemeta(searchQuery, year, isSeries, fetchImpl);
+    let imdbId = await resolveImdbIdViaCinemeta(searchQuery, year, isSeries, fetchImpl);
+    if (!imdbId && origTitle && title && title.trim() !== searchQuery) {
+      const tr = await translateTitlesBatch([title], 'en', fetchImpl);
+      const fallbackQ = tr[title.trim()] || '';
+      if (fallbackQ && fallbackQ !== searchQuery) {
+        searchQuery = fallbackQ;
+        imdbId = await resolveImdbIdViaCinemeta(searchQuery, year, isSeries, fetchImpl);
+      }
+    }
     if (imdbId) {
       openSubs = await fetchOpenSubtitlesList(imdbId, season, episode, fetchImpl);
+    }
+    // 1-part miniseries/movies are sometimes indexed as S01E01 on mirrors but as movies on IMDb/OpenSubtitles
+    if (openSubs.length === 0 && isSeries && season === 1 && episode === 1) {
+      const movieImdbId = await resolveImdbIdViaCinemeta(searchQuery, year, false, fetchImpl);
+      if (movieImdbId) {
+        openSubs = await fetchOpenSubtitlesList(movieImdbId, undefined, undefined, fetchImpl);
+      }
+    }
+    if (openSubs.length > 0) {
       const targetCodes = OPEN_SUB_LANG_CODES[lang];
       const directOs = openSubs.find((s) => targetCodes.includes(s.lang));
       if (directOs) {
@@ -318,7 +474,7 @@ export async function fetchSubtitleTrack(
     }
   }
 
-  // 3. Auto-translate from any available subtitle track (stream or OpenSubtitles)
+  // 4. Auto-translate from any available subtitle track (mirror voiceovers or OpenSubtitles, any language)
   const fallbackUrls: string[] = [];
   for (const s of existingSubtitles) {
     if (s.url) fallbackUrls.push(s.url);
@@ -327,8 +483,10 @@ export async function fetchSubtitleTrack(
     const match = openSubs.find((s) => s.lang === prefCode);
     if (match?.url) fallbackUrls.push(match.url);
   }
+  const anyOs = openSubs.find((s) => s.url && !fallbackUrls.includes(s.url));
+  if (anyOs) fallbackUrls.push(anyOs.url);
 
-  for (const url of fallbackUrls.slice(0, 3)) {
+  for (const url of Array.from(new Set(fallbackUrls)).slice(0, 6)) {
     const baseVtt = await fetchSubtitleContent(url, fetchImpl);
     if (baseVtt) {
       const translatedVtt = await translateVttCues(baseVtt, lang, fetchImpl);

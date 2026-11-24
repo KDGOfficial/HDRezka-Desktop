@@ -1,7 +1,7 @@
-import { UserSettings, HotkeysConfig } from '../types';
+import { UserSettings, HotkeysConfig, SubtitleStyle } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.64';
+export const APP_VERSION = '0.0.65';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -136,6 +136,15 @@ export const DEFAULT_USER_INTERESTS = {
   genreScores: {} as Record<string, { weight: number; updatedAt: number }>,
   typeScores: {} as Partial<Record<'films' | 'series' | 'cartoons' | 'animation' | 'shows', { weight: number; updatedAt: number }>>,
   updatedAt: 0,
+};
+
+export const DEFAULT_SUBTITLE_STYLE: SubtitleStyle = {
+  size: 100,
+  position: 10,
+  color: '#FFFFFF',
+  background: 0.75,
+  bold: true,
+  delay: 0,
 };
 
 export const DEFAULT_USER_SETTINGS: UserSettings = {
