@@ -6,7 +6,7 @@
   <p><strong>Современный, быстрый и удобный неофициальный десктопный клиент HDRezka для Windows</strong></p>
 
   <p>
-    <a href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"><img src="https://img.shields.io/badge/version-0.0.58-crimson.svg?style=flat-square" alt="Version" /></a>
+    <a href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"><img src="https://img.shields.io/badge/version-0.0.59-crimson.svg?style=flat-square" alt="Version" /></a>
     <a href="https://t.me/HDRezkaPC"><img src="https://img.shields.io/badge/Telegram-@HDRezkaPC-2CA5E0.svg?style=flat-square&logo=telegram" alt="Telegram" /></a>
     <img src="https://img.shields.io/badge/platform-Windows-blue.svg?style=flat-square&logo=windows" alt="Platform" />
     <img src="https://img.shields.io/badge/Electron-34.x-47848F.svg?style=flat-square&logo=electron" alt="Electron" />
@@ -179,7 +179,7 @@ npm run pack
 npm run dist
 ```
 
-Собранные файлы (`HDREZKA-Setup-0.0.58.exe` и `HDREZKA-Portable-0.0.58.exe`) появятся в папке `release/`.
+Собранные файлы (`HDREZKA-Setup-0.0.59.exe` и `HDREZKA-Portable-0.0.59.exe`) появятся в папке `release/`.
 
 ---
 
@@ -187,6 +187,7 @@ npm run dist
 
 - Бесплатная подпись кода для open-source сборок может предоставляться через [SignPath.io](https://signpath.io) с сертификатом [SignPath Foundation](https://signpath.org), через Microsoft Trusted Signing или через сертификат разработчика в GitHub Actions.
 - Все официальные релизы собираются исключительно в CI/CD (`.github/workflows/release.yml`) из публичного исходного кода данного репозитория и сопровождаются контрольными суммами `SHA256SUMS.txt`.
+- **Windows блокирует запуск («Интеллектуальное управление приложениями» / Smart App Control)?** Пока релиз не подписан, SAC не даёт кнопки «Всё равно запустить». Варианты: установить сборку на ПК без SAC; отключить SAC в «Безопасность Windows → Управление приложениями и браузером» (необратимо); либо мейнтейнеру добавить секреты подписи (`AZURE_*`, `SIGNPATH_*` или `CSC_LINK`/`CSC_KEY_PASSWORD`) в GitHub Actions. При обычном SmartScreen: «Подробнее → Выполнить в любом случае».
 - Команда разработчиков: **KDGOfficial** (автор и мейнтейнер проекта). Приложение не передаёт и не собирает персональные данные пользователей (история просмотров и настройки хранятся строго локально).
 
 ---
