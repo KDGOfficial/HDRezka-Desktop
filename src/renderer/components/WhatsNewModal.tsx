@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Wand2, ThumbsUp, Sparkles, Compass, Keyboard, Check, X, ExternalLink, Send } from 'lucide-react';
+import { Target, SlidersHorizontal, Heart, Sparkles, RefreshCw, Check, X, ExternalLink, Send } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
@@ -49,27 +49,27 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
 
   const features = [
     {
-      icon: <Wand2 className="w-4 h-4 text-brand-crimson" />,
+      icon: <Target className="w-4 h-4 text-brand-crimson" />,
       title: t.whatsNew.f1_title,
       desc: t.whatsNew.f1_desc,
     },
     {
-      icon: <ThumbsUp className="w-4 h-4 text-emerald-400" />,
+      icon: <SlidersHorizontal className="w-4 h-4 text-brand-orange" />,
       title: t.whatsNew.f2_title,
       desc: t.whatsNew.f2_desc,
     },
     {
-      icon: <Sparkles className="w-4 h-4 text-brand-gold" />,
+      icon: <Heart className="w-4 h-4 text-emerald-400" />,
       title: t.whatsNew.f3_title,
       desc: t.whatsNew.f3_desc,
     },
     {
-      icon: <Compass className="w-4 h-4 text-brand-orange" />,
+      icon: <Sparkles className="w-4 h-4 text-brand-gold" />,
       title: t.whatsNew.f4_title,
       desc: t.whatsNew.f4_desc,
     },
     {
-      icon: <Keyboard className="w-4 h-4 text-sky-400" />,
+      icon: <RefreshCw className="w-4 h-4 text-sky-400" />,
       title: t.whatsNew.f5_title,
       desc: t.whatsNew.f5_desc,
     },

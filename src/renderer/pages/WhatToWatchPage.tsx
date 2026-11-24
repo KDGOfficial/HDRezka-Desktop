@@ -24,6 +24,8 @@ import {
   ChevronDown,
   ChevronUp,
   History,
+  X,
+  Check,
 } from 'lucide-react';
 import { ContentType, MediaItem } from '../../shared/types';
 import { GENRES } from '../../shared/constants';
@@ -37,6 +39,8 @@ import {
   analyzeUserTaste,
   applyInteractiveFeedback,
   createEmptyInteractiveSession,
+  extractItemGenreIds,
+  mergeCandidateBatches,
   rankInteractiveRecommendations,
 } from '../../shared/recommendations';
 import { useMediaStore } from '../stores/useMediaStore';
@@ -47,9 +51,20 @@ import appLogo from '../assets/logo.png';
 
 const DISMISSED_STORAGE_KEY = 'hdrezka_wtw_dismissed_v1';
 const MAX_PERSISTED_DISMISSED = 200;
+const MAX_SELECTED_GENRES = 3;
+const MAX_CATALOG_PAGES = 6;
 
-// Module-level cache so revisiting the tab doesn't re-fetch details for the same watched titles
+// Module-level cache so revisiting the tab preserves active filters & avoids re-fetching details
 const detailsSignalCache = new Map<string, EnrichedTitleSignal>();
+let persistedFilters: {
+  category: ContentType | 'auto';
+  mood: MoodId;
+  genres: string[];
+} = {
+  category: 'auto',
+  mood: 'auto',
+  genres: [],
+};
 
 function loadPersistedDismissed(): string[] {
   try {
@@ -93,13 +108,21 @@ const MOOD_OPTIONS: Array<{
 
 export const WhatToWatchPage: React.FC = () => {
   const { openDetails, favorites, toggleFavorite, openCollectionModal, watchHistory } = useMediaStore();
-  const { settings, setInterestsModalOpen, recordTasteSignal } = useSettingsStore();
+  const { settings, setInterestsModalOpen, recordTasteSignal, saveUserInterests } = useSettingsStore();
   const { t, translateGenre } = useTranslation();
 
-  const [selectedCategory, setSelectedCategory] = useState<ContentType | 'auto'>('auto');
-  const [selectedMood, setSelectedMood] = useState<MoodId>('auto');
-  const [selectedGenre, setSelectedGenre] = useState<string>('');
-  const [showGenresDrawer, setShowGenresDrawer] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<ContentType | 'auto'>(() => persistedFilters.category);
+  const [selectedMood, setSelectedMood] = useState<MoodId>(() => persistedFilters.mood);
+  const [selectedGenres, setSelectedGenres] = useState<string[]>(() => persistedFilters.genres);
+  const [showAllGenres, setShowAllGenres] = useState(true);
+
+  useEffect(() => {
+    persistedFilters = {
+      category: selectedCategory,
+      mood: selectedMood,
+      genres: selectedGenres,
+    };
+  }, [selectedCategory, selectedMood, selectedGenres]);
 
   const [enrichedMap, setEnrichedMap] = useState<Record<string, EnrichedTitleSignal>>(() =>
     Object.fromEntries(detailsSignalCache.entries())
@@ -195,12 +218,12 @@ export const WhatToWatchPage: React.FC = () => {
     };
   }, []);
 
-  // 3. Fetch catalog candidates tailored to active category, mood, genre & top analyzed genres
+  // 3. Fetch catalog candidates strictly aligned to selected genre(s), mood, or analyzed taste
   const fetchCandidateBatch = useCallback(
     async (
       category: ContentType | 'auto',
       mood: MoodId,
-      genre: string,
+      genres: string[],
       page: number,
       topGenreIds: string[],
       dominantType: ContentType,
@@ -210,93 +233,149 @@ export const WhatToWatchPage: React.FC = () => {
       const requests: Array<Promise<MediaItem[]>> = [];
 
       const primaryType: ContentType = category === 'auto' ? dominantType : category;
+      const altType: ContentType =
+        secondaryType && secondaryType !== primaryType
+          ? secondaryType
+          : primaryType === 'films'
+            ? 'series'
+            : 'films';
+      const sortMode = mood === 'fresh' ? 'last' : 'popular';
       const moodGenres = MOOD_PRESETS[mood].genres;
-      const targetedGenre = genre || moodGenres[0] || topGenreIds[0] || undefined;
-      const secondGenre = !genre ? moodGenres[1] || topGenreIds[1] : undefined;
 
-      // Primary personalized / filtered batch
-      requests.push(
-        window.api
-          .getCatalog({
-            type: primaryType,
-            genre: targetedGenre,
-            sort: mood === 'fresh' ? 'last' : 'popular',
-            page,
-          })
-          .then((r) => r?.items || [])
-          .catch(() => [])
-      );
+      if (genres.length > 0) {
+        // Strict explicit genre mode: ONLY query the exact genre(s) the user chose — never mix in unfiltered random lists
+        for (const gid of genres) {
+          requests.push(
+            window.api
+              .getCatalog({
+                type: primaryType,
+                genre: gid,
+                sort: sortMode,
+                page,
+              })
+              .then((r) => r?.items || [])
+              .catch(() => [])
+          );
+        }
 
-      // Secondary genre batch on page 1 for richer variety
-      if (page === 1 && secondGenre && secondGenre !== targetedGenre) {
-        requests.push(
-          window.api
-            .getCatalog({ type: primaryType, genre: secondGenre, sort: 'popular', page: 1 })
-            .then((r) => r?.items || [])
-            .catch(() => [])
-        );
-      }
-
-      // Broad popular / fresh fallback in the chosen category
-      if (targetedGenre) {
-        requests.push(
-          window.api
-            .getCatalog({
-              type: primaryType,
-              sort: mood === 'fresh' ? 'last' : 'popular',
-              page,
-            })
-            .then((r) => r?.items || [])
-            .catch(() => [])
-        );
-      } else if (page === 1) {
-        requests.push(
-          window.api
-            .getCatalog({ type: primaryType, sort: 'last', page: 1 })
-            .then((r) => r?.items || [])
-            .catch(() => [])
-        );
-      }
-
-      // In 'auto' mode, also pull user's secondary favorite type (e.g. series alongside films)
-      if (category === 'auto' && page === 1) {
-        const altType =
-          secondaryType && secondaryType !== primaryType
-            ? secondaryType
-            : primaryType === 'films'
-              ? 'series'
-              : 'films';
-        requests.push(
-          window.api
-            .getCatalog({
-              type: altType,
-              genre: genre || moodGenres[0] || topGenreIds[0] || undefined,
-              sort: mood === 'fresh' ? 'last' : 'popular',
-              page: 1,
-            })
-            .then((r) => r?.items || [])
-            .catch(() => [])
-        );
+        // In 'auto' category mode, also pull the secondary type with the EXACT SAME chosen genre(s)
+        if (category === 'auto' && page === 1) {
+          for (const gid of genres.slice(0, 2)) {
+            requests.push(
+              window.api
+                .getCatalog({
+                  type: altType,
+                  genre: gid,
+                  sort: sortMode,
+                  page: 1,
+                })
+                .then((r) => r?.items || [])
+                .catch(() => [])
+            );
+          }
+        }
+      } else if (mood !== 'auto' && moodGenres.length > 0) {
+        // Explicit genre-based mood: query the mood's genres without unfiltered noise
+        const moodBatchGenres = moodGenres.slice(0, page === 1 ? 3 : 2);
+        for (const gid of moodBatchGenres) {
+          requests.push(
+            window.api
+              .getCatalog({
+                type: primaryType,
+                genre: gid,
+                sort: sortMode,
+                page,
+              })
+              .then((r) => r?.items || [])
+              .catch(() => [])
+          );
+        }
+        if (category === 'auto' && page === 1) {
+          requests.push(
+            window.api
+              .getCatalog({
+                type: altType,
+                genre: moodGenres[0],
+                sort: sortMode,
+                page: 1,
+              })
+              .then((r) => r?.items || [])
+              .catch(() => [])
+          );
+        }
+      } else {
+        // Auto taste mode (or Fresh releases): query user's top analyzed genres
+        const tasteGenres = topGenreIds.slice(0, 2);
+        if (tasteGenres.length > 0 && mood !== 'fresh') {
+          for (const gid of tasteGenres) {
+            requests.push(
+              window.api
+                .getCatalog({
+                  type: primaryType,
+                  genre: gid,
+                  sort: 'popular',
+                  page,
+                })
+                .then((r) => r?.items || [])
+                .catch(() => [])
+            );
+          }
+          if (category === 'auto' && page === 1) {
+            requests.push(
+              window.api
+                .getCatalog({
+                  type: altType,
+                  genre: tasteGenres[0],
+                  sort: 'popular',
+                  page: 1,
+                })
+                .then((r) => r?.items || [])
+                .catch(() => [])
+            );
+          }
+        } else {
+          // Cold-start user (no taste genres yet) or explicit "Fresh releases" mode
+          requests.push(
+            window.api
+              .getCatalog({
+                type: primaryType,
+                sort: sortMode,
+                page,
+              })
+              .then((r) => r?.items || [])
+              .catch(() => [])
+          );
+          if (page === 1 && mood !== 'fresh') {
+            requests.push(
+              window.api
+                .getCatalog({ type: primaryType, sort: 'last', page: 1 })
+                .then((r) => r?.items || [])
+                .catch(() => [])
+            );
+          }
+          if (category === 'auto' && page === 1) {
+            requests.push(
+              window.api
+                .getCatalog({
+                  type: altType,
+                  sort: sortMode,
+                  page: 1,
+                })
+                .then((r) => r?.items || [])
+                .catch(() => [])
+            );
+          }
+        }
       }
 
       const batches = await Promise.all(requests);
-      const merged: MediaItem[] = [];
-      const seen = new Set<string>();
-      for (const batch of batches) {
-        for (const item of batch) {
-          if (!item?.poster) continue;
-          const key = (item.id || item.url || item.title || '').trim().toLowerCase();
-          if (!key || seen.has(key)) continue;
-          seen.add(key);
-          merged.push(item);
-        }
-      }
-      return merged;
+      return mergeCandidateBatches(batches);
     },
     []
   );
 
-  // Trigger fresh candidate fetch when category, mood, or explicit genre changes
+  // Trigger fresh candidate fetch when category, mood, or explicit genres change
+  const selectedGenresKey = selectedGenres.join(',');
   const topGenreKey = analysis.topGenres
     .slice(0, 2)
     .map((g) => g.id)
@@ -314,10 +393,11 @@ export const WhatToWatchPage: React.FC = () => {
 
     try {
       const topIds = topGenreKey ? topGenreKey.split(',').filter(Boolean) : [];
+      const activeGenreList = selectedGenresKey ? selectedGenresKey.split(',').filter(Boolean) : [];
       const items = await fetchCandidateBatch(
         selectedCategory,
         selectedMood,
-        selectedGenre,
+        activeGenreList,
         1,
         topIds,
         dominantType,
@@ -325,7 +405,7 @@ export const WhatToWatchPage: React.FC = () => {
       );
       if (seq !== requestSeqRef.current) return;
       setPool(items);
-      if (items.length === 0 && analysis.similarCandidates.length === 0) {
+      if (items.length === 0 && (activeGenreList.length > 0 || analysis.similarCandidates.length === 0)) {
         setError(t.whatToWatch.noResults);
       }
     } catch (err) {
@@ -340,7 +420,7 @@ export const WhatToWatchPage: React.FC = () => {
   }, [
     selectedCategory,
     selectedMood,
-    selectedGenre,
+    selectedGenresKey,
     topGenreKey,
     dominantType,
     secondaryType,
@@ -354,15 +434,16 @@ export const WhatToWatchPage: React.FC = () => {
   }, [loadInitialPool]);
 
   const loadNextPage = useCallback(async () => {
-    if (loadingMore || pageRef.current >= 4) return;
+    if (loadingMore || pageRef.current >= MAX_CATALOG_PAGES) return;
     setLoadingMore(true);
     const nextPage = pageRef.current + 1;
     try {
       const topIds = topGenreKey ? topGenreKey.split(',').filter(Boolean) : [];
+      const activeGenreList = selectedGenresKey ? selectedGenresKey.split(',').filter(Boolean) : [];
       const more = await fetchCandidateBatch(
         selectedCategory,
         selectedMood,
-        selectedGenre,
+        activeGenreList,
         nextPage,
         topIds,
         dominantType,
@@ -370,21 +451,23 @@ export const WhatToWatchPage: React.FC = () => {
       );
       pageRef.current = nextPage;
       if (more.length > 0) {
-        setPool((prev) => {
-          const existing = new Set(prev.map((i) => (i.id || i.url || '').toLowerCase()));
-          const additions = more.filter((m) => {
-            const k = (m.id || m.url || '').toLowerCase();
-            return k && !existing.has(k);
-          });
-          return additions.length > 0 ? [...prev, ...additions] : prev;
-        });
+        setPool((prev) => mergeCandidateBatches([prev, more]));
       }
     } finally {
       setLoadingMore(false);
     }
-  }, [loadingMore, topGenreKey, selectedCategory, selectedMood, selectedGenre, dominantType, secondaryType, fetchCandidateBatch]);
+  }, [
+    loadingMore,
+    topGenreKey,
+    selectedCategory,
+    selectedMood,
+    selectedGenresKey,
+    dominantType,
+    secondaryType,
+    fetchCandidateBatch,
+  ]);
 
-  // 4. Rank all available candidates live using analyzed taste + mood + session reactions
+  // 4. Rank all available candidates live using analyzed taste + mood + strict selected genres + session reactions
   const excludedSet = useMemo(() => new Set(skippedIds), [skippedIds]);
 
   const rankedPicks = useMemo<InteractiveRecommendation[]>(
@@ -393,22 +476,78 @@ export const WhatToWatchPage: React.FC = () => {
         candidates: pool,
         analysis,
         category: selectedCategory,
-        genreOverride: selectedGenre || undefined,
+        selectedGenres,
+        strictGenres: selectedGenres.length > 0,
         mood: selectedMood,
         watchHistory,
         session,
         excludedIds: excludedSet,
         limit: 24,
       }),
-    [pool, analysis, selectedCategory, selectedGenre, selectedMood, watchHistory, session, excludedSet]
+    [pool, analysis, selectedCategory, selectedGenres, selectedMood, watchHistory, session, excludedSet]
   );
 
   // Automatically prefetch next page when unseen deck gets low
   useEffect(() => {
-    if (!loading && !loadingMore && pool.length > 0 && rankedPicks.length <= 3 && pageRef.current < 4) {
+    if (!loading && !loadingMore && pool.length > 0 && rankedPicks.length <= 3 && pageRef.current < MAX_CATALOG_PAGES) {
       loadNextPage();
     }
   }, [loading, loadingMore, pool.length, rankedPicks.length, loadNextPage]);
+
+  const toggleGenre = useCallback((genreId: string) => {
+    setSkippedIds([]);
+    setSpotlightOverrideId(null);
+    setAllSeenNotice(false);
+    setSelectedGenres((prev) => {
+      if (prev.includes(genreId)) {
+        return prev.filter((g) => g !== genreId);
+      }
+      // Smooth sliding window up to MAX_SELECTED_GENRES so switching interests never blocks the user
+      const next = prev.length >= MAX_SELECTED_GENRES ? [...prev.slice(1), genreId] : [...prev, genreId];
+      return next;
+    });
+    // Clear any earlier negative session penalty on a genre the user explicitly chose right now
+    setSession((prev) => {
+      if ((prev.genreDeltas[genreId] || 0) >= 0) return prev;
+      const nextDeltas = { ...prev.genreDeltas };
+      delete nextDeltas[genreId];
+      return { ...prev, genreDeltas: nextDeltas };
+    });
+  }, []);
+
+  const handleClearGenres = useCallback(() => {
+    setSelectedGenres([]);
+    setSkippedIds([]);
+    setSpotlightOverrideId(null);
+    setAllSeenNotice(false);
+  }, []);
+
+  const unsavedSelectedGenres = useMemo(() => {
+    const saved = new Set(settings.interests?.favoriteGenres || []);
+    return selectedGenres.filter((g) => !saved.has(g));
+  }, [selectedGenres, settings.interests?.favoriteGenres]);
+
+  const handleSaveGenresToInterests = useCallback(async () => {
+    if (unsavedSelectedGenres.length === 0) return;
+    const currentGenres = settings.interests?.favoriteGenres || [];
+    const currentTypes = settings.interests?.favoriteTypes || [];
+    const merged = Array.from(new Set([...currentGenres, ...unsavedSelectedGenres]));
+    await saveUserInterests(merged, currentTypes, true);
+    recordTasteSignal({ genres: unsavedSelectedGenres, type: selectedCategory === 'auto' ? dominantType : selectedCategory }, 'favorite');
+    const names = unsavedSelectedGenres.map((g) => translateGenre(g)).join(', ');
+    showFeedbackToast(t.whatToWatch.genresSavedToast.replace('{genres}', names));
+  }, [
+    unsavedSelectedGenres,
+    settings.interests?.favoriteGenres,
+    settings.interests?.favoriteTypes,
+    saveUserInterests,
+    recordTasteSignal,
+    selectedCategory,
+    dominantType,
+    translateGenre,
+    showFeedbackToast,
+    t.whatToWatch.genresSavedToast,
+  ]);
 
   // Determine active spotlight pick (either user-clicked runner-up or #1 ranked)
   const currentPick = useMemo<InteractiveRecommendation | null>(() => {
@@ -522,15 +661,30 @@ export const WhatToWatchPage: React.FC = () => {
 
   const pickedItem = currentPick?.item;
   const pickedDisplayTitle = useLocalizedTitle(pickedItem?.title, pickedItem?.origTitle);
+  const pickedGenreIds = useMemo(
+    () => (pickedItem ? extractItemGenreIds(pickedItem) : []),
+    [pickedItem]
+  );
   const isFav = pickedItem ? favorites.some((f) => f.mediaId === pickedItem.id) : false;
+
+  const tasteGenreIdSet = useMemo(
+    () => new Set(analysis.topGenres.map((g) => g.id)),
+    [analysis.topGenres]
+  );
 
   const reasonParts = useMemo(() => {
     if (!currentPick) return [];
     const parts: string[] = [];
+    if (currentPick.matchedSelectedGenres.length > 0) {
+      const names = currentPick.matchedSelectedGenres
+        .map((g) => translateGenre(g))
+        .join(', ');
+      parts.push(t.whatToWatch.selectedGenreReason.replace('{genres}', names));
+    }
     if (currentPick.similarToTitle) {
       parts.push(t.whatToWatch.similarTo.replace('{title}', currentPick.similarToTitle));
     }
-    if (currentPick.matchedGenres.length > 0) {
+    if (currentPick.matchedSelectedGenres.length === 0 && currentPick.matchedGenres.length > 0) {
       const names = currentPick.matchedGenres
         .slice(0, 2)
         .map((g) => translateGenre(g))
@@ -622,16 +776,13 @@ export const WhatToWatchPage: React.FC = () => {
             {analysis.topGenres.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {analysis.topGenres.slice(0, 6).map((g) => {
-                  const active = selectedGenre === g.id;
+                  const active = selectedGenres.includes(g.id);
                   return (
                     <button
                       key={g.id}
                       type="button"
                       aria-pressed={active}
-                      onClick={() => {
-                        setSelectedGenre(active ? '' : g.id);
-                        setSkippedIds([]);
-                      }}
+                      onClick={() => toggleGenre(g.id)}
                       className={`group relative overflow-hidden inline-flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-bold cursor-pointer active:scale-95 ${
                         active
                           ? 'btn-ember border-transparent text-white'
@@ -691,7 +842,7 @@ export const WhatToWatchPage: React.FC = () => {
         )}
       </section>
 
-      {/* Interactive Filter Dock: Category + Mood + Optional Genre Drawer */}
+      {/* Interactive Filter Dock: Category + Mood + Direct Multi-Genre Picker */}
       <section className="p-4 sm:p-5 rounded-3xl cinema-panel space-y-4">
         {/* Category Row */}
         <div className="flex items-center justify-between flex-wrap gap-3">
@@ -725,16 +876,13 @@ export const WhatToWatchPage: React.FC = () => {
 
           <button
             type="button"
-            aria-expanded={showGenresDrawer}
-            onClick={() => setShowGenresDrawer((v) => !v)}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border text-xs font-bold cursor-pointer active:scale-95 ${
-              selectedGenre
-                ? 'bg-brand-crimson/20 border-brand-ember/60 text-white'
-                : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.09] text-zinc-300 hover:text-white'
-            }`}
+            aria-expanded={showAllGenres}
+            aria-controls="wtw-genre-picker"
+            onClick={() => setShowAllGenres((v) => !v)}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full border bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.09] text-xs font-bold text-zinc-300 hover:text-white cursor-pointer active:scale-95"
           >
-            <span>{selectedGenre ? translateGenre(selectedGenre) : t.whatToWatch.changeGenre}</span>
-            {showGenresDrawer ? (
+            <span>{showAllGenres ? t.whatToWatch.hideGenres : t.whatToWatch.showAllGenres}</span>
+            {showAllGenres ? (
               <ChevronUp className="w-3.5 h-3.5 text-brand-orange" aria-hidden="true" />
             ) : (
               <ChevronDown className="w-3.5 h-3.5 text-brand-orange" aria-hidden="true" />
@@ -774,47 +922,84 @@ export const WhatToWatchPage: React.FC = () => {
           </div>
         </div>
 
-        {/* Collapsible Genre Pills */}
-        {showGenresDrawer && (
-          <div className="pt-3 border-t border-white/[0.07] flex flex-wrap gap-1.5 animate-fadeIn">
-            <button
-              type="button"
-              aria-pressed={selectedGenre === ''}
-              onClick={() => {
-                setSelectedGenre('');
-                setSkippedIds([]);
-              }}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold border cursor-pointer active:scale-95 ${
-                selectedGenre === ''
-                  ? 'btn-ember border-transparent text-white'
-                  : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.08] text-zinc-300'
-              }`}
-            >
-              {t.whatToWatch.anyGenre}
-            </button>
-            {selectableGenres.map((g) => {
-              const active = selectedGenre === g.id;
-              return (
+        {/* Direct Multi-Genre Picker (Always accessible so shifting tastes take 1 click) */}
+        <div className="pt-3 border-t border-white/[0.07] space-y-2.5">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <span className="text-[10px] font-display font-black uppercase tracking-[0.14em] text-zinc-400">
+              {selectedGenres.length > 0
+                ? t.whatToWatch.strictGenreActive.replace(
+                    '{genres}',
+                    selectedGenres.map((g) => translateGenre(g)).join(' + ')
+                  )
+                : t.whatToWatch.genresLabel}
+            </span>
+
+            {selectedGenres.length > 0 && (
+              <div className="flex items-center flex-wrap gap-2">
+                {unsavedSelectedGenres.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSaveGenresToInterests}
+                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/35 text-emerald-200 hover:text-white text-[11px] font-bold cursor-pointer active:scale-95"
+                  >
+                    <Heart className="w-3 h-3 text-emerald-400" aria-hidden="true" />
+                    <span>{t.whatToWatch.saveGenresToTaste}</span>
+                  </button>
+                )}
+
                 <button
-                  key={g.id}
                   type="button"
-                  aria-pressed={active}
-                  onClick={() => {
-                    setSelectedGenre(active ? '' : g.id);
-                    setSkippedIds([]);
-                  }}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold border cursor-pointer active:scale-95 ${
-                    active
-                      ? 'bg-brand-crimson/25 border-brand-ember text-white shadow-glow-sm'
-                      : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.08] text-zinc-300 hover:text-white'
-                  }`}
+                  onClick={handleClearGenres}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.1] text-zinc-300 hover:text-white text-[11px] font-bold cursor-pointer active:scale-95"
                 >
-                  {translateGenre(g.id)}
+                  <X className="w-3 h-3 text-brand-orange" aria-hidden="true" />
+                  <span>{t.whatToWatch.clearGenres}</span>
                 </button>
-              );
-            })}
+              </div>
+            )}
           </div>
-        )}
+
+          {showAllGenres && (
+            <div id="wtw-genre-picker" className="flex flex-wrap gap-1.5 animate-fadeIn">
+              <button
+                type="button"
+                aria-pressed={selectedGenres.length === 0}
+                onClick={handleClearGenres}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold border cursor-pointer active:scale-95 ${
+                  selectedGenres.length === 0
+                    ? 'btn-ember border-transparent text-white'
+                    : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.08] text-zinc-300 hover:text-white'
+                }`}
+              >
+                {t.whatToWatch.anyGenre}
+              </button>
+              {selectableGenres.map((g) => {
+                const active = selectedGenres.includes(g.id);
+                const inTasteDna = tasteGenreIdSet.has(g.id);
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => toggleGenre(g.id)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border cursor-pointer active:scale-95 ${
+                      active
+                        ? 'btn-ember border-transparent text-white shadow-glow-sm'
+                        : 'bg-white/[0.04] hover:bg-white/[0.1] border-white/[0.08] text-zinc-300 hover:text-white'
+                    }`}
+                  >
+                    {active ? (
+                      <Check className="w-3 h-3 flex-shrink-0" aria-hidden="true" />
+                    ) : inTasteDna ? (
+                      <span className="w-1.5 h-1.5 rounded-full bg-brand-orange flex-shrink-0" aria-hidden="true" />
+                    ) : null}
+                    <span>{translateGenre(g.id)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </section>
 
       {/* Live Status / Feedback Banners */}
@@ -858,6 +1043,15 @@ export const WhatToWatchPage: React.FC = () => {
             >
               {t.whatToWatch.retry}
             </button>
+            {selectedGenres.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearGenres}
+                className="px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-white text-xs font-bold cursor-pointer active:scale-95"
+              >
+                {t.whatToWatch.clearGenres}
+              </button>
+            )}
             {hiddenCount > 0 && (
               <button
                 type="button"
@@ -935,6 +1129,22 @@ export const WhatToWatchPage: React.FC = () => {
                     {pickedItem.country}
                   </span>
                 )}
+
+                {pickedGenreIds.slice(0, 3).map((gid) => {
+                  const isSelectedMatch = selectedGenres.includes(gid);
+                  return (
+                    <span
+                      key={gid}
+                      className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        isSelectedMatch
+                          ? 'bg-brand-crimson/25 border border-brand-ember/60 text-white'
+                          : 'logo-pill text-zinc-200'
+                      }`}
+                    >
+                      {translateGenre(gid)}
+                    </span>
+                  );
+                })}
               </div>
 
               <div>

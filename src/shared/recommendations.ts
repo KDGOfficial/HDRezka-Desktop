@@ -23,8 +23,10 @@ const GENRE_ALIASES: Array<{ id: string; patterns: RegExp[] }> = [
   { id: 'comedy', patterns: [/\bcomed/i, /комеди/i, /комеді/i] },
   { id: 'crime', patterns: [/\bcrime\b/i, /криминал/i, /кримінал/i] },
   { id: 'detective', patterns: [/\bdetective\b/i, /\bmystery\b/i, /детектив/i] },
-  { id: 'documentary', patterns: [/\bdocumentary\b/i, /документал/i] },
+  { id: 'documentary', patterns: [/\bdocumentar/i, /\bdocumental\b/i, /документал/i] },
   { id: 'drama', patterns: [/\bdrama\b/i, /(?:^|[^а-яёієї])драм/i] },
+  { id: 'erotica', patterns: [/\berotic/i, /эротик/i, /еротик/i] },
+  { id: 'adult', patterns: [/\badult\b/i, /(?:^|\s)18\+(?:$|\s)/i] },
   { id: 'family', patterns: [/\bfamily\b/i, /семейн/i, /сімейн/i] },
   { id: 'fantasy', patterns: [/\bfantasy\b/i, /фэнтез/i, /фентез/i] },
   { id: 'fiction', patterns: [/\bfiction\b/i, /\bsci-?fi\b/i, /science\s+fiction/i, /фантастик/i] },
@@ -34,7 +36,7 @@ const GENRE_ALIASES: Array<{ id: string; patterns: RegExp[] }> = [
   { id: 'musical', patterns: [/\bmusical\b/i, /\bmusic\b/i, /мюзикл/i, /музыкал/i, /музичн/i] },
   { id: 'sport', patterns: [/\bsport/i, /спорт/i] },
   { id: 'thriller', patterns: [/\bthriller\b/i, /триллер/i, /трилер/i] },
-  { id: 'war', patterns: [/\bwar\b/i, /военн/i, /військов/i] },
+  { id: 'war', patterns: [/\bwar\b/i, /\bmilitary\b/i, /военн/i, /військов/i] },
   { id: 'western', patterns: [/\bwestern\b/i, /вестерн/i] },
 ];
 
@@ -286,16 +288,40 @@ export function scoreMediaItem(
 }
 
 function dedupeItems(items: MediaItem[]): MediaItem[] {
-  const seen = new Set<string>();
-  const out: MediaItem[] = [];
+  const byKey = new Map<string, MediaItem>();
   for (const item of items) {
     if (!item) continue;
     const key = (item.id || item.url || item.title || '').trim().toLowerCase();
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push(item);
+    if (!key) continue;
+    const existing = byKey.get(key);
+    if (!existing) {
+      byKey.set(key, item.genres ? { ...item, genres: [...item.genres] } : item);
+      continue;
+    }
+    // Merge genres & missing metadata across batches (e.g. item appearing in both horror & comedy catalogs)
+    const mergedGenres = new Set<string>([...(existing.genres || []), ...(item.genres || [])]);
+    byKey.set(key, {
+      ...existing,
+      genres: mergedGenres.size > 0 ? Array.from(mergedGenres) : existing.genres,
+      rating: existing.rating || item.rating,
+      year: existing.year || item.year,
+      info: existing.info || item.info,
+      country: existing.country || item.country,
+    });
   }
-  return out;
+  return Array.from(byKey.values());
+}
+
+/** Merges multiple catalog candidate batches while preserving & combining genre tags on duplicates. */
+export function mergeCandidateBatches(batches: MediaItem[][]): MediaItem[] {
+  const flat: MediaItem[] = [];
+  for (const batch of batches) {
+    if (!Array.isArray(batch)) continue;
+    for (const item of batch) {
+      if (item?.poster) flat.push(item);
+    }
+  }
+  return dedupeItems(flat);
 }
 
 export function buildWatchedIdSet(watchHistory: WatchHistoryEntry[] = []): Set<string> {
@@ -529,6 +555,7 @@ export interface InteractiveRecommendation {
   score: number;
   matchPercent: number;
   matchedGenres: string[];
+  matchedSelectedGenres: string[];
   matchedType: boolean;
   matchedMood?: MoodId;
   similarToTitle?: string;
@@ -758,13 +785,16 @@ export function applyInteractiveFeedback(
 
 /**
  * Ranks interactive recommendations from catalog candidates + similar-to-watched titles,
- * combining analyzed watch taste, active mood, category, genre override, and live session reactions.
+ * combining analyzed watch taste, active mood, category, explicit genre(s), and live session reactions.
+ * When explicit genre(s) are selected, candidates are strictly filtered to those genres so unrelated titles never leak in.
  */
 export function rankInteractiveRecommendations(params: {
   candidates: MediaItem[];
   analysis: UserTasteAnalysis;
   category: ContentType | 'auto';
   genreOverride?: string;
+  selectedGenres?: string[];
+  strictGenres?: boolean;
   mood?: MoodId;
   watchHistory?: WatchHistoryEntry[];
   session?: InteractiveSessionState;
@@ -781,6 +811,20 @@ export function rankInteractiveRecommendations(params: {
     ...Array.from(params.excludedIds || []),
     ...session.dismissedIds,
   ]);
+
+  const rawSelectedGenres = [
+    ...(Array.isArray(params.selectedGenres) ? params.selectedGenres : []),
+    ...(params.genreOverride ? [params.genreOverride] : []),
+  ];
+  const activeGenres = Array.from(
+    new Set(
+      rawSelectedGenres
+        .map((g) => normalizeGenreToId(g) || (typeof g === 'string' ? g.trim().toLowerCase() : ''))
+        .filter(Boolean)
+    )
+  );
+  const activeGenreSet = new Set(activeGenres);
+  const strictGenres = params.strictGenres ?? activeGenres.length > 0;
 
   // Index "similar to watched" boosts by normalized key
   const similarLookup = new Map<string, SimilarCandidate>();
@@ -817,7 +861,28 @@ export function rankInteractiveRecommendations(params: {
             : item.type === params.category
         );
 
-  const pool = categoryFiltered.length > 0 ? categoryFiltered : unseen;
+  let pool =
+    params.category === 'auto'
+      ? unseen
+      : categoryFiltered.length > 0 || strictGenres
+        ? categoryFiltered
+        : unseen;
+
+  // Strict genre lock: when user picks specific genre(s), never leak unrelated random movies
+  if (activeGenres.length > 0 && strictGenres) {
+    pool = pool.filter((item) => {
+      const itemGenres = extractItemGenreIds(item);
+      return itemGenres.some((gid) => activeGenreSet.has(gid));
+    });
+  } else if (activeGenres.length === 0 && mood !== 'auto' && moodSpec.genres.length > 0) {
+    // When a genre-based mood is active (no explicit genre override), strictly keep on-mood items if any exist
+    const moodSet = new Set(moodSpec.genres);
+    const moodMatches = pool.filter((item) => extractItemGenreIds(item).some((gid) => moodSet.has(gid)));
+    if (moodMatches.length > 0) {
+      pool = moodMatches;
+    }
+  }
+
   if (pool.length === 0) return [];
 
   const analyzedGenreMap = new Map(params.analysis.topGenres.map((g) => [g.id, g.score]));
@@ -826,11 +891,14 @@ export function rankInteractiveRecommendations(params: {
   const scored: InteractiveRecommendation[] = pool.map((item) => {
     const itemGenres = extractItemGenreIds(item);
     const matchedGenres: string[] = [];
+    const matchedSelectedGenres = activeGenres.filter((gid) => itemGenres.includes(gid));
     let genreScore = 0;
 
     for (const gid of itemGenres) {
       const baseW = analyzedGenreMap.get(gid) || 0;
-      const deltaW = session.genreDeltas[gid] || 0;
+      const rawDeltaW = session.genreDeltas[gid] || 0;
+      // Don't let an earlier "not_for_me" fight against a genre the user explicitly picked right now
+      const deltaW = activeGenreSet.has(gid) && rawDeltaW < 0 ? 0 : rawDeltaW;
       const effective = baseW + deltaW;
       if (effective > 0.25) {
         genreScore += Math.min(11, effective);
@@ -845,22 +913,27 @@ export function rankInteractiveRecommendations(params: {
     const matchedType = baseTypeW + typeDelta > 0.4;
     const typeScore = Math.max(-4, Math.min(6, (baseTypeW + typeDelta) * 0.75));
 
-    // Similar-to-watched match bonus
+    // Similar-to-watched match bonus (only survives here if it also passed the active genre filter)
     const simHit =
       similarLookup.get((item.id || '').trim().toLowerCase()) ||
       similarLookup.get((item.url || '').trim().toLowerCase());
     const similarBonus = simHit ? 5.5 + simHit.weight : 0;
 
-    // Explicit genre override bonus
+    // Explicit genre(s) bonus — multi-genre intersection titles jump straight to #1
     let genreOverrideBonus = 0;
-    if (params.genreOverride) {
-      if (itemGenres.includes(params.genreOverride)) {
-        genreOverrideBonus = 13;
-        if (!matchedGenres.includes(params.genreOverride)) {
-          matchedGenres.unshift(params.genreOverride);
+    if (activeGenres.length > 0) {
+      if (matchedSelectedGenres.length > 0) {
+        const allMatchedBonus =
+          activeGenres.length > 1 && matchedSelectedGenres.length === activeGenres.length ? 14 : 0;
+        genreOverrideBonus = matchedSelectedGenres.length * 14 + allMatchedBonus;
+        for (let i = matchedSelectedGenres.length - 1; i >= 0; i--) {
+          const gid = matchedSelectedGenres[i];
+          if (!matchedGenres.includes(gid)) {
+            matchedGenres.unshift(gid);
+          }
         }
       } else {
-        genreOverrideBonus = -4;
+        genreOverrideBonus = -12;
       }
     }
 
@@ -900,7 +973,13 @@ export function rankInteractiveRecommendations(params: {
 
     const totalScore = genreScore * 1.45 + typeScore + similarBonus + genreOverrideBonus + moodBonus + ratingBoost + recencyBoost;
 
-    // Calibrate a believable 64–99% Match percentage from concrete alignment signals
+    // Calibrate a believable 62–99% Match percentage from concrete alignment signals
+    const selectedGenrePct =
+      matchedSelectedGenres.length > 0
+        ? activeGenres.length > 1 && matchedSelectedGenres.length === activeGenres.length
+          ? 14
+          : 9
+        : 0;
     const rawPct =
       64 +
       Math.min(14, matchedGenres.length * 6.5) +
@@ -908,7 +987,7 @@ export function rankInteractiveRecommendations(params: {
       (matchedMood ? 7 : 0) +
       (matchedType ? 4 : 0) +
       (rating > 0 ? Math.max(-4, Math.min(7, (rating - 6.2) * 2.8)) : 1) +
-      (params.genreOverride && itemGenres.includes(params.genreOverride) ? 6 : 0);
+      selectedGenrePct;
     const matchPercent = Math.max(62, Math.min(99, Math.round(rawPct)));
 
     return {
@@ -916,6 +995,7 @@ export function rankInteractiveRecommendations(params: {
       score: Number(totalScore.toFixed(2)),
       matchPercent,
       matchedGenres,
+      matchedSelectedGenres,
       matchedType,
       matchedMood,
       similarToTitle: simHit?.similarToTitle,
