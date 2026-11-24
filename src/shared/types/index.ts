@@ -1,4 +1,4 @@
-export type ContentType = 'films' | 'series' | 'cartoons' | 'animation' | 'shows' | 'adult' | 'erotica';
+export type ContentType = 'films' | 'series' | 'cartoons' | 'animation' | 'shows' | 'erotica';
 
 export interface MediaItem {
   id: string;

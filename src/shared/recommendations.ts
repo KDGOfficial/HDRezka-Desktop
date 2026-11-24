@@ -16,7 +16,7 @@ const INTERACTION_WEIGHTS: Record<InteractionKind, { genre: number; type: number
 };
 
 const GENRE_ALIASES: Array<{ id: string; patterns: RegExp[] }> = [
-  { id: 'action', patterns: [/\baction\b/i, /боевик/i, /бойовик/i, /экшн/i] },
+  { id: 'action', patterns: [/\baction\b/i, /боевик/i, /бойовик/i, /экш[еэ]?н/i] },
   { id: 'adventures', patterns: [/\badventures?\b/i, /приключен/i, /пригод/i] },
   { id: 'animation', patterns: [/\banimation\b/i, /\bcartoons?\b/i, /мультфильм/i, /мульт/i, /анимац/i, /анімац/i] },
   { id: 'biographical', patterns: [/\bbiograph/i, /биограф/i, /біограф/i] },
@@ -25,15 +25,14 @@ const GENRE_ALIASES: Array<{ id: string; patterns: RegExp[] }> = [
   { id: 'detective', patterns: [/\bdetective\b/i, /\bmystery\b/i, /детектив/i] },
   { id: 'documentary', patterns: [/\bdocumentar/i, /\bdocumental\b/i, /документал/i] },
   { id: 'drama', patterns: [/\bdrama\b/i, /(?:^|[^а-яёієї])драм/i] },
-  { id: 'erotica', patterns: [/\berotic/i, /эротик/i, /еротик/i] },
-  { id: 'adult', patterns: [/\badult\b/i, /(?:^|\s)18\+(?:$|\s)/i] },
+  { id: 'erotica', patterns: [/\berotic/i, /\becchi\b/i, /\badult\b/i, /(?:^|\s)18\+(?:$|\s)/i, /эротик/i, /еротик/i, /этти/i, /етті/i] },
   { id: 'family', patterns: [/\bfamily\b/i, /семейн/i, /сімейн/i] },
   { id: 'fantasy', patterns: [/\bfantasy\b/i, /фэнтез/i, /фентез/i] },
   { id: 'fiction', patterns: [/\bfiction\b/i, /\bsci-?fi\b/i, /science\s+fiction/i, /фантастик/i] },
   { id: 'historical', patterns: [/\bhistor/i, /историч/i, /історич/i] },
   { id: 'horror', patterns: [/\bhorror\b/i, /ужас/i, /жах/i] },
   { id: 'melodrama', patterns: [/\bmelodrama\b/i, /\bromance\b/i, /мелодрам/i, /романтик/i] },
-  { id: 'musical', patterns: [/\bmusical\b/i, /\bmusic\b/i, /мюзикл/i, /музыкал/i, /музичн/i] },
+  { id: 'musical', patterns: [/\bmusical\b/i, /\bmusic\b/i, /мюзикл/i, /музык/i, /музик/i, /музичн/i] },
   { id: 'sport', patterns: [/\bsport/i, /спорт/i] },
   { id: 'thriller', patterns: [/\bthriller\b/i, /триллер/i, /трилер/i] },
   { id: 'war', patterns: [/\bwar\b/i, /\bmilitary\b/i, /военн/i, /військов/i] },
@@ -58,7 +57,13 @@ export function normalizeInterestsProfile(raw?: Partial<UserInterestsProfile> | 
   return {
     onboardingCompleted: Boolean(raw.onboardingCompleted),
     favoriteGenres: Array.isArray(raw.favoriteGenres)
-      ? Array.from(new Set(raw.favoriteGenres.filter((g): g is string => typeof g === 'string' && g.length > 0)))
+      ? Array.from(
+          new Set(
+            raw.favoriteGenres
+              .filter((g): g is string => typeof g === 'string' && g.length > 0)
+              .map((g) => normalizeGenreToId(g) || g)
+          )
+        )
       : [],
     favoriteTypes: Array.isArray(raw.favoriteTypes)
       ? Array.from(new Set(raw.favoriteTypes.filter((t): t is ContentType => SELECTABLE_TYPES.includes(t) || t === 'shows')))

@@ -340,6 +340,7 @@ html:where([data-theme="light"]) .hover\:text-white:hover:where(:not(.cinema-pla
   color: #675561;
 }
 
+:where(html[data-theme="light"]) .text-emerald-200:where(:not(.cinema-player-surface, .cinema-player-surface *, [class*="bg-emerald-600"], [class*="bg-emerald-600"] *)),
 :where(html[data-theme="light"]) .text-emerald-300:where(:not(.cinema-player-surface, .cinema-player-surface *, [class*="bg-emerald-600"], [class*="bg-emerald-600"] *)),
 :where(html[data-theme="light"]) .text-emerald-400:where(:not(.cinema-player-surface, .cinema-player-surface *, [class*="bg-emerald-600"], [class*="bg-emerald-600"] *)) {
   color: #047857;

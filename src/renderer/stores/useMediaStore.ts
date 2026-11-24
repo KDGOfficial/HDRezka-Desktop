@@ -10,7 +10,6 @@ export type AppPage =
   | 'series'
   | 'cartoons'
   | 'animation'
-  | 'adult'
   | 'erotica'
   | 'collections'
   | 'favorites'

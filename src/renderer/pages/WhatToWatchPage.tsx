@@ -143,8 +143,10 @@ export const WhatToWatchPage: React.FC = () => {
   const [skippedIds, setSkippedIds] = useState<string[]>([]);
 
   const pageRef = useRef<number>(1);
+  const hasMorePagesRef = useRef<boolean>(true);
   const requestSeqRef = useRef<number>(0);
   const feedbackTimerRef = useRef<number | null>(null);
+  const similarCountRef = useRef<number>(0);
 
   const selectableGenres = useMemo(() => GENRES.filter((g) => g.id !== ''), []);
 
@@ -159,6 +161,7 @@ export const WhatToWatchPage: React.FC = () => {
       }),
     [watchHistory, favorites, settings.interests, enrichedMap]
   );
+  similarCountRef.current = analysis.similarCandidates.length;
 
   // 2. Background enrichment of top 3 watched/favorited titles to learn their exact genres & "similar" movies
   useEffect(() => {
@@ -259,15 +262,16 @@ export const WhatToWatchPage: React.FC = () => {
         }
 
         // In 'auto' category mode, also pull the secondary type with the EXACT SAME chosen genre(s)
-        if (category === 'auto' && page === 1) {
-          for (const gid of genres.slice(0, 2)) {
+        // (including deeper pages up to 3 so niche genres never stall if primaryType has 0 items)
+        if (category === 'auto' && page <= 3) {
+          for (const gid of genres.slice(0, page === 1 ? 2 : 1)) {
             requests.push(
               window.api
                 .getCatalog({
                   type: altType,
                   genre: gid,
                   sort: sortMode,
-                  page: 1,
+                  page,
                 })
                 .then((r) => r?.items || [])
                 .catch(() => [])
@@ -374,25 +378,30 @@ export const WhatToWatchPage: React.FC = () => {
     []
   );
 
-  // Trigger fresh candidate fetch when category, mood, or explicit genres change
+  // Trigger fresh candidate fetch when category, mood, or explicit genres change.
+  // Scope taste-derived keys so background history enrichment never interrupts an explicit genre/category pick.
   const selectedGenresKey = selectedGenres.join(',');
-  const topGenreKey = analysis.topGenres
+  const rawTopGenreKey = analysis.topGenres
     .slice(0, 2)
     .map((g) => g.id)
     .join(',');
+  const effectiveTopGenreKey = selectedGenresKey ? '' : rawTopGenreKey;
   const dominantType = analysis.dominantType;
-  const secondaryType = analysis.topTypes[1]?.type;
+  const effectiveDominantType: ContentType = selectedCategory === 'auto' ? dominantType : selectedCategory;
+  const effectiveSecondaryType = selectedCategory === 'auto' ? analysis.topTypes[1]?.type : undefined;
 
   const loadInitialPool = useCallback(async () => {
     const seq = ++requestSeqRef.current;
     setLoading(true);
+    setLoadingMore(false);
     setError(null);
     setAllSeenNotice(false);
     setSpotlightOverrideId(null);
     pageRef.current = 1;
+    hasMorePagesRef.current = true;
 
     try {
-      const topIds = topGenreKey ? topGenreKey.split(',').filter(Boolean) : [];
+      const topIds = effectiveTopGenreKey ? effectiveTopGenreKey.split(',').filter(Boolean) : [];
       const activeGenreList = selectedGenresKey ? selectedGenresKey.split(',').filter(Boolean) : [];
       const items = await fetchCandidateBatch(
         selectedCategory,
@@ -400,17 +409,21 @@ export const WhatToWatchPage: React.FC = () => {
         activeGenreList,
         1,
         topIds,
-        dominantType,
-        secondaryType
+        effectiveDominantType,
+        effectiveSecondaryType
       );
       if (seq !== requestSeqRef.current) return;
       setPool(items);
-      if (items.length === 0 && (activeGenreList.length > 0 || analysis.similarCandidates.length === 0)) {
-        setError(t.whatToWatch.noResults);
+      if (items.length === 0) {
+        hasMorePagesRef.current = false;
+        if (activeGenreList.length > 0 || similarCountRef.current === 0) {
+          setError(t.whatToWatch.noResults);
+        }
       }
     } catch (err) {
       if (seq !== requestSeqRef.current) return;
       console.error('[WhatToWatch] Failed to load candidates:', err);
+      hasMorePagesRef.current = false;
       setError(t.whatToWatch.noResults);
     } finally {
       if (seq === requestSeqRef.current) {
@@ -421,11 +434,10 @@ export const WhatToWatchPage: React.FC = () => {
     selectedCategory,
     selectedMood,
     selectedGenresKey,
-    topGenreKey,
-    dominantType,
-    secondaryType,
+    effectiveTopGenreKey,
+    effectiveDominantType,
+    effectiveSecondaryType,
     fetchCandidateBatch,
-    analysis.similarCandidates.length,
     t.whatToWatch.noResults,
   ]);
 
@@ -434,11 +446,12 @@ export const WhatToWatchPage: React.FC = () => {
   }, [loadInitialPool]);
 
   const loadNextPage = useCallback(async () => {
-    if (loadingMore || pageRef.current >= MAX_CATALOG_PAGES) return;
+    if (loadingMore || !hasMorePagesRef.current || pageRef.current >= MAX_CATALOG_PAGES) return;
+    const seq = requestSeqRef.current;
     setLoadingMore(true);
     const nextPage = pageRef.current + 1;
     try {
-      const topIds = topGenreKey ? topGenreKey.split(',').filter(Boolean) : [];
+      const topIds = effectiveTopGenreKey ? effectiveTopGenreKey.split(',').filter(Boolean) : [];
       const activeGenreList = selectedGenresKey ? selectedGenresKey.split(',').filter(Boolean) : [];
       const more = await fetchCandidateBatch(
         selectedCategory,
@@ -446,24 +459,32 @@ export const WhatToWatchPage: React.FC = () => {
         activeGenreList,
         nextPage,
         topIds,
-        dominantType,
-        secondaryType
+        effectiveDominantType,
+        effectiveSecondaryType
       );
+      if (seq !== requestSeqRef.current) return;
       pageRef.current = nextPage;
+      if (more.length === 0 || nextPage >= MAX_CATALOG_PAGES) {
+        hasMorePagesRef.current = false;
+      }
       if (more.length > 0) {
         setPool((prev) => mergeCandidateBatches([prev, more]));
       }
+    } catch (err) {
+      console.warn('[WhatToWatch] Failed to load next page:', err);
     } finally {
-      setLoadingMore(false);
+      if (seq === requestSeqRef.current) {
+        setLoadingMore(false);
+      }
     }
   }, [
     loadingMore,
-    topGenreKey,
+    effectiveTopGenreKey,
     selectedCategory,
     selectedMood,
     selectedGenresKey,
-    dominantType,
-    secondaryType,
+    effectiveDominantType,
+    effectiveSecondaryType,
     fetchCandidateBatch,
   ]);
 
@@ -489,30 +510,64 @@ export const WhatToWatchPage: React.FC = () => {
 
   // Automatically prefetch next page when unseen deck gets low
   useEffect(() => {
-    if (!loading && !loadingMore && pool.length > 0 && rankedPicks.length <= 3 && pageRef.current < MAX_CATALOG_PAGES) {
+    if (
+      !loading &&
+      !loadingMore &&
+      hasMorePagesRef.current &&
+      pool.length > 0 &&
+      rankedPicks.length <= 3 &&
+      pageRef.current < MAX_CATALOG_PAGES
+    ) {
       loadNextPage();
     }
   }, [loading, loadingMore, pool.length, rankedPicks.length, loadNextPage]);
 
-  const toggleGenre = useCallback((genreId: string) => {
+  const toggleGenre = useCallback(
+    (genreId: string) => {
+      const isAdding = !selectedGenres.includes(genreId);
+      setSkippedIds([]);
+      setSpotlightOverrideId(null);
+      setAllSeenNotice(false);
+      setSelectedGenres((prev) => {
+        if (prev.includes(genreId)) {
+          return prev.filter((g) => g !== genreId);
+        }
+        // Smooth sliding window up to MAX_SELECTED_GENRES so switching interests never blocks the user
+        return prev.length >= MAX_SELECTED_GENRES ? [...prev.slice(1), genreId] : [...prev, genreId];
+      });
+      // Reset a conflicting genre-based mood when adding an unrelated genre (keep 'fresh' intact)
+      if (isAdding) {
+        setSelectedMood((prevMood) => {
+          if (prevMood === 'auto' || prevMood === 'fresh') return prevMood;
+          const moodGenres = MOOD_PRESETS[prevMood].genres;
+          return moodGenres.includes(genreId) ? prevMood : 'auto';
+        });
+      }
+      // Clear any earlier negative session penalty on a genre the user explicitly chose right now
+      setSession((prev) => {
+        if ((prev.genreDeltas[genreId] || 0) >= 0) return prev;
+        const nextDeltas = { ...prev.genreDeltas };
+        delete nextDeltas[genreId];
+        return { ...prev, genreDeltas: nextDeltas };
+      });
+    },
+    [selectedGenres]
+  );
+
+  const handleSelectMood = useCallback((moodId: MoodId) => {
+    setSelectedMood(moodId);
     setSkippedIds([]);
     setSpotlightOverrideId(null);
     setAllSeenNotice(false);
-    setSelectedGenres((prev) => {
-      if (prev.includes(genreId)) {
-        return prev.filter((g) => g !== genreId);
-      }
-      // Smooth sliding window up to MAX_SELECTED_GENRES so switching interests never blocks the user
-      const next = prev.length >= MAX_SELECTED_GENRES ? [...prev.slice(1), genreId] : [...prev, genreId];
-      return next;
-    });
-    // Clear any earlier negative session penalty on a genre the user explicitly chose right now
-    setSession((prev) => {
-      if ((prev.genreDeltas[genreId] || 0) >= 0) return prev;
-      const nextDeltas = { ...prev.genreDeltas };
-      delete nextDeltas[genreId];
-      return { ...prev, genreDeltas: nextDeltas };
-    });
+    // Keep genres when switching to 'auto' or 'fresh' (recency filter works with any genre),
+    // or when the chosen mood overlaps with current genres; otherwise clear conflicting genres so mood takes effect immediately
+    const moodGenres = MOOD_PRESETS[moodId].genres;
+    if (moodId !== 'auto' && moodGenres.length > 0) {
+      setSelectedGenres((prev) => {
+        if (prev.length === 0) return prev;
+        return prev.some((g) => moodGenres.includes(g)) ? prev : [];
+      });
+    }
   }, []);
 
   const handleClearGenres = useCallback(() => {
@@ -607,7 +662,12 @@ export const WhatToWatchPage: React.FC = () => {
     const key = currentPick.item.id || currentPick.item.url;
     const url = currentPick.item.url;
     if (rankedPicks.length <= 1) {
-      // Loop skipped items smoothly so user is never stuck
+      if (loadingMore) return;
+      if (hasMorePagesRef.current && pageRef.current < MAX_CATALOG_PAGES) {
+        loadNextPage();
+        return;
+      }
+      // Loop skipped items smoothly once all catalog pages are exhausted
       setSkippedIds([]);
       setAllSeenNotice(true);
       return;
@@ -619,7 +679,7 @@ export const WhatToWatchPage: React.FC = () => {
       if (url && url !== key) next.push(url);
       return next;
     });
-  }, [currentPick, rankedPicks.length, skippedIds.length, loadInitialPool]);
+  }, [currentPick, rankedPicks.length, skippedIds.length, loadingMore, loadInitialPool, loadNextPage]);
 
   const handleResetHidden = useCallback(() => {
     savePersistedDismissed([]);
@@ -904,10 +964,7 @@ export const WhatToWatchPage: React.FC = () => {
                   key={mood.id}
                   type="button"
                   aria-pressed={active}
-                  onClick={() => {
-                    setSelectedMood(mood.id);
-                    setSkippedIds([]);
-                  }}
+                  onClick={() => handleSelectMood(mood.id)}
                   className={`wtw-snap-item flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-[11px] font-bold cursor-pointer active:scale-95 ${
                     active
                       ? 'bg-brand-crimson/25 border-brand-ember text-white shadow-glow-sm'
@@ -1043,6 +1100,18 @@ export const WhatToWatchPage: React.FC = () => {
             >
               {t.whatToWatch.retry}
             </button>
+            {selectedCategory !== 'auto' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory('auto');
+                  setSkippedIds([]);
+                }}
+                className="px-5 py-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-white text-xs font-bold cursor-pointer active:scale-95"
+              >
+                {t.whatToWatch.categoryAuto}
+              </button>
+            )}
             {selectedGenres.length > 0 && (
               <button
                 type="button"

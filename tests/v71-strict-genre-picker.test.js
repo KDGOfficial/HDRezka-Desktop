@@ -207,15 +207,42 @@ test('All GENRES ids and provider slugs normalize cleanly', () => {
   assert.equal(rec.normalizeGenreToId('biography'), 'biographical');
   assert.equal(rec.normalizeGenreToId('history'), 'historical');
   assert.equal(rec.normalizeGenreToId('adventure'), 'adventures');
+  // AniLiberty / anime API Russian genre labels
+  assert.equal(rec.normalizeGenreToId('Экшен'), 'action');
+  assert.equal(rec.normalizeGenreToId('Музыка'), 'musical');
+  assert.equal(rec.normalizeGenreToId('Этти'), 'erotica');
 });
 
-test('RezkaProvider getKinobaseCatalog requests real genre path and stamps genres onto parsed items', async () => {
+test('RezkaProvider getKinobaseCatalog requests real genre path, skips broken /animation/<genre> and erotica', async () => {
   const provider = new RezkaProvider('https://kinobase.org', ['https://kinobase.org']);
   const origFetch = globalThis.fetch;
   const requestedUrls = [];
 
   globalThis.fetch = async (url) => {
-    requestedUrls.push(String(url));
+    const u = String(url);
+    requestedUrls.push(u);
+    if (u.includes('kinogo.film/erotika/')) {
+      return new Response('Not Found', { status: 404 });
+    }
+    if (u.includes('kinogo.film/cartoons/') || u.includes('kinogo.film/fantasy/')) {
+      const kgHtml = `
+        <div class="shortStory">
+          <div class="hTitle"><h2><a href="https://kinogo.film/701-gravity.html">Гравити Фолз (1-2 сезон)</a></h2></div>
+          <div class="sPoster"><img src="https://kinogo.film/uploads/701.jpg"></div>
+          <div class="lenta"><div class="cont">1-2 сезон 1-20 серия</div></div>
+          <div class="sInfo">
+            <span><b>Жанр:</b><a href="https://kinogo.film/zarubezhnye_serialy/">Зарубежные сериалы</a>, <a href="https://kinogo.film/cartoons/">Мультфильмы</a>, <a href="https://kinogo.film/fantasy/">Фэнтези</a></span>
+          </div>
+        </div>
+        <div class="shortStory">
+          <div class="hTitle"><h2><a href="https://kinogo.film/702-live-fantasy.html">Властелин колец (2001)</a></h2></div>
+          <div class="sPoster"><img src="https://kinogo.film/uploads/702.jpg"></div>
+          <div class="sInfo">
+            <span><b>Жанр:</b><a href="https://kinogo.film/films/">Фильмы</a>, <a href="https://kinogo.film/fantasy/">Фэнтези</a></span>
+          </div>
+        </div>`;
+      return new Response(kgHtml, { status: 200 });
+    }
     const html = `
       <ul>
         <li class="x1 item">
@@ -242,17 +269,29 @@ test('RezkaProvider getKinobaseCatalog requests real genre path and stamps genre
     assert.ok(requestedUrls[1].includes('https://kinobase.org/films/sci-fi?page=2'), `Got ${requestedUrls[1]}`);
     assert.ok(scifiRes.items.every((it) => rec.extractItemGenreIds(it).includes('fiction')));
 
-    // Cartoons/animation route preserves animation type even for /serial/ hrefs
-    const animRes = await provider.getCatalog({ type: 'cartoons', genre: 'fantasy', sort: 'popular', page: 1 });
-    assert.ok(requestedUrls[2].includes('https://kinobase.org/animation/fantasy?sort=rating'), `Got ${requestedUrls[2]}`);
-    assert.ok(animRes.items.every((it) => it.type === 'cartoons'));
-    assert.ok(animRes.items.every((it) => rec.extractItemGenreIds(it).includes('fantasy')));
+    // Unfiltered cartoons route on Kinobase preserves cartoons type even for /serial/ hrefs
+    const plainCartoons = await provider.getCatalog({ type: 'cartoons', sort: 'popular', page: 1 });
+    assert.ok(requestedUrls[2].includes('https://kinobase.org/animation?sort=rating'), `Got ${requestedUrls[2]}`);
+    assert.ok(plainCartoons.items.every((it) => it.type === 'cartoons'));
+
+    // Cartoons + specific genre must NOT hit broken Kinobase /animation/fantasy; falls back to Kinogo cartoons + strict type filter
+    const beforeLen = requestedUrls.length;
+    const fantasyCartoons = await provider.getCatalog({ type: 'cartoons', genre: 'fantasy', sort: 'popular', page: 1 });
+    const cartoonGenreUrls = requestedUrls.slice(beforeLen);
+    assert.ok(!cartoonGenreUrls.some((u) => u.includes('kinobase.org/animation/fantasy')), 'Must skip broken Kinobase /animation/<slug>');
+    assert.equal(fantasyCartoons.items.length, 1, 'Must keep only cartoons and exclude live-action fantasy film');
+    assert.equal(fantasyCartoons.items[0].type, 'cartoons');
+    assert.ok(rec.extractItemGenreIds(fantasyCartoons.items[0]).includes('fantasy'));
+
+    // Erotica on Kinobase must NOT return unfiltered /films stamped as Erotica or leak FALLBACK_ITEMS
+    const eroticaRes = await provider.getCatalog({ type: 'films', genre: 'erotica', sort: 'popular', page: 1 });
+    assert.equal(eroticaRes.items.length, 0, 'Unsupported erotica on Kinobase+Kinogo must return empty instead of random films');
   } finally {
     globalThis.fetch = origFetch;
   }
 });
 
-test('RezkaProvider Kinogo catalog maps war->military and parses card genres from .sInfo', async () => {
+test('RezkaProvider Kinogo catalog maps war->military, classifies all 4 types accurately, and enforces filter.type', async () => {
   const provider = new RezkaProvider('https://kinogo.film', ['https://kinogo.film']);
   const origFetch = globalThis.fetch;
   const requestedUrls = [];
@@ -266,17 +305,89 @@ test('RezkaProvider Kinogo catalog maps war->military and parses card genres fro
         <div class="sInfo">
           <span><b>Жанр:</b><a href="https://kinogo.film/films/">Фильмы</a>, <a href="https://kinogo.film/military/">Военные</a>, <a href="https://kinogo.film/drama/">Драмы</a></span>
         </div>
+      </div>
+      <div class="shortStory">
+        <div class="hTitle"><h2><a href="https://kinogo.film/556-war-series.html">Военный сериал (1-2 сезон)</a></h2></div>
+        <div class="sPoster"><img src="https://kinogo.film/uploads/556.jpg"></div>
+        <div class="lenta"><div class="cont">1-2 сезон 1-8 серия</div></div>
+        <div class="sInfo">
+          <span><b>Жанр:</b><a href="https://kinogo.film/zarubezhnye_serialy/">Зарубежные сериалы</a>, <a href="https://kinogo.film/military/">Военные</a></span>
+        </div>
+      </div>
+      <div class="shortStory">
+        <div class="hTitle"><h2><a href="https://kinogo.film/557-simpsons.html">Симпсоны (1-38 сезон)</a></h2></div>
+        <div class="sPoster"><img src="https://kinogo.film/uploads/557.jpg"></div>
+        <div class="lenta"><div class="cont">1-38 сезон 1-8 серия</div></div>
+        <div class="sInfo">
+          <span><b>Жанр:</b><a href="https://kinogo.film/zarubezhnye_serialy/">Зарубежные сериалы</a>, <a href="https://kinogo.film/cartoons/">Мультфильмы</a>, <a href="https://kinogo.film/military/">Военные</a></span>
+        </div>
+      </div>
+      <div class="shortStory">
+        <div class="hTitle"><h2><a href="https://kinogo.film/558-onepiece.html">Ван-Пис (1-25 сезон)</a></h2></div>
+        <div class="sPoster"><img src="https://kinogo.film/uploads/558.jpg"></div>
+        <div class="lenta"><div class="cont">1-25 сезон 1-1180 серия</div></div>
+        <div class="sInfo">
+          <span><b>Жанр:</b><a href="https://kinogo.film/zarubezhnye_serialy/">Зарубежные сериалы</a>, <a href="https://kinogo.film/anime/">Аниме</a>, <a href="https://kinogo.film/military/">Военные</a></span>
+        </div>
       </div>`;
     return new Response(html, { status: 200 });
   };
 
   try {
-    const res = await provider.getCatalog({ type: 'films', genre: 'war', sort: 'popular', page: 1 });
+    const filmsRes = await provider.getCatalog({ type: 'films', genre: 'war', sort: 'popular', page: 1 });
     assert.equal(requestedUrls[0], 'https://kinogo.film/military/');
-    assert.equal(res.items.length, 1);
-    const gids = rec.extractItemGenreIds(res.items[0]);
+    assert.equal(filmsRes.items.length, 1, 'Films request must return only films, excluding series/cartoons/anime');
+    assert.equal(filmsRes.items[0].type, 'films');
+    const gids = rec.extractItemGenreIds(filmsRes.items[0]);
     assert.ok(gids.includes('war'));
     assert.ok(gids.includes('drama'));
+
+    const seriesRes = await provider.getCatalog({ type: 'series', genre: 'war', sort: 'popular', page: 1 });
+    assert.equal(seriesRes.items.length, 1, 'Series request must return only live-action series');
+    assert.equal(seriesRes.items[0].type, 'series');
+    assert.equal(seriesRes.items[0].title, 'Военный сериал (1-2 сезон)');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('RezkaProvider getAnimeMirrorCatalog queries AniLiberty natively with f[genres] for specific genre', async () => {
+  const provider = new RezkaProvider('https://kinobase.org', ['https://kinobase.org']);
+  const origFetch = globalThis.fetch;
+  const requestedUrls = [];
+
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    requestedUrls.push(u);
+    if (u.includes('/api/v1/anime/catalog/releases')) {
+      return new Response(
+        JSON.stringify({
+          data: [
+            {
+              id: 1001,
+              year: 2024,
+              name: { main: 'Токийский Гуль', english: 'Tokyo Ghoul' },
+              poster: { src: '/storage/tg.jpg' },
+              genres: [{ name: 'Экшен' }, { name: 'Ужасы' }],
+            },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ data: [], response: [] }), { status: 200 });
+  };
+
+  try {
+    const res = await provider.getCatalog({ type: 'animation', genre: 'horror', sort: 'popular', page: 1 });
+    assert.ok(
+      requestedUrls.some((u) => u.includes('/api/v1/anime/catalog/releases') && u.includes('f[genres]=13')),
+      `Expected AniLiberty f[genres]=13 request, got ${JSON.stringify(requestedUrls)}`
+    );
+    assert.equal(res.items.length, 1);
+    assert.equal(res.items[0].title, 'Токийский Гуль');
+    assert.ok(rec.extractItemGenreIds(res.items[0]).includes('horror'));
+    assert.ok(rec.extractItemGenreIds(res.items[0]).includes('action'));
   } finally {
     globalThis.fetch = origFetch;
   }
@@ -290,10 +401,11 @@ test('Anime item parsers populate genres for genre-aware filtering', () => {
       year: 2025,
       name: { main: 'Тест аниме', english: 'Test Anime' },
       poster: { src: '/p.jpg' },
-      genres: [{ name: 'Фэнтези' }, { name: 'Боевик' }],
+      genres: [{ name: 'Фэнтези' }, { name: 'Экшен' }],
     },
   ]);
-  assert.deepEqual(lib[0].genres, ['Фэнтези', 'Боевик']);
+  assert.deepEqual(lib[0].genres, ['Фэнтези', 'Экшен']);
+  assert.ok(rec.extractItemGenreIds(lib[0]).includes('action'));
 
   const vost = provider.parseAnimeVostItems([
     {
@@ -317,8 +429,8 @@ test('Anime item parsers populate genres for genre-aware filtering', () => {
   assert.deepEqual(yummy[0].genres, ['Детектив', 'Триллер']);
 });
 
-test('v0.0.71 translations and WhatToWatchPage strict multi-genre UI wiring are complete', () => {
-  assert.equal(constants.APP_VERSION, '0.0.71');
+test('v0.0.72 translations, WhatToWatchPage guards, and Light Mode contrast are complete', () => {
+  assert.equal(constants.APP_VERSION, '0.0.72');
   for (const loc of ['ru', 'uk', 'en']) {
     const w = translations[loc].whatToWatch;
     assert.ok(w.genresLabel);
@@ -332,4 +444,10 @@ test('v0.0.71 translations and WhatToWatchPage strict multi-genre UI wiring are 
   assert.match(pageSrc, /strictGenres:\s*selectedGenres\.length > 0/);
   assert.match(pageSrc, /mergeCandidateBatches/);
   assert.match(pageSrc, /handleSaveGenresToInterests/);
+  assert.match(pageSrc, /handleSelectMood/);
+  assert.match(pageSrc, /hasMorePagesRef/);
+  assert.match(pageSrc, /if \(seq !== requestSeqRef\.current\) return;/);
+
+  const cssSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/styles/globals.css'), 'utf8');
+  assert.match(cssSrc, /\.text-emerald-200:where/);
 });

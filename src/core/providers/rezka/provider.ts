@@ -17,7 +17,7 @@ import {
   MediaReview,
 } from '../../../shared/types';
 import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, HDREZKA_MIRRORS, GENRES, isBadMirrorUrl, isCamRipText, BROWSER_USER_AGENT } from '../../../shared/constants';
-import { normalizeGenreToId } from '../../../shared/recommendations';
+import { extractItemGenreIds, normalizeGenreToId } from '../../../shared/recommendations';
 import { parseStreamData } from './decoder';
 import {
   FALLBACK_HERO,
@@ -667,7 +667,24 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.71';
+  public version = '0.0.72';
+
+  public static readonly ANILIBERTY_GENRE_IDS: Record<string, number> = {
+    action: 14,
+    adventures: 27,
+    comedy: 1,
+    detective: 25,
+    drama: 8,
+    erotica: 23,
+    fantasy: 29,
+    fiction: 22,
+    historical: 26,
+    horror: 13,
+    melodrama: 11,
+    musical: 19,
+    sport: 12,
+    thriller: 6,
+  };
 
   public static readonly KINOBASE_GENRE_SLUGS: Record<string, string> = {
     action: 'action',
@@ -690,7 +707,6 @@ export class RezkaProvider implements IProvider {
     thriller: 'thriller',
     war: 'war',
     western: 'western',
-    adult: 'horror',
   };
 
   public static readonly KINOGO_GENRE_SLUGS: Record<string, string> = {
@@ -714,7 +730,6 @@ export class RezkaProvider implements IProvider {
     thriller: 'thriller',
     war: 'military',
     western: 'western',
-    adult: 'horror',
   };
 
   private static resolveGenreLabel(genreId: string): string {
@@ -2332,6 +2347,9 @@ export class RezkaProvider implements IProvider {
       if (existing) {
         if (!existing.views && item.views) existing.views = item.views;
         if (!existing.rating && item.rating) existing.rating = item.rating;
+        if (item.genres && item.genres.length > 0) {
+          existing.genres = Array.from(new Set([...(existing.genres || []), ...item.genres]));
+        }
         continue;
       }
       byKey.set(key, item);
@@ -2349,15 +2367,21 @@ export class RezkaProvider implements IProvider {
         filter.sort === 'popular' || filter.sort === 'rating'
           ? 'RATING_DESC'
           : 'FRESH_AT_DESC';
+      const normalizedGenre = filter.genre ? normalizeGenreToId(filter.genre) || filter.genre.toLowerCase() : undefined;
+      const isSpecificGenre = Boolean(normalizedGenre && normalizedGenre !== 'animation');
+      const libGenreId = isSpecificGenre && normalizedGenre ? RezkaProvider.ANILIBERTY_GENRE_IDS[normalizedGenre] : undefined;
+      const libGenreParam = libGenreId ? `&f[genres]=${libGenreId}` : '';
+
       const [libRes, vostRes, yaniRes, uaRes] = await Promise.allSettled([
         (async () => {
           const res = await this.fetchAniLibertyJson(
-            `/api/v1/anime/catalog/releases?limit=16&page=${filter.page}&f[sorting]=${libSort}`,
+            `/api/v1/anime/catalog/releases?limit=16&page=${filter.page}${libGenreParam}&f[sorting]=${libSort}`,
             4000
           );
           if (!res) return [];
           const list = Array.isArray(res.data) ? res.data : res.data?.data || [];
-          return this.parseAniLibertyItems(list, res.origin);
+          const parsed = this.parseAniLibertyItems(list, res.origin);
+          return libGenreId && normalizedGenre ? RezkaProvider.stampGenre(parsed, normalizedGenre) : parsed;
         })(),
         (async () => {
           const json = await this.fetchAnimeVostJson(`/v1/last?page=${filter.page}&quantity=16`, undefined, 4000);
@@ -2372,7 +2396,7 @@ export class RezkaProvider implements IProvider {
           const j: any = await r.json();
           return this.parseYummyAnimeItems(j?.response || []);
         })(),
-        filter.page === 1
+        filter.page === 1 && !isSpecificGenre
           ? (async () => {
               const r = await appFetch('https://uakino.biz/animeukr/', {
                 headers: { 'User-Agent': BROWSER_USER_AGENT },
@@ -2383,26 +2407,27 @@ export class RezkaProvider implements IProvider {
             })()
           : Promise.resolve([]),
       ]);
+      const libItems = libRes.status === 'fulfilled' ? libRes.value : [];
       let items = this.dedupeMediaItems([
-        ...(libRes.status === 'fulfilled' ? libRes.value : []),
+        ...libItems,
         ...(vostRes.status === 'fulfilled' ? vostRes.value : []),
         ...(yaniRes.status === 'fulfilled' ? yaniRes.value : []),
         ...(uaRes.status === 'fulfilled' ? uaRes.value : []),
       ]);
-      if (filter.genre && filter.genre !== 'animation') {
-        const targetGid = normalizeGenreToId(filter.genre) || filter.genre.toLowerCase();
+      if (isSpecificGenre && normalizedGenre) {
         const filtered = items.filter((it) =>
-          (it.genres || []).some((g) => normalizeGenreToId(g) === targetGid)
+          (it.genres || []).some((g) => normalizeGenreToId(g) === normalizedGenre)
         );
         if (filtered.length > 0) {
-          return { items: filtered, page: filter.page, hasMore: items.length >= 16 };
+          return { items: filtered, page: filter.page, hasMore: libItems.length >= 16 || filtered.length >= 8 };
         }
-        // Let getCatalog fall through to Kinobase /animation/<slug> or Kinogo genre route when anime APIs have no match
+        // Let getCatalog fall through to Kinogo /anime/ genre-filtered route when anime APIs have no match
         return null;
       }
       if (items.length > 0) {
         return { items, page: filter.page, hasMore: items.length >= 16 };
       }
+      if (isSpecificGenre) return null;
       const goRes = await appFetch(`https://animego.me/anime${filter.page > 1 ? `?page=${filter.page}` : ''}`, {
         headers: { 'User-Agent': BROWSER_USER_AGENT },
         signal: AbortSignal.timeout(4000),
@@ -2986,28 +3011,27 @@ export class RezkaProvider implements IProvider {
   private async getKinobaseCatalog(filter: CatalogFilter, origin?: string): Promise<SearchResult | null> {
     try {
       const base = origin || this.getKinobaseOrigin();
-      const isAdultOrErotica =
-        filter.type === 'erotica' ||
-        filter.type === 'adult' ||
-        filter.genre === 'erotica' ||
-        filter.genre === 'adult';
       const routeMap: Record<ContentType, string> = {
         films: '/films',
         series: '/serials',
         cartoons: '/animation',
         animation: '/animation',
         shows: '/tv',
-        adult: '/films',
         erotica: '/films',
       };
       const baseRoute = routeMap[filter.type] || '/films';
       const normalizedGenre = filter.genre ? normalizeGenreToId(filter.genre) || filter.genre : undefined;
-      const kbGenreSlug =
-        filter.type === 'adult' || normalizedGenre === 'adult'
-          ? 'horror'
-          : normalizedGenre
-            ? RezkaProvider.KINOBASE_GENRE_SLUGS[normalizedGenre]
-            : undefined;
+      // Kinobase only supports genre path segments on /films and /serials (not /animation or /tv),
+      // and has no working 18+/erotica section (silently returns unfiltered /films). Return null so strict fallback handles it.
+      if (filter.type === 'erotica' || normalizedGenre === 'erotica') return null;
+      if (
+        normalizedGenre &&
+        ((baseRoute === '/animation' && normalizedGenre !== 'animation') || baseRoute === '/tv')
+      ) {
+        return null;
+      }
+      const kbGenreSlug = normalizedGenre ? RezkaProvider.KINOBASE_GENRE_SLUGS[normalizedGenre] : undefined;
+      if (normalizedGenre && !kbGenreSlug) return null;
       // Kinobase filters genres via path segment (/films/horror, /serials/comedy, /films/sci-fi), not query param
       const applyGenrePath =
         Boolean(kbGenreSlug) &&
@@ -3033,13 +3057,6 @@ export class RezkaProvider implements IProvider {
       // Kinobase cards don't include genre text in list HTML, so stamp the verified genre segment we requested
       if (normalizedGenre && (applyGenrePath || (baseRoute === '/animation' && kbGenreSlug === 'animation'))) {
         items = RezkaProvider.stampGenre(items, normalizedGenre);
-      }
-      if (isAdultOrErotica) {
-        items = items.map((it) => ({
-          ...it,
-          ageRating: '18+',
-          genres: it.genres && it.genres.length > 0 ? it.genres : [filter.type === 'erotica' || filter.genre === 'erotica' ? 'Эротика' : '18+'],
-        }));
       }
       if (items.length === 0) return null;
 
@@ -4337,10 +4354,25 @@ export class RezkaProvider implements IProvider {
         }
       });
 
+      const hasFilmTag = genreLinks.toArray().some((a) => {
+        const txt = $(a).text().trim().toLowerCase();
+        const linkHref = ($(a).attr('href') || '').toLowerCase();
+        return txt === 'фильмы' || linkHref.endsWith('/films/');
+      });
       let type: ContentType = defaultType;
-      if (lentaText.includes('серия') || genreText.includes('сериал') || href.includes('serialy')) type = 'series';
-      else if (genreText.includes('аниме') || href.includes('/anime/')) type = 'animation';
+      if (genreText.includes('аниме') || href.includes('/anime/')) type = 'animation';
       else if (genreText.includes('мультфильм') || href.includes('/cartoons/')) type = 'cartoons';
+      else if (
+        lentaText.includes('серия') ||
+        lentaText.includes('сезон') ||
+        genreText.includes('сериал') ||
+        href.includes('serialy') ||
+        /\(\d+(?:-\d+)?\s*сезон/i.test(rawTitle)
+      ) {
+        type = 'series';
+      } else if (hasFilmTag) {
+        type = 'films';
+      }
 
       const item: MediaItem = {
         id,
@@ -4409,44 +4441,84 @@ export class RezkaProvider implements IProvider {
   private async getKinogoCatalog(filter: CatalogFilter): Promise<SearchResult | null> {
     try {
       const base = this.getKinogoBaseUrl();
-      const isAdultOrErotica =
-        filter.type === 'erotica' ||
-        filter.type === 'adult' ||
-        filter.genre === 'erotica' ||
-        filter.genre === 'adult';
+      const normalizedGenre = filter.genre ? normalizeGenreToId(filter.genre) || filter.genre : undefined;
+      const isErotica = filter.type === 'erotica' || normalizedGenre === 'erotica';
       const routeMap: Record<ContentType, string> = {
         films: '/films/',
         series: '/zarubezhnye_serialy/',
         cartoons: '/cartoons/',
         animation: '/anime/',
         shows: '/films/',
-        adult: '/uzhasy/',
         erotica: '/erotika/',
       };
-      const normalizedGenre = filter.genre ? normalizeGenreToId(filter.genre) || filter.genre : undefined;
       const kgGenreSlug =
-        filter.genre === 'erotica'
+        normalizedGenre === 'erotica'
           ? 'erotika'
-          : filter.genre === 'adult'
-            ? 'horror'
-            : normalizedGenre
-              ? RezkaProvider.KINOGO_GENRE_SLUGS[normalizedGenre] || normalizedGenre
-              : '';
+          : normalizedGenre
+            ? RezkaProvider.KINOGO_GENRE_SLUGS[normalizedGenre] || normalizedGenre
+            : '';
       const genrePath = kgGenreSlug ? `/${kgGenreSlug}/` : '';
+
+      // Cartoons & anime with a specific genre: Kinogo's /cartoons/ and /anime/ cards expose full .sInfo genre links,
+      // whereas generic /<genre>/ pages are mostly live-action films/series. Query type-specific listing + genre route and strictly intersect.
+      if (
+        (filter.type === 'cartoons' || filter.type === 'animation') &&
+        normalizedGenre &&
+        normalizedGenre !== 'animation'
+      ) {
+        const typeBasePath = filter.type === 'animation' ? '/anime/' : '/cartoons/';
+        const p1 = filter.page > 1 ? `${typeBasePath}page/${filter.page}/` : typeBasePath;
+        const p2 = `${typeBasePath}page/${filter.page + 1}/`;
+        const gPage = genrePath ? (filter.page > 1 ? `${genrePath}page/${filter.page}/` : genrePath) : '';
+
+        const [html1, html2, gHtml] = await Promise.all([
+          this.fetchKinogoPage(`${base}${p1}`),
+          filter.page === 1 ? this.fetchKinogoPage(`${base}${p2}`) : Promise.resolve(null),
+          gPage ? this.fetchKinogoPage(`${base}${gPage}`) : Promise.resolve(null),
+        ]);
+
+        const fromType = [
+          ...(html1 ? this.parseKinogoItems(html1, filter.type, base) : []),
+          ...(html2 ? this.parseKinogoItems(html2, filter.type, base) : []),
+        ].filter(
+          (it) =>
+            it.type === filter.type &&
+            extractItemGenreIds(it).includes(normalizedGenre)
+        );
+        const fromGenre = gHtml
+          ? RezkaProvider.stampGenre(
+              this.parseKinogoItems(gHtml, 'films', base).filter((it) => it.type === filter.type),
+              normalizedGenre
+            )
+          : [];
+
+        const combined = this.dedupeMediaItems([...fromGenre, ...fromType]);
+        if (combined.length === 0) return null;
+        return {
+          items: combined,
+          page: filter.page,
+          hasMore: Boolean(html1?.includes(`/page/${filter.page + 1}/`) || gHtml?.includes(`/page/${filter.page + 1}/`)),
+        };
+      }
+
       const basePath = genrePath || (routeMap[filter.type] || '/films/');
       const pagePath = filter.page > 1 ? `${basePath}page/${filter.page}/` : basePath;
       const html = await this.fetchKinogoPage(`${base}${pagePath}`);
       if (!html) return null;
 
-      let items = this.parseKinogoItems(html, filter.type, base);
+      let items = this.parseKinogoItems(html, genrePath ? 'films' : filter.type, base);
       if (normalizedGenre && genrePath) {
         items = RezkaProvider.stampGenre(items, normalizedGenre);
+        // Kinogo genre pages mix films, series, cartoons, and anime — strictly enforce requested content type
+        if (filter.type === 'films' || filter.type === 'series' || filter.type === 'cartoons' || filter.type === 'animation') {
+          items = items.filter((it) => it.type === filter.type);
+        }
       }
-      if (isAdultOrErotica) {
+      if (isErotica) {
         items = items.map((it) => ({
           ...it,
           ageRating: '18+',
-          genres: it.genres && it.genres.length > 0 ? it.genres : [filter.type === 'erotica' || filter.genre === 'erotica' ? 'Эротика' : '18+'],
+          genres: it.genres && it.genres.length > 0 ? it.genres : ['Эротика 18+'],
         }));
       }
       if (items.length === 0) return null;
@@ -4985,35 +5057,38 @@ export class RezkaProvider implements IProvider {
         (filter.type === 'series' && !filter.genre ? await this.getHdStudioCatalog(filter) : null) ||
         (await this.getKinobaseCatalog(filter)) ||
         (await this.getKinogoCatalog(filter)) ||
-        (await this.getHdStudioCatalog(filter));
+        (!filter.genre ? await this.getHdStudioCatalog(filter) : null);
       if (hCat) return hCat;
+      if (filter.genre) return { items: [], page: filter.page, hasMore: false };
     }
     if (this.isKinobase()) {
       const kCat =
         (await this.getKinobaseCatalog(filter)) ||
         (await this.getKinogoCatalog(filter)) ||
-        (filter.type === 'series' ? await this.getHdStudioCatalog(filter) : null);
+        (filter.type === 'series' && !filter.genre ? await this.getHdStudioCatalog(filter) : null);
       if (kCat) return kCat;
+      if (filter.genre) return { items: [], page: filter.page, hasMore: false };
     }
     if (this.isKinogo()) {
       const gCat =
         (await this.getKinogoCatalog(filter)) ||
         (await this.getKinobaseCatalog(filter)) ||
-        (filter.type === 'series' ? await this.getHdStudioCatalog(filter) : null);
+        (filter.type === 'series' && !filter.genre ? await this.getHdStudioCatalog(filter) : null);
       if (gCat) return gCat;
+      if (filter.genre) return { items: [], page: filter.page, hasMore: false };
     }
     try {
+      const normalizedGenre = filter.genre ? normalizeGenreToId(filter.genre) || filter.genre : undefined;
+      const isErotica = filter.type === 'erotica' || normalizedGenre === 'erotica';
       const catSlug =
         filter.type === 'shows'
           ? 'show'
-          : filter.type === 'erotica' || filter.type === 'adult'
+          : filter.type === 'erotica'
             ? 'films'
             : filter.type;
       let path = `/${catSlug}/`;
-      if (filter.type === 'erotica' || filter.genre === 'erotica') {
+      if (isErotica) {
         path += 'erotic/';
-      } else if (filter.type === 'adult' || filter.genre === 'adult') {
-        path += 'horror/';
       } else if (filter.genre) {
         path += `${filter.genre}/`;
       }
@@ -5043,9 +5118,16 @@ export class RezkaProvider implements IProvider {
         const item = this.parseItem($(el), $);
         if (item) items.push(item);
       });
-      const cleanItems = filter.genre
+      let cleanItems = filter.genre
         ? RezkaProvider.stampGenre(this.filterNonCamRipItems(items), normalizeGenreToId(filter.genre) || filter.genre)
         : this.filterNonCamRipItems(items);
+      if (isErotica) {
+        cleanItems = cleanItems.map((it) => ({
+          ...it,
+          ageRating: '18+',
+          genres: it.genres && it.genres.length > 0 ? it.genres : ['Эротика 18+'],
+        }));
+      }
 
       if (cleanItems.length === 0) {
         throw new Error('No items parsed');
@@ -5062,8 +5144,20 @@ export class RezkaProvider implements IProvider {
       const kCat = (await this.getKinobaseCatalog(filter)) || (await this.getKinogoCatalog(filter));
       if (kCat) return kCat;
 
+      if (filter.genre) {
+        const targetGid = normalizeGenreToId(filter.genre) || filter.genre.toLowerCase();
+        const genreFallback = FALLBACK_ITEMS.filter(
+          (i) => i.type === filter.type && extractItemGenreIds(i).includes(targetGid)
+        );
+        return {
+          items: genreFallback,
+          page: filter.page,
+          hasMore: false,
+        };
+      }
+
       try {
-        const queryTerm = filter.genre || (filter.type === 'films' ? 'фильм' : filter.type === 'series' ? 'сериал' : filter.type === 'cartoons' ? 'мультфильм' : 'аниме');
+        const queryTerm = filter.type === 'films' ? 'фильм' : filter.type === 'series' ? 'сериал' : filter.type === 'cartoons' ? 'мультфильм' : 'аниме';
         const liveCatalog = await this.searchAdvanced(queryTerm, filter.page);
         if (liveCatalog.items && liveCatalog.items.length > 0) {
           return liveCatalog;
@@ -5072,11 +5166,6 @@ export class RezkaProvider implements IProvider {
 
       let fallback = FALLBACK_ITEMS.filter((i) => i.type === filter.type);
       if (fallback.length === 0) fallback = FALLBACK_ITEMS;
-      if (filter.genre) {
-        const gLow = filter.genre.toLowerCase();
-        const filtered = fallback.filter((i) => i.genres?.some((g) => g.toLowerCase().includes(gLow)));
-        if (filtered.length > 0) fallback = filtered;
-      }
       return {
         items: fallback,
         page: filter.page,

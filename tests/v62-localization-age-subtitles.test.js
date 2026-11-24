@@ -22,22 +22,29 @@ function loadTsModule(relPath) {
 
 const utils = loadTsModule('src/shared/utils/index.ts');
 const constants = loadTsModule('src/shared/constants/index.ts');
+const recommendations = loadTsModule('src/shared/recommendations.ts');
 const localization = loadTsModule('src/core/providers/rezka/localization.ts');
 const { translations, GENRE_TRANSLATIONS } = loadTsModule('src/renderer/i18n/translations.ts');
 
-test('v0.0.62 version and 18+/Erotica genres & translations are configured', () => {
-  assert.equal(constants.APP_VERSION, '0.0.71');
-  assert.ok(constants.GENRES.some((g) => g.id === 'erotica'));
-  assert.ok(constants.GENRES.some((g) => g.id === 'adult'));
+test('v0.0.72 version and unified Erotica 18+ category, genre & translations are configured', () => {
+  assert.equal(constants.APP_VERSION, '0.0.72');
+  assert.ok(constants.GENRES.some((g) => g.id === 'erotica' && g.title === 'Эротика 18+'));
+  assert.ok(!constants.GENRES.some((g) => g.id === 'adult'), 'Duplicate adult genre must be merged into erotica');
+  assert.equal(recommendations.normalizeGenreToId('18+'), 'erotica');
+  assert.equal(recommendations.normalizeGenreToId('adult'), 'erotica');
+  assert.equal(recommendations.normalizeGenreToId('Эротика 18+'), 'erotica');
+  const migrated = recommendations.normalizeInterestsProfile({ favoriteGenres: ['adult', 'drama'] });
+  assert.deepEqual(migrated.favoriteGenres, ['erotica', 'drama']);
+
   for (const loc of ['ru', 'uk', 'en']) {
-    assert.ok(translations[loc].nav.adult);
-    assert.ok(translations[loc].nav.erotica);
-    assert.ok(translations[loc].catalog.categories.adult);
-    assert.ok(translations[loc].catalog.categories.erotica);
+    assert.equal(translations[loc].nav.adult, undefined);
+    assert.ok(translations[loc].nav.erotica.includes('18+'));
+    assert.equal(translations[loc].catalog.categories.adult, undefined);
+    assert.ok(translations[loc].catalog.categories.erotica.includes('18+'));
     assert.ok(translations[loc].player.subtitles);
     assert.ok(translations[loc].player.subtitlesOff);
-    assert.ok(GENRE_TRANSLATIONS.erotica[loc]);
-    assert.ok(GENRE_TRANSLATIONS.adult[loc]);
+    assert.ok(GENRE_TRANSLATIONS.erotica[loc].includes('18+'));
+    assert.equal(GENRE_TRANSLATIONS.adult, undefined);
   }
 });
 

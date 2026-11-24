@@ -108,12 +108,27 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   saveUserInterests: async (favoriteGenres, favoriteTypes, completed = true) => {
     const current = normalizeInterestsProfile(get().settings.interests);
+    const nextFavGenres = Array.from(new Set(favoriteGenres.filter(Boolean)));
+    const nextFavSet = new Set(nextFavGenres);
+    const now = Date.now();
+
+    // Gently dampen learned scores for genres the user explicitly unchecked so shifting tastes take effect faster
+    const nextGenreScores = { ...current.genreScores };
+    for (const prevFav of current.favoriteGenres) {
+      if (!nextFavSet.has(prevFav) && nextGenreScores[prevFav]) {
+        const damped = Number((nextGenreScores[prevFav].weight * 0.35).toFixed(3));
+        if (damped < 0.08) delete nextGenreScores[prevFav];
+        else nextGenreScores[prevFav] = { weight: damped, updatedAt: now };
+      }
+    }
+
     const nextInterests: UserInterestsProfile = {
       ...current,
       onboardingCompleted: completed,
-      favoriteGenres: Array.from(new Set(favoriteGenres.filter(Boolean))),
+      favoriteGenres: nextFavGenres,
       favoriteTypes: Array.from(new Set(favoriteTypes)),
-      updatedAt: Date.now(),
+      genreScores: nextGenreScores,
+      updatedAt: now,
     };
     await get().updateSettings({ interests: nextInterests });
   },

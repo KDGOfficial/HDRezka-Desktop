@@ -147,8 +147,6 @@ export const App: React.FC = () => {
         return <CatalogPage initialType="cartoons" />;
       case 'animation':
         return <CatalogPage initialType="animation" />;
-      case 'adult':
-        return <CatalogPage initialType="adult" />;
       case 'erotica':
         return <CatalogPage initialType="erotica" />;
       case 'collections':
