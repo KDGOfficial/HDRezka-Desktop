@@ -10,7 +10,7 @@ import {
   SearchHistoryEntry,
   UserSettings,
 } from '../../shared/types';
-import { DEFAULT_USER_SETTINGS, DEFAULT_HOTKEYS, DEFAULT_USER_INTERESTS } from '../../shared/constants';
+import { DEFAULT_USER_SETTINGS, DEFAULT_HOTKEYS, DEFAULT_USER_INTERESTS, DEFAULT_SUBTITLE_STYLE } from '../../shared/constants';
 
 let DatabaseSync: any = null;
 try {
@@ -168,6 +168,7 @@ export class AppDatabase {
                 ...DEFAULT_USER_SETTINGS,
                 ...(parsed.settings || {}),
                 hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.settings?.hotkeys || {}) },
+                subtitleStyle: { ...DEFAULT_SUBTITLE_STYLE, ...(parsed.settings?.subtitleStyle || {}) },
                 interests: { ...DEFAULT_USER_INTERESTS, ...(parsed.settings?.interests || {}) },
               },
             };
@@ -762,12 +763,18 @@ export class AppDatabase {
             homeSections: { ...DEFAULT_USER_SETTINGS.homeSections, ...(parsed.homeSections || {}) },
             player: { ...DEFAULT_USER_SETTINGS.player, ...(parsed.player || {}) },
             hotkeys: { ...DEFAULT_HOTKEYS, ...(parsed.hotkeys || {}) },
+            subtitleStyle: { ...DEFAULT_SUBTITLE_STYLE, ...(parsed.subtitleStyle || {}) },
             interests: { ...DEFAULT_USER_INTERESTS, ...(parsed.interests || {}) },
             app: { ...DEFAULT_USER_SETTINGS.app, ...(parsed.app || {}) },
           };
         } catch {}
       }
-      return { ...DEFAULT_USER_SETTINGS, hotkeys: { ...DEFAULT_HOTKEYS }, interests: { ...DEFAULT_USER_INTERESTS } };
+      return {
+        ...DEFAULT_USER_SETTINGS,
+        hotkeys: { ...DEFAULT_HOTKEYS },
+        subtitleStyle: { ...DEFAULT_SUBTITLE_STYLE },
+        interests: { ...DEFAULT_USER_INTERESTS },
+      };
     }
     const stored = this.storage?.settings || ({} as Partial<UserSettings>);
     return {
@@ -776,6 +783,7 @@ export class AppDatabase {
       homeSections: { ...DEFAULT_USER_SETTINGS.homeSections, ...(stored.homeSections || {}) },
       player: { ...DEFAULT_USER_SETTINGS.player, ...(stored.player || {}) },
       hotkeys: { ...DEFAULT_HOTKEYS, ...(stored.hotkeys || {}) },
+      subtitleStyle: { ...DEFAULT_SUBTITLE_STYLE, ...(stored.subtitleStyle || {}) },
       interests: { ...DEFAULT_USER_INTERESTS, ...(stored.interests || {}) },
       app: { ...DEFAULT_USER_SETTINGS.app, ...(stored.app || {}) },
     };
@@ -789,6 +797,7 @@ export class AppDatabase {
       homeSections: { ...current.homeSections, ...(settings.homeSections || {}) },
       player: { ...current.player, ...(settings.player || {}) },
       hotkeys: { ...DEFAULT_HOTKEYS, ...current.hotkeys, ...(settings.hotkeys || {}) },
+      subtitleStyle: { ...DEFAULT_SUBTITLE_STYLE, ...(current.subtitleStyle || {}), ...(settings.subtitleStyle || {}) },
       interests: settings.interests
         ? { ...DEFAULT_USER_INTERESTS, ...(current.interests || {}), ...settings.interests }
         : { ...DEFAULT_USER_INTERESTS, ...(current.interests || {}) },

@@ -134,7 +134,15 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle(IPC_CHANNELS.GET_SUBTITLE_TRACK, async (_, params: any) => {
-    if (!params || (params.lang !== 'ru' && params.lang !== 'uk' && params.lang !== 'en')) return null;
+    if (!params) return null;
+    if (typeof params.directUrl === 'string' && params.directUrl.trim()) {
+      return await fetchSubtitleTrack({
+        lang: params.lang === 'uk' || params.lang === 'en' ? params.lang : 'ru',
+        directUrl: params.directUrl.trim(),
+        directLanguage: typeof params.directLanguage === 'string' ? params.directLanguage : undefined,
+      });
+    }
+    if (params.lang !== 'ru' && params.lang !== 'uk' && params.lang !== 'en') return null;
     const translators = Array.isArray(params.translators)
       ? params.translators.filter((t: any) => t && typeof t.id === 'number').slice(0, 60)
       : [];
@@ -160,6 +168,7 @@ export function registerIpcHandlers(): void {
                   origTitle: params.origTitle,
                   year: params.year,
                   translatorName: tr?.name,
+                  subtitlesOnly: true,
                 });
                 return stream?.subtitles;
               },

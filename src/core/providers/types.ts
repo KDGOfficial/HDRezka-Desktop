@@ -56,6 +56,7 @@ export interface IProvider {
     origTitle?: string;
     year?: number;
     translatorName?: string;
+    subtitlesOnly?: boolean;
   }): Promise<StreamData>;
 
   // Search

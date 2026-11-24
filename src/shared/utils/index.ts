@@ -563,3 +563,64 @@ export function matchSubtitleLanguageCode(label?: string): 'ru' | 'uk' | 'en' | 
   if (/\b(?:en|eng)\b|англ|english/i.test(low)) return 'en';
   return null;
 }
+
+export interface SubtitleCueLike {
+  startTime: number;
+  endTime: number;
+  text?: string;
+  getCueAsHTML?: () => { textContent: string | null };
+  _origStart?: number;
+  _origEnd?: number;
+}
+
+/** Shifts WebVTT cue timings by delay (seconds) without transient startTime > endTime inversions. */
+export function applySubtitleCueDelay(cues: ArrayLike<SubtitleCueLike> | null | undefined, delay: number): void {
+  if (!cues) return;
+  const shift = Number.isFinite(delay) ? delay : 0;
+  for (let i = 0; i < cues.length; i++) {
+    const c = cues[i];
+    if (!c) continue;
+    if (c._origStart === undefined) {
+      c._origStart = c.startTime;
+      c._origEnd = c.endTime;
+    }
+    const origStart = c._origStart;
+    const origEnd = c._origEnd ?? origStart;
+    const nextStart = Math.max(0, origStart + shift);
+    const nextEnd = Math.max(nextStart, origEnd + shift);
+    // Assign endTime before startTime when shifting forward so startTime never transiently exceeds endTime
+    if (nextStart > c.endTime) {
+      c.endTime = nextEnd;
+      c.startTime = nextStart;
+    } else {
+      c.startTime = nextStart;
+      c.endTime = nextEnd;
+    }
+  }
+}
+
+export function extractSubtitleCueText(cue: SubtitleCueLike): string {
+  const raw = typeof cue.getCueAsHTML === 'function' ? cue.getCueAsHTML().textContent || '' : cue.text || '';
+  return raw.replace(/\{\\[^}]*\}/g, '').trim();
+}
+
+/**
+ * Selects currently visible subtitle cues using WebVTT's half-open [startTime, endTime) interval.
+ * Uses activeCues on live cuechange events (so ended cues clear immediately), and falls back to
+ * scanning cues on load / paused seek / delay adjustment.
+ */
+export function getVisibleSubtitleText(
+  track: { activeCues?: ArrayLike<SubtitleCueLike> | null; cues?: ArrayLike<SubtitleCueLike> | null } | null | undefined,
+  currentTime: number,
+  allowScanFallback: boolean
+): string {
+  if (!track) return '';
+  const active = track.activeCues ? Array.from(track.activeCues) : [];
+  let cues = active.filter((c) => c && c.endTime > c.startTime);
+  if (cues.length === 0 && allowScanFallback && track.cues && track.cues.length > 0 && Number.isFinite(currentTime)) {
+    cues = Array.from(track.cues).filter(
+      (c) => c && c.endTime > c.startTime && c.startTime <= currentTime && currentTime < c.endTime
+    );
+  }
+  return cues.map(extractSubtitleCueText).filter(Boolean).join('\n');
+}

@@ -33,7 +33,14 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { HorizontalSlider } from './HorizontalSlider';
 import { useTranslation } from '../i18n';
 import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
-import { formatDuration, matchesShortcut, formatShortcutLabel, matchSubtitleLanguageCode } from '../../shared/utils';
+import {
+  formatDuration,
+  matchesShortcut,
+  formatShortcutLabel,
+  matchSubtitleLanguageCode,
+  applySubtitleCueDelay,
+  getVisibleSubtitleText,
+} from '../../shared/utils';
 import { DEFAULT_HOTKEYS, BROWSER_USER_AGENT, DEFAULT_SUBTITLE_STYLE } from '../../shared/constants';
 import type { SubtitleStyle } from '../../shared/types';
 import appLogo from '../assets/logo.png';
@@ -236,9 +243,11 @@ export const VideoPlayer: React.FC = () => {
   }, [resumeOfferTime, dismissResumeOffer]);
 
   const directSubtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
-  const activeSubtitleTrack = resolvedSubtitle || (directSubtitleTrack
-    ? { url: directSubtitleTrack.url, label: directSubtitleTrack.language, lang: matchSubtitleLanguageCode(directSubtitleTrack.language) || 'ru' }
-    : null);
+  const activeSubtitleTrack =
+    resolvedSubtitle ||
+    (!window.api?.getSubtitleTrack && directSubtitleTrack
+      ? { url: directSubtitleTrack.url, label: directSubtitleTrack.language, lang: matchSubtitleLanguageCode(directSubtitleTrack.language) || 'ru' }
+      : null);
   const activeTranslator =
     mediaDetails?.translators?.find((tr) => tr.id === translatorId) || mediaDetails?.translators?.[0];
   const effectiveVolume = isMuted ? 0 : volume;
@@ -371,7 +380,8 @@ export const VideoPlayer: React.FC = () => {
     });
   };
 
-  // Resolve universal RU / UK / EN subtitles on ANY voiceover (stream, OpenSubtitles, or auto-translated)
+  // Resolve universal RU / UK / EN subtitles on ANY voiceover (stream, OpenSubtitles, or auto-translated),
+  // plus extra embedded tracks via main process so .srt, Windows-1251, Referer and CORS never break
   useEffect(() => {
     let cancelled = false;
     const revokeOldBlob = () => {
@@ -388,30 +398,42 @@ export const VideoPlayer: React.FC = () => {
       return;
     }
 
-    if (currentSubtitle !== 'ru' && currentSubtitle !== 'uk' && currentSubtitle !== 'en') {
+    // Wait until stream finishes loading so we don't fire a duplicate search before streamData.subtitles arrives
+    if (isLoading || !streamData || !window.api?.getSubtitleTrack || !mediaDetails) return;
+
+    const isUniversalLang = currentSubtitle === 'ru' || currentSubtitle === 'uk' || currentSubtitle === 'en';
+    const extraTrack = !isUniversalLang
+      ? streamData.subtitles?.find((s) => s.language === currentSubtitle)
+      : undefined;
+    if (!isUniversalLang && !extraTrack?.url) {
       revokeOldBlob();
       setResolvedSubtitle(null);
       setIsLoadingSubtitle(false);
       return;
     }
 
-    if (!window.api?.getSubtitleTrack || !mediaDetails) return;
-
     setIsLoadingSubtitle(true);
     showToast(t.player.subtitlesSearching);
-    window.api
-      .getSubtitleTrack({
-        title: mediaDetails.title,
-        origTitle: mediaDetails.origTitle,
-        year: mediaDetails.year,
-        season: seasonId,
-        episode: episodeId,
-        lang: currentSubtitle,
-        existingSubtitles: streamData?.subtitles || [],
-        mediaId: mediaDetails.id,
-        translatorId,
-        translators: mediaDetails.translators,
-      })
+    const req = isUniversalLang
+      ? window.api.getSubtitleTrack({
+          title: mediaDetails.title,
+          origTitle: mediaDetails.origTitle,
+          year: mediaDetails.year,
+          season: seasonId,
+          episode: episodeId,
+          lang: currentSubtitle,
+          existingSubtitles: streamData.subtitles || [],
+          mediaId: mediaDetails.id,
+          translatorId,
+          translators: mediaDetails.translators,
+        })
+      : window.api.getSubtitleTrack({
+          lang: 'ru',
+          directUrl: extraTrack!.url,
+          directLanguage: extraTrack!.language,
+        });
+
+    req
       .then((res) => {
         if (cancelled) return;
         setIsLoadingSubtitle(false);
@@ -442,7 +464,7 @@ export const VideoPlayer: React.FC = () => {
     return () => {
       cancelled = true;
     };
-  }, [isOpen, currentSubtitle, mediaDetails?.id, seasonId, episodeId, streamData?.subtitles]);
+  }, [isOpen, isLoading, currentSubtitle, mediaDetails?.id, seasonId, episodeId, streamData?.subtitles]);
 
   // Cleanup subtitle blob URL & flush any pending subtitle style save on unmount
   useEffect(() => {
@@ -462,10 +484,12 @@ export const VideoPlayer: React.FC = () => {
     };
   }, []);
 
-  // Re-sync subtitle style from saved settings whenever the player opens (settings may load after mount)
+  // Re-sync subtitle style from saved settings whenever the player opens or settings finish loading
   useEffect(() => {
-    if (isOpen) setSubStyle({ ...DEFAULT_SUBTITLE_STYLE, ...(useSettingsStore.getState().settings.subtitleStyle || {}) });
-  }, [isOpen]);
+    if (isOpen && !pendingSubStyleRef.current) {
+      setSubStyle({ ...DEFAULT_SUBTITLE_STYLE, ...(savedSubtitleStyle || {}) });
+    }
+  }, [isOpen, savedSubtitleStyle]);
 
   const updateSubStyle = (patch: Partial<SubtitleStyle>) => {
     setSubStyle((prev) => {
@@ -486,49 +510,34 @@ export const VideoPlayer: React.FC = () => {
   useEffect(() => {
     const el = subtitleTrackRef.current;
     const track = el?.track;
-    setCueText('');
+    const video = videoRef.current;
     // Keep any HLS-injected text tracks from rendering natively on top of our overlay
-    for (const other of Array.from(videoRef.current?.textTracks || [])) {
+    for (const other of Array.from(video?.textTracks || [])) {
       if (other !== track) other.mode = 'disabled';
     }
-    if (!el || !track) return;
+    if (!el || !track) {
+      setCueText('');
+      return;
+    }
     track.mode = 'hidden';
     const delay = subStyle.delay || 0;
-    const extractCueText = (cue: TextTrackCue) => {
-      const vtt = cue as VTTCue;
-      const text = typeof vtt.getCueAsHTML === 'function' ? vtt.getCueAsHTML().textContent || '' : vtt.text || '';
-      return text.replace(/\{\\[^}]*\}/g, '').trim(); // drop SRT/ASS override tags like {\an8}
+    const syncFromTrack = (allowScanFallback: boolean) => {
+      const now = videoRef.current?.currentTime ?? 0;
+      setCueText(getVisibleSubtitleText(track as any, now, allowScanFallback));
     };
-    const applyDelay = () => {
-      for (const cue of Array.from(track.cues || [])) {
-        const c = cue as TextTrackCue & { _origStart?: number; _origEnd?: number };
-        if (c._origStart === undefined) {
-          c._origStart = c.startTime;
-          c._origEnd = c.endTime;
-        }
-        c.startTime = Math.max(0, c._origStart + delay);
-        c.endTime = Math.max(0, (c._origEnd ?? c._origStart) + delay);
-      }
+    const onCueChange = () => syncFromTrack(false);
+    const onSeekOrLoad = () => {
+      applySubtitleCueDelay(track.cues as any, delay);
+      syncFromTrack(true);
     };
-    const onCueChange = () => {
-      let cues = Array.from(track.activeCues || []);
-      // When paused or right after delay shift, activeCues may lag; check track.cues against currentTime
-      if (cues.length === 0 && track.cues && track.cues.length > 0 && videoRef.current) {
-        const now = videoRef.current.currentTime;
-        cues = Array.from(track.cues).filter((c) => c.startTime <= now && now <= c.endTime);
-      }
-      setCueText(cues.map(extractCueText).filter(Boolean).join('\n'));
-    };
-    const onLoad = () => {
-      applyDelay();
-      onCueChange();
-    };
-    onLoad();
-    el.addEventListener('load', onLoad);
+    onSeekOrLoad();
+    el.addEventListener('load', onSeekOrLoad);
     track.addEventListener('cuechange', onCueChange);
+    video?.addEventListener('seeked', onSeekOrLoad);
     return () => {
-      el.removeEventListener('load', onLoad);
+      el.removeEventListener('load', onSeekOrLoad);
       track.removeEventListener('cuechange', onCueChange);
+      video?.removeEventListener('seeked', onSeekOrLoad);
     };
   }, [activeSubtitleTrack?.url, subStyle.delay]);
 
@@ -1403,7 +1412,7 @@ export const VideoPlayer: React.FC = () => {
       {!currentEmbedUrl && ((cueText && activeSubtitleTrack) || activeMenu === 'subtitles') && (
         <div
           className="player-subtitle-overlay absolute inset-x-0 z-[15] flex justify-center px-[6%] pointer-events-none transition-[bottom] duration-200"
-          style={{ bottom: `calc(${subStyle.position}% + ${showControls ? 76 : 0}px)` }}
+          style={{ bottom: `min(85%, calc(${subStyle.position}% + ${showControls ? 76 : 0}px))` }}
           aria-live="off"
         >
           <span

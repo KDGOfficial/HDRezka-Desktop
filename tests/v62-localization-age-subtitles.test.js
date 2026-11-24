@@ -26,7 +26,7 @@ const localization = loadTsModule('src/core/providers/rezka/localization.ts');
 const { translations, GENRE_TRANSLATIONS } = loadTsModule('src/renderer/i18n/translations.ts');
 
 test('v0.0.62 version and 18+/Erotica genres & translations are configured', () => {
-  assert.equal(constants.APP_VERSION, '0.0.65');
+  assert.equal(constants.APP_VERSION, '0.0.66');
   assert.ok(constants.GENRES.some((g) => g.id === 'erotica'));
   assert.ok(constants.GENRES.some((g) => g.id === 'adult'));
   for (const loc of ['ru', 'uk', 'en']) {

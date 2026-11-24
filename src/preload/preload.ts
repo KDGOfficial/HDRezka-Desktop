@@ -67,6 +67,8 @@ export const api = {
     mediaId?: string;
     translatorId?: number;
     translators?: import('../shared/types').Translator[];
+    directUrl?: string;
+    directLanguage?: string;
   }): Promise<import('../shared/types').SubtitleFetchResult | null> =>
     ipcRenderer.invoke(IPC_CHANNELS.GET_SUBTITLE_TRACK, params),
 
