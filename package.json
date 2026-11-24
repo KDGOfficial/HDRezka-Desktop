@@ -1,6 +1,6 @@
 {
   "name": "hdrezka-desktop",
-  "version": "0.0.59",
+  "version": "0.0.60",
   "description": "HDREZKA Desktop — Unofficial Windows Client",
   "main": "dist/main/main.js",
   "author": "HDRezka Desktop Team",
@@ -88,7 +88,8 @@
       "artifactName": "HDREZKA-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "HDREZKA-Portable-${version}.${ext}"
+      "artifactName": "HDREZKA-Portable-${version}.${ext}",
+      "unpackDirName": "HDREZKA-Desktop-Portable"
     }
   }
 }

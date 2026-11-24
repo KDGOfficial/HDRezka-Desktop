@@ -123,12 +123,19 @@ export function getBrowserAdBlockStats(): { enabled: boolean; blockedCount: numb
   return { enabled: browserAdBlockEnabled, blockedCount: browserAdBlockedCount };
 }
 
-// Ensure consistent app name and userData path across versions and packaging
+// Ensure consistent app name, Windows AppUserModelId, and userData path across Setup and Portable
 app.name = 'hdrezka-desktop';
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.hdrezka.desktop');
+}
 
 // Disable hardware acceleration to eliminate Windows 11 DWM / GPU composition black window bug
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('disable-gpu');
+
+// Run Chromium audio in-process without AppContainer sandbox so Portable (%TEMP% extraction) always has sound on Windows
+app.commandLine.appendSwitch('disable-features', 'AudioServiceOutOfProcess,AudioServiceSandbox');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // Same UA as provider requests, so the site's bot-check cookie matches between the check window and fetches
 app.userAgentFallback = BROWSER_USER_AGENT;
