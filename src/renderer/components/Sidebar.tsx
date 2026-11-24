@@ -86,13 +86,13 @@ export const Sidebar: React.FC = () => {
   const renderNavSection = (section: 'main' | 'library' | 'system', title?: string) => {
     const items = NAV_ITEMS.filter((i) => i.section === section);
     return (
-      <div className="space-y-1 mb-5">
+      <div className="space-y-0.5 mb-3.5">
         {title && !collapsed && (
-          <div className="px-3 text-[10px] font-extrabold text-zinc-500 uppercase tracking-[0.16em] mb-2 select-none">
+          <div className="px-3 text-[10px] font-extrabold text-zinc-500 uppercase tracking-[0.16em] mb-1.5 select-none">
             {title}
           </div>
         )}
-        {collapsed && title && <div className="mx-3 my-2 border-t border-white/[0.06]" />}
+        {collapsed && title && <div className="mx-3 my-1.5 border-t border-white/[0.06]" />}
         {items.map((item) => {
           const Icon = item.icon;
           const isActive = currentPage === item.id;
@@ -105,7 +105,7 @@ export const Sidebar: React.FC = () => {
               title={collapsed ? label : undefined}
               aria-current={isActive ? 'page' : undefined}
               className={`w-full relative flex items-center ${
-                collapsed ? 'justify-center px-0 py-2.5' : 'gap-3 px-3.5 py-2.5'
+                collapsed ? 'justify-center px-0 py-2' : 'gap-3 px-3.5 py-2'
               } rounded-2xl text-[12.5px] font-bold cursor-pointer group ${
                 isActive
                   ? 'btn-ember text-white'

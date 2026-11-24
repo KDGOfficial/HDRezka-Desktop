@@ -52,9 +52,19 @@ export const DetailsPage: React.FC = () => {
   const [loadingEpisodes, setLoadingEpisodes] = useState<boolean>(false);
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [reviewFilter, setReviewFilter] = useState<'all' | 'kinopoisk' | 'critic' | 'user'>('all');
+  const [posterSrc, setPosterSrc] = useState<string>(selectedMediaDetails?.poster || '');
+  const [posterFailed, setPosterFailed] = useState<boolean>(false);
+  const [backdropFailed, setBackdropFailed] = useState<boolean>(false);
   const syncedResumeSeasonRef = useRef<string | null>(null);
   const displayTitle = useLocalizedTitle(details?.title, details?.origTitle);
   const resolvedAgeRating = details ? inferAgeRating(details) : '';
+
+  useEffect(() => {
+    const nextPoster = details?.poster || selectedMediaDetails?.poster || '';
+    setPosterSrc(nextPoster);
+    setPosterFailed(!nextPoster);
+    setBackdropFailed(false);
+  }, [details?.id, details?.poster, selectedMediaDetails?.poster]);
 
   const matchesMediaHistory = (h: { mediaId: string; url?: string }, d: MediaDetails) =>
     h.mediaId === d.id ||
@@ -100,7 +110,11 @@ export const DetailsPage: React.FC = () => {
       const data = await window.api.getDetails(idOrUrl, selectedMediaDetails || undefined);
       settled = true;
       clearTimeout(spinnerTimer);
-      setDetails(data);
+      const mergedData =
+        data && !data.poster && selectedMediaDetails?.poster
+          ? { ...data, poster: selectedMediaDetails.poster, backdrop: data.backdrop || selectedMediaDetails.poster }
+          : data;
+      setDetails(mergedData);
       if (data && !data.antiBot) {
         useSettingsStore.getState().recordTasteSignal(data, 'view');
       }
@@ -231,11 +245,12 @@ export const DetailsPage: React.FC = () => {
     <div className="w-full pb-20 text-left select-none animate-fadeIn">
       {/* Full-Bleed Theater Backdrop Stage */}
       <section className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 overflow-hidden border-b border-white/[0.06]">
-        {(details.backdrop || details.poster) && (
+        {(details.backdrop || posterSrc) && !backdropFailed && (
           <img
-            src={details.backdrop || details.poster}
+            src={details.backdrop || posterSrc}
             alt=""
             aria-hidden="true"
+            onError={() => setBackdropFailed(true)}
             className="absolute inset-0 w-full h-full object-cover filter brightness-[0.38] blur-xl scale-110 saturate-125 pointer-events-none"
           />
         )}
@@ -254,12 +269,31 @@ export const DetailsPage: React.FC = () => {
             aria-label={`${t.details.watch} ${details.title}`}
             className="w-52 md:w-64 flex-shrink-0 group relative cursor-pointer rounded-[22px] p-[2px] bg-gradient-to-br from-white/25 via-brand-ember/55 to-brand-crimson/55 shadow-[0_24px_60px_rgba(0,0,0,0.9)]"
           >
-            <div className="relative rounded-[20px] overflow-hidden bg-dark-surface">
-              <img
-                src={details.poster}
-                alt={details.title}
-                className="w-full h-auto aspect-[2/3] object-cover group-hover:scale-105 transition-transform duration-500 block"
-              />
+            <div className="relative rounded-[20px] overflow-hidden bg-dark-surface aspect-[2/3]">
+              {!posterFailed && posterSrc ? (
+                <img
+                  src={posterSrc}
+                  alt={displayTitle || details.title}
+                  onError={() => {
+                    const fallback = selectedMediaDetails?.poster;
+                    if (fallback && fallback !== posterSrc) {
+                      setPosterSrc(fallback);
+                    } else {
+                      setPosterFailed(true);
+                    }
+                  }}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 block"
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center p-5 text-center bg-gradient-to-br from-[#1C1218] via-[#120B10] to-[#090608]">
+                  <div className="logo-ring rounded-full mb-3 opacity-85">
+                    <img src={appLogo} alt="" className="w-12 h-12 rounded-full object-cover block" />
+                  </div>
+                  <span className="font-display text-xs font-extrabold text-zinc-200 line-clamp-3 leading-snug">
+                    {displayTitle || details.title}
+                  </span>
+                </div>
+              )}
               <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <div className="w-16 h-16 rounded-[18px] play-squircle flex items-center justify-center">
                   <Play className="w-7 h-7 fill-white text-white ml-0.5" aria-hidden="true" />

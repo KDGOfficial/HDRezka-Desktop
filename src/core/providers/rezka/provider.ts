@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.63';
+  public version = '0.0.64';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -4075,11 +4075,17 @@ export class RezkaProvider implements IProvider {
       const title = rawTitle.replace(/\s*\(\d{4}\)\s*$/, '').trim();
       if (!title) return null;
 
-      let poster = $('.fullStory .sPoster img, .sPoster img').first().attr('data-src') ||
-                   $('.fullStory .sPoster img, .sPoster img').first().attr('src') ||
-                   meta?.poster || '';
-      if (poster.startsWith('data:')) poster = '';
-      if (poster && !poster.startsWith('http')) {
+      let poster =
+        $('.fullStory .sPoster img, .sPoster img, .fullimg img, [itemprop="image"]').first().attr('data-src') ||
+        $('.fullStory .sPoster img, .sPoster img, .fullimg img, [itemprop="image"]').first().attr('src') ||
+        $('meta[property="og:image"]').attr('content') ||
+        '';
+      if (!poster || poster.startsWith('data:') || /no[-_]?image|blank\.|spacer\.|loading\./i.test(poster)) {
+        poster = meta?.poster || '';
+      }
+      if (poster.startsWith('//')) {
+        poster = `https:${poster}`;
+      } else if (poster && !poster.startsWith('http')) {
         poster = `${base}${poster.startsWith('/') ? '' : '/'}${poster}`;
       }
 

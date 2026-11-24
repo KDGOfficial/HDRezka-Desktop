@@ -102,4 +102,9 @@ test('MediaCard, HeroBanner, HomePage, CatalogPage, and main.ts wire background 
   assert.ok(heroSrc.includes('prefetchDetails([activeItem])'));
   assert.ok(homeSrc.includes('window.api.prefetchDetails'));
   assert.ok(catSrc.includes('window.api.prefetchDetails'));
+
+  const winSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/window.ts'), 'utf8');
+  const detailsSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/DetailsPage.tsx'), 'utf8');
+  assert.ok(winSrc.includes("url.includes('kinogo.')"));
+  assert.ok(detailsSrc.includes('setPosterFailed(true)'));
 });

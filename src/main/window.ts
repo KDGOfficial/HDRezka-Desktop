@@ -113,6 +113,18 @@ export function createMainWindow(): BrowserWindow {
       return callback({ requestHeaders: details.requestHeaders });
     }
 
+    if (url.includes('kinogo.')) {
+      try {
+        const origin = new URL(details.url).origin;
+        details.requestHeaders['Referer'] = `${origin}/`;
+        details.requestHeaders['Origin'] = origin;
+      } catch {
+        details.requestHeaders['Referer'] = 'https://kinogo.film/';
+      }
+      details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
+      return callback({ requestHeaders: details.requestHeaders });
+    }
+
     if (url.includes('cinemar.cc') || url.includes('cinemap.cc')) {
       details.requestHeaders['Referer'] = 'https://cinemar.cc/';
       details.requestHeaders['Origin'] = 'https://cinemar.cc';
