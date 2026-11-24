@@ -32,7 +32,8 @@ import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { HorizontalSlider } from './HorizontalSlider';
 import { useTranslation } from '../i18n';
-import { formatDuration, matchesShortcut, formatShortcutLabel } from '../../shared/utils';
+import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
+import { formatDuration, matchesShortcut, formatShortcutLabel, matchSubtitleLanguageCode } from '../../shared/utils';
 import { DEFAULT_HOTKEYS, BROWSER_USER_AGENT } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
 
@@ -169,6 +170,10 @@ export const VideoPlayer: React.FC = () => {
   const [showScaleMenu, setShowScaleMenu] = useState(false);
   const [videoFit, setVideoFit] = useState<'contain' | '16:10' | '21:9' | '4:3' | 'cover' | 'fill'>('contain');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [resolvedSubtitle, setResolvedSubtitle] = useState<{ url: string; label: string; lang: string } | null>(null);
+  const [isLoadingSubtitle, setIsLoadingSubtitle] = useState(false);
+  const subtitleBlobRef = useRef<string | null>(null);
+  const playerDisplayTitle = useLocalizedTitle(mediaDetails?.title, mediaDetails?.origTitle);
 
   const hideTimerRef = useRef<any>(null);
   const toastTimerRef = useRef<any>(null);
@@ -223,7 +228,10 @@ export const VideoPlayer: React.FC = () => {
     return () => clearTimeout(tmr);
   }, [resumeOfferTime, dismissResumeOffer]);
 
-  const subtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
+  const directSubtitleTrack = streamData?.subtitles?.find((s) => s.language === currentSubtitle);
+  const activeSubtitleTrack = resolvedSubtitle || (directSubtitleTrack
+    ? { url: directSubtitleTrack.url, label: directSubtitleTrack.language, lang: matchSubtitleLanguageCode(directSubtitleTrack.language) || 'ru' }
+    : null);
   const activeTranslator =
     mediaDetails?.translators?.find((tr) => tr.id === translatorId) || mediaDetails?.translators?.[0];
   const effectiveVolume = isMuted ? 0 : volume;
@@ -356,11 +364,93 @@ export const VideoPlayer: React.FC = () => {
     });
   };
 
+  // Resolve universal RU / UK / EN subtitles on ANY voiceover (stream, OpenSubtitles, or auto-translated)
+  useEffect(() => {
+    let cancelled = false;
+    const revokeOldBlob = () => {
+      if (subtitleBlobRef.current) {
+        URL.revokeObjectURL(subtitleBlobRef.current);
+        subtitleBlobRef.current = null;
+      }
+    };
+
+    if (!isOpen || !currentSubtitle || currentSubtitle === 'off') {
+      revokeOldBlob();
+      setResolvedSubtitle(null);
+      setIsLoadingSubtitle(false);
+      return;
+    }
+
+    if (currentSubtitle !== 'ru' && currentSubtitle !== 'uk' && currentSubtitle !== 'en') {
+      revokeOldBlob();
+      setResolvedSubtitle(null);
+      setIsLoadingSubtitle(false);
+      return;
+    }
+
+    if (!window.api?.getSubtitleTrack || !mediaDetails) return;
+
+    setIsLoadingSubtitle(true);
+    window.api
+      .getSubtitleTrack({
+        title: mediaDetails.title,
+        origTitle: mediaDetails.origTitle,
+        year: mediaDetails.year,
+        season: seasonId,
+        episode: episodeId,
+        lang: currentSubtitle,
+        existingSubtitles: streamData?.subtitles || [],
+      })
+      .then((res) => {
+        if (cancelled) return;
+        setIsLoadingSubtitle(false);
+        if (!res?.vtt) {
+          revokeOldBlob();
+          setResolvedSubtitle(null);
+          showToast(t.player.subtitlesNotFound);
+          setSubtitle('off');
+          return;
+        }
+        revokeOldBlob();
+        const blobUrl = URL.createObjectURL(new Blob(['\uFEFF' + res.vtt], { type: 'text/vtt;charset=utf-8' }));
+        subtitleBlobRef.current = blobUrl;
+        setResolvedSubtitle({ url: blobUrl, label: res.language, lang: res.langCode });
+        showToast(
+          res.translated
+            ? `${t.player.subtitles}: ${res.language} (${t.player.subtitlesAuto})`
+            : `${t.player.subtitles}: ${res.language}`
+        );
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setIsLoadingSubtitle(false);
+        showToast(t.player.subtitlesNotFound);
+        setSubtitle('off');
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, currentSubtitle, mediaDetails?.id, seasonId, episodeId, streamData?.subtitles]);
+
+  // Cleanup subtitle blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (subtitleBlobRef.current) {
+        URL.revokeObjectURL(subtitleBlobRef.current);
+        subtitleBlobRef.current = null;
+      }
+    };
+  }, []);
+
   // Dynamically inserted <track default> is not always shown by Chromium; force it on
   useEffect(() => {
     const tracks = videoRef.current?.textTracks;
-    if (tracks) for (const track of Array.from(tracks)) track.mode = 'showing';
-  }, [subtitleTrack?.url]);
+    if (!tracks) return;
+    for (const track of Array.from(tracks)) {
+      track.mode = activeSubtitleTrack ? 'showing' : 'disabled';
+    }
+  }, [activeSubtitleTrack?.url]);
 
   const resetHideTimer = () => {
     if (isUiLocked) return;
@@ -1216,8 +1306,15 @@ export const VideoPlayer: React.FC = () => {
           }
         }}
       >
-        {subtitleTrack && (
-          <track key={subtitleTrack.url} kind="subtitles" src={subtitleTrack.url} default srcLang="ru" label={subtitleTrack.language} />
+        {activeSubtitleTrack && (
+          <track
+            key={activeSubtitleTrack.url}
+            kind="subtitles"
+            src={activeSubtitleTrack.url}
+            default
+            srcLang={activeSubtitleTrack.lang}
+            label={activeSubtitleTrack.label}
+          />
         )}
       </video>
       )}
@@ -1398,7 +1495,7 @@ export const VideoPlayer: React.FC = () => {
             </button>
             <div className="min-w-0">
               <h2 className="player-title font-display text-base font-black text-white leading-tight truncate">
-                {mediaDetails?.title}
+                {playerDisplayTitle || mediaDetails?.title}
               </h2>
               <div className="player-subtitle-meta flex items-center gap-2 text-xs text-zinc-300 mt-0.5 min-w-0">
                 {seasonId !== undefined && episodeId !== undefined && (
@@ -1686,19 +1783,17 @@ export const VideoPlayer: React.FC = () => {
                 </button>
               )}
 
-              {streamData?.subtitles && streamData.subtitles.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setActiveMenu(activeMenu === 'subtitles' ? 'none' : 'subtitles')}
-                  aria-label="Субтитры"
-                  className={`player-subtitles-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.15] cursor-pointer ${
-                    subtitleTrack ? 'text-brand-orange' : 'text-zinc-200'
-                  }`}
-                  title="Субтитры"
-                >
-                  <Subtitles className="w-4 h-4" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setActiveMenu(activeMenu === 'subtitles' ? 'none' : 'subtitles')}
+                aria-label={t.player.subtitles}
+                className={`player-subtitles-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.15] cursor-pointer ${
+                  activeSubtitleTrack || isLoadingSubtitle ? 'text-brand-orange' : 'text-zinc-200'
+                }`}
+                title={t.player.subtitles}
+              >
+                <Subtitles className={`w-4 h-4 ${isLoadingSubtitle ? 'animate-pulse' : ''}`} />
+              </button>
 
               <button
                 type="button"
@@ -1789,11 +1884,14 @@ export const VideoPlayer: React.FC = () => {
           </div>
         )}
 
-        {/* Subtitles Menu Popup */}
-        {activeMenu === 'subtitles' && streamData?.subtitles && (
-          <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[165px] space-y-1">
-            <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
-              Субтитры
+        {/* Subtitles Menu Popup (universal RU/UK/EN on any voiceover + extra embedded tracks) */}
+        {activeMenu === 'subtitles' && (
+          <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[190px] space-y-1">
+            <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1 flex items-center justify-between gap-2">
+              <span>{t.player.subtitles}</span>
+              {isLoadingSubtitle && (
+                <span className="w-3 h-3 rounded-full border-2 border-brand-orange/30 border-t-brand-orange animate-spin" aria-hidden="true" />
+              )}
             </div>
             <button
               type="button"
@@ -1807,25 +1905,50 @@ export const VideoPlayer: React.FC = () => {
                   : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
               }`}
             >
-              Выключены
+              {t.player.subtitlesOff}
             </button>
-            {streamData.subtitles.map((sub, i) => (
+            {(
+              [
+                { code: 'ru', label: 'Русский (RU)' },
+                { code: 'uk', label: 'Українська (UK)' },
+                { code: 'en', label: 'English (EN)' },
+              ] as const
+            ).map((opt) => (
               <button
-                key={i}
+                key={opt.code}
                 type="button"
                 onClick={() => {
-                  setSubtitle(sub.language);
+                  setSubtitle(opt.code);
                   setActiveMenu('none');
                 }}
                 className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
-                  currentSubtitle === sub.language
+                  currentSubtitle === opt.code
                     ? 'btn-ember text-white'
                     : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
                 }`}
               >
-                {sub.language}
+                {opt.label}
               </button>
             ))}
+            {(streamData?.subtitles || [])
+              .filter((sub) => !matchSubtitleLanguageCode(sub.language))
+              .map((sub, i) => (
+                <button
+                  key={`extra-${i}`}
+                  type="button"
+                  onClick={() => {
+                    setSubtitle(sub.language);
+                    setActiveMenu('none');
+                  }}
+                  className={`w-full text-left px-3 py-1.5 rounded-xl text-xs font-bold cursor-pointer ${
+                    currentSubtitle === sub.language
+                      ? 'btn-ember text-white'
+                      : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
+                  }`}
+                >
+                  {sub.language}
+                </button>
+              ))}
           </div>
         )}
 

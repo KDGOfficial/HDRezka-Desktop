@@ -1,4 +1,4 @@
-export type ContentType = 'films' | 'series' | 'cartoons' | 'animation' | 'shows';
+export type ContentType = 'films' | 'series' | 'cartoons' | 'animation' | 'shows' | 'adult' | 'erotica';
 
 export interface MediaItem {
   id: string;
@@ -11,6 +11,7 @@ export interface MediaItem {
   genres?: string[];
   type: ContentType;
   rating?: number;
+  ageRating?: string;
   views?: number;
   info?: string;
   isWatched?: boolean;
@@ -50,6 +51,14 @@ export interface VideoQualityStream {
 export interface SubtitleTrack {
   language: string;
   url: string;
+}
+
+export interface SubtitleFetchResult {
+  vtt: string;
+  language: string;
+  langCode: 'ru' | 'uk' | 'en';
+  source?: string;
+  translated?: boolean;
 }
 
 export interface StreamData {

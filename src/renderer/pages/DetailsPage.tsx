@@ -23,7 +23,8 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { MediaSlider } from '../components/MediaSlider';
 import { HorizontalSlider } from '../components/HorizontalSlider';
 import { useTranslation } from '../i18n';
-import { formatDuration, getResumableTime } from '../../shared/utils';
+import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
+import { formatDuration, getResumableTime, inferAgeRating, getAgeRatingBadgeClass } from '../../shared/utils';
 import appLogo from '../assets/logo.png';
 
 export const DetailsPage: React.FC = () => {
@@ -52,6 +53,8 @@ export const DetailsPage: React.FC = () => {
   const [isCopied, setIsCopied] = useState<boolean>(false);
   const [reviewFilter, setReviewFilter] = useState<'all' | 'kinopoisk' | 'critic' | 'user'>('all');
   const syncedResumeSeasonRef = useRef<string | null>(null);
+  const displayTitle = useLocalizedTitle(details?.title, details?.origTitle);
+  const resolvedAgeRating = details ? inferAgeRating(details) : '';
 
   const matchesMediaHistory = (h: { mediaId: string; url?: string }, d: MediaDetails) =>
     h.mediaId === d.id ||
@@ -261,13 +264,17 @@ export const DetailsPage: React.FC = () => {
           {/* Editorial Title & Actions */}
           <div className="flex-1 min-w-0 pt-1">
             <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight mb-1.5 drop-shadow">
-              {details.title}
+              {displayTitle || details.title}
             </h1>
-            {details.origTitle && (
+            {(details.origTitle && details.origTitle !== displayTitle) ? (
               <p className="text-sm md:text-base text-zinc-400 font-medium mb-5">
                 {details.origTitle}
               </p>
-            )}
+            ) : (details.title && details.title !== displayTitle) ? (
+              <p className="text-sm md:text-base text-zinc-400 font-medium mb-5">
+                {details.title}
+              </p>
+            ) : null}
 
             {/* Ratings & Metadata Pill Cluster */}
             <div className="flex items-center flex-wrap gap-2 mb-5">
@@ -304,9 +311,14 @@ export const DetailsPage: React.FC = () => {
                   <span>{details.duration}</span>
                 </span>
               )}
-              {details.ageRating && (
-                <span className="px-2.5 py-1 rounded-full bg-white/[0.08] border border-white/15 text-zinc-200 text-[11px] font-extrabold">
-                  {details.ageRating}
+              {resolvedAgeRating && (
+                <span
+                  className={`px-2.5 py-1 rounded-full text-[11px] font-display font-black tabular-nums ${getAgeRatingBadgeClass(
+                    resolvedAgeRating
+                  )}`}
+                  title={`${t.details.ageRating}: ${resolvedAgeRating}`}
+                >
+                  {resolvedAgeRating}
                 </span>
               )}
             </div>

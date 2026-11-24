@@ -437,3 +437,129 @@ export function formatShortcutLabel(binding?: string): string {
   parts.push(keyLabel);
   return parts.join(' + ');
 }
+
+/** Normalizes explicit Russian or MPAA age rating text into canonical "0+" / "6+" / "12+" / "16+" / "18+". */
+export function normalizeAgeRating(raw?: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  const cleaned = raw.trim();
+  if (!cleaned) return '';
+  const plusMatch = cleaned.match(/\b(0|6|12|14|16|18|21)\s*\+/);
+  if (plusMatch) {
+    const n = parseInt(plusMatch[1], 10);
+    if (n >= 18) return '18+';
+    if (n >= 16) return '16+';
+    if (n >= 12) return '12+';
+    if (n >= 6) return '6+';
+    return '0+';
+  }
+  const upper = cleaned.toUpperCase();
+  if (/\b(?:NC-17|TV-MA|X|XXX|ADULT|R)\b/.test(upper)) return '18+';
+  if (/\b(?:TV-14|M|15)\b/.test(upper)) return '16+';
+  if (/\b(?:PG-13|TV-PG)\b/.test(upper)) return '12+';
+  if (/\b(?:PG|TV-Y7)\b/.test(upper)) return '6+';
+  if (/\b(?:G|TV-G|TV-Y)\b/.test(upper)) return '0+';
+  return '';
+}
+
+/** Returns explicit age rating when available, or infers a sensible rating from type/genres/title so every item shows one. */
+export function inferAgeRating(item?: {
+  ageRating?: string;
+  genres?: string[];
+  type?: string;
+  title?: string;
+  info?: string;
+}): string {
+  if (!item) return '16+';
+  const explicit = normalizeAgeRating(item.ageRating);
+  if (explicit) return explicit;
+  const fromInfo = normalizeAgeRating(item.info);
+  if (fromInfo) return fromInfo;
+
+  if (item.type === 'adult' || item.type === 'erotica') return '18+';
+
+  const haystack = [
+    ...(item.genres || []),
+    item.title || '',
+    item.info || '',
+  ]
+    .join(' ')
+    .toLowerCase();
+
+  if (/(?:эрот|erot|18\+|хентай|hentai|adult|для взрослых|ужас|horror|слэшер|slasher|триллер.*18)/i.test(haystack)) {
+    return '18+';
+  }
+  if (/(?:триллер|thriller|криминал|crime|боевик|action|военн|war|детектив|detective|драм|drama|нуар|noir)/i.test(haystack)) {
+    return '16+';
+  }
+  if (/(?:мульт|cartoon|семейн|family|детск|kids|сказк)/i.test(haystack) || item.type === 'cartoons') {
+    return '6+';
+  }
+  if (/(?:фантастик|sci-fi|фэнтези|fantasy|приключен|adventure|комед|comedy|мелодрам|romance|аниме|anime|мюзикл|musical|спорт|sport)/i.test(haystack) || item.type === 'animation') {
+    return '12+';
+  }
+  return '16+';
+}
+
+export function getAgeRatingBadgeClass(ageRating?: string): string {
+  const norm = normalizeAgeRating(ageRating) || ageRating || '16+';
+  if (norm === '18+') {
+    return 'text-rose-100 bg-rose-600/90 border border-rose-300/45 shadow-[0_2px_10px_rgba(225,29,72,0.5)]';
+  }
+  if (norm === '16+') {
+    return 'text-amber-200 bg-[#1B110B]/85 border border-amber-400/40';
+  }
+  if (norm === '12+') {
+    return 'text-sky-200 bg-[#0B1520]/85 border border-sky-400/35';
+  }
+  return 'text-emerald-200 bg-[#0A1812]/85 border border-emerald-400/35';
+}
+
+export function hasLatinLetters(text?: string): boolean {
+  return Boolean(text && /[A-Za-z]{2,}/.test(text));
+}
+
+/** Returns an immediate localized title if no network translation is needed, or null if async translation is required. */
+export function resolveImmediateLocalizedTitle(
+  title: string,
+  origTitle: string | undefined,
+  language: 'ru' | 'uk' | 'en'
+): string | null {
+  const cleanTitle = (title || '').trim();
+  const cleanOrig = (origTitle || '').trim();
+  if (!cleanTitle) return cleanOrig || '';
+  if (language === 'ru') return cleanTitle;
+  if (language === 'en') {
+    if (cleanOrig && hasLatinLetters(cleanOrig) && !/[а-яёіїєґ]/i.test(cleanOrig)) {
+      return cleanOrig;
+    }
+    if (hasLatinLetters(cleanTitle) && !/[а-яёіїєґ]/i.test(cleanTitle)) {
+      return cleanTitle;
+    }
+    return null;
+  }
+  // For Ukrainian: if title already contains Ukrainian-specific letters, keep it immediately
+  if (/[іїєґ]/i.test(cleanTitle)) return cleanTitle;
+  return null;
+}
+
+/** Converts SRT or raw subtitle text into valid WebVTT format. */
+export function srtToVtt(raw: string): string {
+  if (!raw || typeof raw !== 'string') return '';
+  const cleaned = raw.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
+  if (!cleaned) return '';
+  if (/^WEBVTT\b/i.test(cleaned)) return cleaned;
+  // Replace SRT comma milliseconds (00:01:23,456) with VTT dot milliseconds (00:01:23.456)
+  const body = cleaned.replace(
+    /(\d{1,2}:\d{2}:\d{2}),(\d{3})\s*-->\s*(\d{1,2}:\d{2}:\d{2}),(\d{3})/g,
+    '$1.$2 --> $3.$4'
+  );
+  return `WEBVTT\n\n${body}`;
+}
+
+export function matchSubtitleLanguageCode(label?: string): 'ru' | 'uk' | 'en' | null {
+  const low = (label || '').toLowerCase();
+  if (/\b(?:uk|ukr|ua)\b|укра|ukrain/i.test(low)) return 'uk';
+  if (/\b(?:ru|rus)\b|русс|russian/i.test(low)) return 'ru';
+  if (/\b(?:en|eng)\b|англ|english/i.test(low)) return 'en';
+  return null;
+}

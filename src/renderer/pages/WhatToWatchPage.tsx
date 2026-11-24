@@ -25,6 +25,7 @@ import {
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
+import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
 import appLogo from '../assets/logo.png';
 
 const CATEGORY_CARDS: Array<{
@@ -224,6 +225,7 @@ export const WhatToWatchPage: React.FC = () => {
   };
 
   const pickedItem = currentPick?.item;
+  const pickedDisplayTitle = useLocalizedTitle(pickedItem?.title, pickedItem?.origTitle);
   const isFav = pickedItem ? favorites.some((f) => f.mediaId === pickedItem.id) : false;
 
   const reasonLabel = (() => {
@@ -504,7 +506,7 @@ export const WhatToWatchPage: React.FC = () => {
                   </div>
 
                   <h2 className="font-display text-2xl sm:text-3xl font-black text-white leading-tight">
-                    {pickedItem.title}
+                    {pickedDisplayTitle || pickedItem.title}
                   </h2>
 
                   {pickedItem.origTitle && (

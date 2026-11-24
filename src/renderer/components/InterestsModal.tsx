@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Sparkles, Check, X, Film, Tv, Smile, Flame, Wand2 } from 'lucide-react';
+import { Sparkles, Check, X, Film, Tv, Smile, Flame, Wand2, ShieldAlert } from 'lucide-react';
 import { ContentType } from '../../shared/types';
 import { GENRES } from '../../shared/constants';
 import { normalizeInterestsProfile, SELECTABLE_TYPES } from '../../shared/recommendations';
@@ -12,6 +12,8 @@ const TYPE_ICONS: Record<ContentType, React.ComponentType<{ className?: string }
   cartoons: Smile,
   animation: Sparkles,
   shows: Tv,
+  adult: ShieldAlert,
+  erotica: Flame,
 };
 
 export const InterestsModal: React.FC = () => {

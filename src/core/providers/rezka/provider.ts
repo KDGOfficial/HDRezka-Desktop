@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.61';
+  public version = '0.0.62';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -2417,15 +2417,27 @@ export class RezkaProvider implements IProvider {
   private async getKinobaseCatalog(filter: CatalogFilter, origin?: string): Promise<SearchResult | null> {
     try {
       const base = origin || this.getKinobaseOrigin();
+      const isAdultOrErotica =
+        filter.type === 'erotica' ||
+        filter.type === 'adult' ||
+        filter.genre === 'erotica' ||
+        filter.genre === 'adult';
       const routeMap: Record<ContentType, string> = {
         films: '/films',
         series: '/serials',
         cartoons: '/animation',
         animation: '/animation',
         shows: '/tv',
+        adult: '/films',
+        erotica: '/films',
       };
       const baseRoute = routeMap[filter.type] || '/films';
       const params = new URLSearchParams();
+      if (filter.type === 'erotica' || filter.genre === 'erotica') {
+        params.set('genre', 'erotika');
+      } else if (filter.type === 'adult' || filter.genre === 'adult') {
+        params.set('genre', 'uzhasy');
+      }
       if (filter.sort === 'popular' || filter.sort === 'rating') {
         params.set('sort', 'rating');
       }
@@ -2437,7 +2449,14 @@ export class RezkaProvider implements IProvider {
       const page = await this.fetchKinobasePage(targetUrl);
       if (!page) return null;
 
-      const items = this.parseKinobaseItems(page.html, filter.type, base);
+      let items = this.parseKinobaseItems(page.html, filter.type, base);
+      if (isAdultOrErotica) {
+        items = items.map((it) => ({
+          ...it,
+          ageRating: '18+',
+          genres: it.genres && it.genres.length > 0 ? it.genres : [filter.type === 'erotica' || filter.genre === 'erotica' ? 'Эротика' : '18+'],
+        }));
+      }
       if (items.length === 0) return null;
 
       const hasMore = page.html.includes(`page=${filter.page + 1}`) || page.html.includes('pagination');
@@ -3770,19 +3789,41 @@ export class RezkaProvider implements IProvider {
   private async getKinogoCatalog(filter: CatalogFilter): Promise<SearchResult | null> {
     try {
       const base = this.getKinogoBaseUrl();
+      const isAdultOrErotica =
+        filter.type === 'erotica' ||
+        filter.type === 'adult' ||
+        filter.genre === 'erotica' ||
+        filter.genre === 'adult';
       const routeMap: Record<ContentType, string> = {
         films: '/films/',
         series: '/zarubezhnye_serialy/',
         cartoons: '/cartoons/',
         animation: '/anime/',
         shows: '/films/',
+        adult: '/uzhasy/',
+        erotica: '/erotika/',
       };
-      const basePath = filter.genre ? `/${filter.genre}/` : (routeMap[filter.type] || '/films/');
+      const genrePath =
+        filter.genre === 'erotica'
+          ? '/erotika/'
+          : filter.genre === 'adult'
+            ? '/uzhasy/'
+            : filter.genre
+              ? `/${filter.genre}/`
+              : '';
+      const basePath = genrePath || (routeMap[filter.type] || '/films/');
       const pagePath = filter.page > 1 ? `${basePath}page/${filter.page}/` : basePath;
       const html = await this.fetchKinogoPage(`${base}${pagePath}`);
       if (!html) return null;
 
-      const items = this.parseKinogoItems(html, filter.type);
+      let items = this.parseKinogoItems(html, filter.type);
+      if (isAdultOrErotica) {
+        items = items.map((it) => ({
+          ...it,
+          ageRating: '18+',
+          genres: it.genres && it.genres.length > 0 ? it.genres : [filter.type === 'erotica' || filter.genre === 'erotica' ? 'Эротика' : '18+'],
+        }));
+      }
       if (items.length === 0) return null;
 
       return {
@@ -4299,9 +4340,18 @@ export class RezkaProvider implements IProvider {
       if (gCat) return gCat;
     }
     try {
-      const catSlug = filter.type === 'shows' ? 'show' : filter.type;
+      const catSlug =
+        filter.type === 'shows'
+          ? 'show'
+          : filter.type === 'erotica' || filter.type === 'adult'
+            ? 'films'
+            : filter.type;
       let path = `/${catSlug}/`;
-      if (filter.genre) {
+      if (filter.type === 'erotica' || filter.genre === 'erotica') {
+        path += 'erotic/';
+      } else if (filter.type === 'adult' || filter.genre === 'adult') {
+        path += 'horror/';
+      } else if (filter.genre) {
         path += `${filter.genre}/`;
       }
       if (filter.sort === 'popular') {

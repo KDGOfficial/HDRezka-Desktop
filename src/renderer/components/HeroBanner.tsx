@@ -16,6 +16,8 @@ import { MediaItem } from '../../shared/types';
 import { DynamicHeroSlide } from '../../shared/recommendations';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
+import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
+import { inferAgeRating, getAgeRatingBadgeClass } from '../../shared/utils';
 
 interface HeroBannerProps {
   item: MediaItem;
@@ -81,6 +83,8 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
   const safeIndex = activeIndex < deck.length ? activeIndex : 0;
   const activeSlide = deck[safeIndex] || deck[0];
   const activeItem = activeSlide.item;
+  const displayTitle = useLocalizedTitle(activeItem.title, activeItem.origTitle);
+  const ageRating = inferAgeRating(activeItem);
   const isFav = favorites.some((f) => f.mediaId === activeItem.id);
 
   useEffect(() => {
@@ -205,6 +209,15 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
               </span>
             )}
 
+            <span
+              className={`px-2.5 py-1 rounded-full text-[11px] font-display font-black tabular-nums ${getAgeRatingBadgeClass(
+                ageRating
+              )}`}
+              title={`${t.details.ageRating}: ${ageRating}`}
+            >
+              {ageRating}
+            </span>
+
             <span className="logo-pill px-2.5 py-1 rounded-full text-[10px] font-display font-extrabold tracking-widest text-white uppercase">
               Full HD · 4K
             </span>
@@ -212,7 +225,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
 
           {/* Bold Geometric Display Title */}
           <h1 className="font-display text-[clamp(1.7rem,3.1vw,3.1rem)] font-black text-white tracking-tight leading-[1.08] mb-3.5 line-clamp-2 drop-shadow-[0_6px_24px_rgba(0,0,0,0.85)]">
-            {activeItem.title}
+            {displayTitle}
           </h1>
 
           {/* Synopsis */}

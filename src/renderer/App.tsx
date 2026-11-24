@@ -8,6 +8,7 @@ import { CollectionModal } from './components/CollectionModal';
 import { UpdateModal } from './components/UpdateModal';
 import { WhatsNewModal } from './components/WhatsNewModal';
 import { InterestsModal } from './components/InterestsModal';
+import { StartupSplash } from './components/StartupSplash';
 import { useMediaStore } from './stores/useMediaStore';
 import { useSettingsStore } from './stores/useSettingsStore';
 import { useTranslation } from './i18n';
@@ -146,6 +147,10 @@ export const App: React.FC = () => {
         return <CatalogPage initialType="cartoons" />;
       case 'animation':
         return <CatalogPage initialType="animation" />;
+      case 'adult':
+        return <CatalogPage initialType="adult" />;
+      case 'erotica':
+        return <CatalogPage initialType="erotica" />;
       case 'collections':
         return <CollectionsPage />;
       case 'favorites':
@@ -222,6 +227,7 @@ export const App: React.FC = () => {
       )}
 
       {/* Overlays & Native Modal Dialogs */}
+      <StartupSplash />
       <VideoPlayer />
       <CollectionModal />
       <UpdateModal />

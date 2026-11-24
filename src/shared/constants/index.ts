@@ -1,7 +1,7 @@
 import { UserSettings, HotkeysConfig } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.61';
+export const APP_VERSION = '0.0.62';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -195,6 +195,8 @@ export const IPC_CHANNELS = {
   SET_ACTIVE_MIRROR: 'provider:setActiveMirror',
   VERIFY_MIRROR: 'provider:verifyMirror',
   FIND_ONLINE_MIRRORS: 'provider:findOnlineMirrors',
+  TRANSLATE_TITLES: 'provider:translateTitles',
+  GET_SUBTITLE_TRACK: 'provider:getSubtitleTrack',
 
   // Database - History
   GET_WATCH_HISTORY: 'db:getWatchHistory',
@@ -259,6 +261,8 @@ export const GENRES = [
   { id: 'detective', title: 'Детективы' },
   { id: 'documentary', title: 'Документальные' },
   { id: 'drama', title: 'Драмы' },
+  { id: 'erotica', title: 'Эротика' },
+  { id: 'adult', title: '18+' },
   { id: 'family', title: 'Семейные' },
   { id: 'fantasy', title: 'Фэнтези' },
   { id: 'fiction', title: 'Фантастика' },

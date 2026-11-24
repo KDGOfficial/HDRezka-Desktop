@@ -52,6 +52,18 @@ export const api = {
   verifyMirror: (targetUrl?: string): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.VERIFY_MIRROR, targetUrl),
   findOnlineMirrors: (): Promise<{ added: string[]; all: string[] }> =>
     ipcRenderer.invoke(IPC_CHANNELS.FIND_ONLINE_MIRRORS),
+  translateTitles: (titles: string[], targetLang: 'uk' | 'en'): Promise<Record<string, string>> =>
+    ipcRenderer.invoke(IPC_CHANNELS.TRANSLATE_TITLES, titles, targetLang),
+  getSubtitleTrack: (params: {
+    title?: string;
+    origTitle?: string;
+    year?: number;
+    season?: number;
+    episode?: number;
+    lang: 'ru' | 'uk' | 'en';
+    existingSubtitles?: Array<{ language: string; url: string }>;
+  }): Promise<import('../shared/types').SubtitleFetchResult | null> =>
+    ipcRenderer.invoke(IPC_CHANNELS.GET_SUBTITLE_TRACK, params),
 
   // Watch History
   getWatchHistory: (limit?: number) => ipcRenderer.invoke(IPC_CHANNELS.GET_WATCH_HISTORY, limit),

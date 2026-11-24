@@ -9,6 +9,7 @@ import { getMainWindow, restoreDefaultWindowBounds } from '../window';
 import { setBrowserAdBlockEnabled, getBrowserAdBlockStats } from '../main';
 import { ProviderManager } from '../../core/providers/manager';
 import { clearStaleAnubisCookies } from '../../core/providers/rezka/provider';
+import { translateTitlesBatch, fetchSubtitleTrack } from '../../core/providers/rezka/localization';
 import { AppDatabase } from '../database';
 import { CatalogFilter, WatchHistoryEntry, FavoriteItem, CollectionItem, UserSettings, UpdateInfo, UpdateProgress } from '../../shared/types';
 
@@ -117,6 +118,16 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.SEARCH_ADVANCED, async (_, query: string, page = 1) => {
     const provider = providerManager.getProvider();
     return await provider.searchAdvanced(query, page);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.TRANSLATE_TITLES, async (_, titles: string[], targetLang: 'uk' | 'en') => {
+    if (!Array.isArray(titles) || (targetLang !== 'uk' && targetLang !== 'en')) return {};
+    return await translateTitlesBatch(titles, targetLang);
+  });
+
+  ipcMain.handle(IPC_CHANNELS.GET_SUBTITLE_TRACK, async (_, params: any) => {
+    if (!params || (params.lang !== 'ru' && params.lang !== 'uk' && params.lang !== 'en')) return null;
+    return await fetchSubtitleTrack(params);
   });
 
   ipcMain.handle(IPC_CHANNELS.CHECK_MIRRORS, async () => {

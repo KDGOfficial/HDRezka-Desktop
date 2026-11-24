@@ -1,9 +1,10 @@
 import React from 'react';
 import { Star, Heart, Play, Plus, X, Eye } from 'lucide-react';
 import { MediaItem } from '../../shared/types';
-import { getRatingColor, formatCompactNumber } from '../../shared/utils';
+import { getRatingColor, formatCompactNumber, inferAgeRating, getAgeRatingBadgeClass } from '../../shared/utils';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
+import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
 
 interface MediaCardProps {
   item: MediaItem;
@@ -15,6 +16,8 @@ interface MediaCardProps {
 export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', showProgress = false, onRemove }) => {
   const { openDetails, favorites, toggleFavorite, openCollectionModal } = useMediaStore();
   const { t } = useTranslation();
+  const displayTitle = useLocalizedTitle(item.title, item.origTitle);
+  const ageRating = inferAgeRating(item);
   const isFav = favorites.some((f) => f.mediaId === item.id);
 
   const sizeClasses = {
@@ -53,7 +56,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
       }}
       tabIndex={0}
       role="button"
-      aria-label={item.title}
+      aria-label={displayTitle}
       className={`group relative flex flex-col cursor-pointer cinema-card select-none rounded-2xl ${sizeClasses}`}
     >
       {/* 2:3 Cinema Poster Frame (always dark cinema glass over artwork in both themes) */}
@@ -63,7 +66,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
         {item.poster ? (
           <img
             src={item.poster}
-            alt={item.title}
+            alt={displayTitle}
             loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
             onError={(e) => {
@@ -93,6 +96,18 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
             </span>
           </div>
         )}
+
+        {/* Always-Visible Age Rating Badge (bottom-left of poster, hides on hover HUD) */}
+        <div className="group-hover:opacity-0 transition-opacity duration-200 absolute bottom-2.5 left-2.5 pointer-events-none">
+          <span
+            className={`px-1.5 py-0.5 rounded-md text-[10px] font-display font-black tabular-nums backdrop-blur-md ${getAgeRatingBadgeClass(
+              ageRating
+            )}`}
+            title={`${t.details.ageRating}: ${ageRating}`}
+          >
+            {ageRating}
+          </span>
+        </div>
 
         {/* Always-Visible Quick Remove Button (for Continue Watching) */}
         {onRemove && (
@@ -183,7 +198,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
       {/* Title & Metadata below Poster */}
       <div className="mt-2.5 px-0.5 text-left">
         <h3 className="text-[13px] font-bold text-white truncate group-hover:text-brand-orange transition-colors leading-snug">
-          {item.title}
+          {displayTitle}
         </h3>
         <div className="flex items-center gap-1.5 text-[11px] text-zinc-400 mt-0.5 font-medium">
           {item.year && <span className="tabular-nums">{item.year}</span>}

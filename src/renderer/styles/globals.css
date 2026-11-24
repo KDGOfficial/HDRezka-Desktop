@@ -742,6 +742,127 @@ video::cue {
   animation: fadeInScale 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+/* Startup Splash Animation (Neon Ember Cinema — compositor-only opacity & transform) */
+@keyframes splashLogoIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  65% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes splashRingPulse {
+  0% {
+    opacity: 0.72;
+    transform: scale(0.88);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.85);
+  }
+}
+
+@keyframes splashTextIn {
+  0% {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes splashBarSweep {
+  0% {
+    transform: scaleX(0);
+  }
+  100% {
+    transform: scaleX(1);
+  }
+}
+
+.startup-splash {
+  transition: opacity 0.42s cubic-bezier(0.16, 1, 0.3, 1), transform 0.42s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.startup-splash--exit {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.startup-splash__glow {
+  position: absolute;
+  width: 460px;
+  height: 460px;
+  border-radius: 9999px;
+  filter: blur(80px);
+  opacity: 0.34;
+}
+
+.startup-splash__glow--crimson {
+  top: 18%;
+  left: 26%;
+  background: radial-gradient(circle, rgba(255, 18, 79, 0.72) 0%, transparent 70%);
+}
+
+.startup-splash__glow--amber {
+  bottom: 16%;
+  right: 24%;
+  background: radial-gradient(circle, rgba(255, 122, 0, 0.58) 0%, transparent 70%);
+}
+
+.startup-splash__ring {
+  position: absolute;
+  inset: -10px;
+  border-radius: 9999px;
+  border: 2px solid rgba(255, 77, 46, 0.55);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.startup-splash__bar {
+  background: var(--gradient-ember);
+  transform-origin: left center;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .startup-splash--exit {
+    transform: scale(1.04);
+  }
+
+  .startup-splash__logo {
+    animation: splashLogoIn 0.72s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .startup-splash__ring--outer {
+    animation: splashRingPulse 1.25s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+
+  .startup-splash__ring--inner {
+    animation: splashRingPulse 1.25s cubic-bezier(0.16, 1, 0.3, 1) 0.42s both;
+  }
+
+  .startup-splash__title {
+    animation: splashTextIn 0.58s cubic-bezier(0.16, 1, 0.3, 1) 0.22s both;
+  }
+
+  .startup-splash__subtitle {
+    animation: splashTextIn 0.58s cubic-bezier(0.16, 1, 0.3, 1) 0.36s both;
+  }
+
+  .startup-splash__bar {
+    animation: splashBarSweep 1.15s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+  }
+}
+
 /* Collapsible secondary disclosures (e.g. About Author in Settings) */
 .author-disclosure > summary {
   list-style: none;

@@ -15,6 +15,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Wand2,
+  Flame,
+  ShieldAlert,
 } from 'lucide-react';
 import { useMediaStore, AppPage } from '../stores/useMediaStore';
 import { useTranslation, Locale } from '../i18n';
@@ -36,6 +38,8 @@ const NAV_ITEMS: NavItem[] = [
   { id: 'series', key: 'series', icon: Tv, section: 'main' },
   { id: 'cartoons', key: 'cartoons', icon: Smile, section: 'main' },
   { id: 'animation', key: 'animation', icon: Sparkles, section: 'main' },
+  { id: 'adult', key: 'adult', icon: ShieldAlert, section: 'main' },
+  { id: 'erotica', key: 'erotica', icon: Flame, section: 'main' },
 
   { id: 'collections', key: 'collections', icon: Layers, section: 'library' },
   { id: 'favorites', key: 'favorites', icon: Heart, section: 'library' },
