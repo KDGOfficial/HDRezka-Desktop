@@ -897,6 +897,66 @@ video::cue {
   }
 }
 
+/* Accessible horizontal tablist with scroll-driven edge fades & non-color-only active underline */
+@property --fade-start {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@property --fade-end {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+.tabs-scroll-fade {
+  scroll-snap-type: inline proximity;
+  scroll-padding-inline: 2.25rem;
+  overscroll-behavior-x: contain;
+  --fade-size: 2.25rem;
+  --fade-dir: right;
+  --fade-start-pos: 0;
+  --fade-end-pos: 100%;
+}
+
+.tabs-scroll-fade > [role="tab"] {
+  scroll-snap-align: start;
+}
+
+@supports (animation-timeline: scroll(self inline)) {
+  .tabs-scroll-fade {
+    mask:
+      linear-gradient(black, black) no-clip subtract,
+      linear-gradient(to var(--fade-dir), black, transparent) var(--fade-start-pos) 0 / var(--fade-start) 100% no-repeat no-clip,
+      linear-gradient(to var(--fade-dir), transparent, black) var(--fade-end-pos) 0 / var(--fade-end) 100% no-repeat no-clip;
+    animation: reveal-tab-fade-start linear both, hide-tab-fade-end linear both;
+    animation-timeline: scroll(self inline);
+    animation-range: 0 var(--fade-size), calc(100% - var(--fade-size)) 100%;
+  }
+}
+
+@keyframes reveal-tab-fade-start {
+  to {
+    --fade-start: var(--fade-size);
+  }
+}
+
+@keyframes hide-tab-fade-end {
+  from {
+    --fade-end: var(--fade-size);
+  }
+}
+
+/* Non-color-only active tab underline using border (preserved in forced-colors mode) */
+.tab-indicator[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  inset: auto 0.5rem -1px;
+  border-block-end: 2px solid var(--brand-gold);
+  border-radius: 9999px;
+}
+
 /* Accessibility: Reduced motion & Windows High Contrast (Forced Colors Mode) */
 @media (prefers-reduced-motion: reduce) {
   *,

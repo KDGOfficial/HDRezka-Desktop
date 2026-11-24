@@ -1,7 +1,7 @@
 import { UserSettings, HotkeysConfig, SubtitleStyle } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.67';
+export const APP_VERSION = '0.0.68';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -40,10 +40,13 @@ export const OPEN_MIRROR_SEEDS = [
 export const ANIME_MIRROR_SEEDS = [
   'https://aniliberty.top',
   'https://anilibria.wtf',
+  'https://api.yani.tv',
+  'https://smotret-anime.org',
+  'https://anime365.ru',
   'https://api.animetop.info',
   'https://api.animevost.org',
-  'https://api.yani.tv',
   'https://animego.me',
+  'https://animego.org',
   'https://uakino.biz',
 ];
 
@@ -57,7 +60,7 @@ const AD_PATH_RE =
   /(?:\/(?:vast|vpaid|vmap|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|branding\/|reklama|doubleclick|pcode\/adfox|pagead\/|ads\/|adv\/)|\/(?:pop|popunder|clickunder|vast|vmap)\.(?:js|xml|json)(?:$|\?)|[?&](?:vast|vpaid|vmap|ad_tag|ad_url|preroll|popunder|clickunder)=)/i;
 
 const TRUSTED_MEDIA_PORTAL_RE =
-  /(?:^|\.)(?:kinobase\.org|kinovod\.pro|hdstudio\.org|insertunit\.ws|delivembed\.cc|kinogo\.[a-z]+|aniliberty\.top|anilibria\.[a-z]+|libria\.fun|animetop\.info|animevost\.org|yummyanime\.[a-z]+|yummyani\.[a-z]+|yani\.tv|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
+  /(?:^|\.)(?:kinobase\.org|kinovod\.pro|hdstudio\.org|insertunit\.ws|delivembed\.cc|kinogo\.[a-z]+|aniliberty\.top|anilibria\.[a-z]+|libria\.fun|animetop\.info|animevost\.org|yummyanime\.[a-z]+|yummyani\.me|yani\.tv|smotret-anime\.[a-z]+|anime365\.ru|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
 
 const GOOGLE_SEARCH_HOST_RE = /(?:^|\.)google\.[a-z]{2,}(?:\.[a-z]{2})?$/i;
 

@@ -13,15 +13,13 @@ import {
   AlertCircle,
   MessageSquare,
   Award,
-  Mic2,
-  Tv,
 } from 'lucide-react';
 import { MediaDetails, Season } from '../../shared/types';
 import { useMediaStore } from '../stores/useMediaStore';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { MediaSlider } from '../components/MediaSlider';
-import { HorizontalSlider } from '../components/HorizontalSlider';
+import { SeriesNavigationPanel } from '../components/SeriesNavigationPanel';
 import { useTranslation } from '../i18n';
 import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
 import { formatDuration, getResumableTime, inferAgeRating, getAgeRatingBadgeClass } from '../../shared/utils';
@@ -244,7 +242,6 @@ export const DetailsPage: React.FC = () => {
   const isFav = favorites.some((f) => f.mediaId === details.id);
   const isSeriesLike =
     details.type === 'series' || details.type === 'animation' || details.type === 'cartoons' || seasons.length > 0;
-  const currentSeason = seasons.find((s) => s.id === selectedSeasonId) || seasons[0];
 
   return (
     <div className="w-full pb-20 text-left select-none animate-fadeIn">
@@ -510,144 +507,20 @@ export const DetailsPage: React.FC = () => {
         </div>
       </section>
 
-      {/* Voice Acting / Translators Selector */}
-      {details.translators && details.translators.length > 0 && (
-        <section className="mb-8 p-6 rounded-3xl cinema-panel">
-          <h2 className="font-display text-sm font-black text-white uppercase tracking-wider mb-4 flex items-center gap-2.5">
-            <span
-              className="w-1.5 h-4 rounded-full"
-              style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
-            />
-            <Mic2 className="w-4 h-4 text-brand-orange" aria-hidden="true" />
-            <span>{t.details.audioTranslation}</span>
-            {details.translators.length > 1 && (
-              <span className="px-2 py-0.5 rounded-full bg-white/[0.08] text-[11px] font-mono font-bold text-zinc-300 tabular-nums">
-                {details.translators.length}
-              </span>
-            )}
-          </h2>
-          <HorizontalSlider
-            ariaLabel={t.details.audioTranslation}
-            itemCount={details.translators.length}
-            trackClassName="flex items-center gap-2"
-          >
-            {details.translators.map((tr) => {
-              const isActive = selectedTranslatorId === tr.id;
-              return (
-                <button
-                  key={tr.id}
-                  type="button"
-                  aria-pressed={isActive}
-                  onClick={() => handleTranslatorChange(tr.id)}
-                  className={`flex-shrink-0 whitespace-nowrap px-4 py-2 rounded-full text-xs font-bold cursor-pointer ${
-                    isActive
-                      ? 'btn-ember text-white'
-                      : 'bg-white/[0.05] hover:bg-white/[0.1] text-zinc-300 hover:text-white border border-white/[0.08]'
-                  }`}
-                >
-                  {tr.name}
-                  {tr.camrip && <span className="ml-1.5 text-[10px] text-amber-300 font-semibold">(CamRip)</span>}
-                </button>
-              );
-            })}
-          </HorizontalSlider>
-        </section>
-      )}
-
-      {/* Seasons & Episodes Grid / Slider */}
-      {isSeriesLike && seasons.length > 0 && (
-        <section className="mb-8 p-6 rounded-3xl cinema-panel">
-          <div className="mb-5 pb-4 border-b border-white/[0.06] space-y-3.5">
-            <h2 className="font-display text-sm font-black text-white uppercase tracking-wider flex items-center gap-2.5">
-              <span
-                className="w-1.5 h-4 rounded-full"
-                style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
-              />
-              <Tv className="w-4 h-4 text-brand-orange" aria-hidden="true" />
-              <span>{t.details.seasonsAndEpisodes}</span>
-              {currentSeason?.episodes?.length ? (
-                <span className="px-2 py-0.5 rounded-full bg-white/[0.08] text-[11px] font-mono font-bold text-zinc-300 tabular-nums">
-                  {currentSeason.episodes.length}
-                </span>
-              ) : null}
-            </h2>
-
-            <HorizontalSlider
-              ariaLabel={t.details.season}
-              compact
-              itemCount={seasons.length}
-              className="w-full"
-              trackClassName="flex items-center gap-1.5"
-            >
-              {seasons.map((s) => (
-                <button
-                  key={s.id}
-                  type="button"
-                  aria-pressed={selectedSeasonId === s.id}
-                  onClick={() => setSelectedSeasonId(s.id)}
-                  className={`flex-shrink-0 px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap cursor-pointer ${
-                    selectedSeasonId === s.id
-                      ? 'btn-ember text-white'
-                      : 'bg-white/[0.05] text-zinc-400 hover:text-white hover:bg-white/[0.1]'
-                  }`}
-                >
-                  {s.title || `${t.details.season} ${s.id}`}
-                </button>
-              ))}
-            </HorizontalSlider>
-          </div>
-
-          {loadingEpisodes ? (
-            <div className="py-10 text-center text-xs text-zinc-400 animate-pulse font-semibold">
-              {t.details.loadingEpisodes}
-            </div>
-          ) : currentSeason && currentSeason.episodes?.length > 0 ? (
-            currentSeason.episodes.length > 16 ? (
-              <HorizontalSlider
-                ariaLabel={t.details.seasonsAndEpisodes}
-                itemCount={currentSeason.episodes.length}
-                trackClassName="grid grid-rows-2 grid-flow-col auto-cols-[124px] gap-2.5"
-              >
-                {currentSeason.episodes.map((ep) => (
-                  <button
-                    key={ep.id}
-                    type="button"
-                    onClick={() => handleWatch(currentSeason.id, ep.episodeId)}
-                    className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-white/[0.04] hover:bg-gradient-to-br hover:from-brand-crimson hover:to-brand-orange border border-white/[0.07] hover:border-white/25 text-zinc-200 hover:text-white text-xs font-bold group active:scale-95 cursor-pointer"
-                  >
-                    <span className="text-[10px] text-zinc-400 group-hover:text-white/85 uppercase font-mono">
-                      {t.details.episode} {ep.episodeId}
-                    </span>
-                    <span className="truncate w-full text-center mt-1 text-white group-hover:text-white">
-                      {ep.title || `${t.details.episode} ${ep.episodeId}`}
-                    </span>
-                  </button>
-                ))}
-              </HorizontalSlider>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2.5">
-                {currentSeason.episodes.map((ep) => (
-                  <button
-                    key={ep.id}
-                    type="button"
-                    onClick={() => handleWatch(currentSeason.id, ep.episodeId)}
-                    className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-white/[0.04] hover:bg-gradient-to-br hover:from-brand-crimson hover:to-brand-orange border border-white/[0.07] hover:border-white/25 text-zinc-200 hover:text-white text-xs font-bold group active:scale-95 cursor-pointer"
-                  >
-                    <span className="text-[10px] text-zinc-400 group-hover:text-white/85 uppercase font-mono">
-                      {t.details.episode} {ep.episodeId}
-                    </span>
-                    <span className="truncate w-full text-center mt-1 text-white group-hover:text-white">
-                      {ep.title || `${t.details.episode} ${ep.episodeId}`}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            )
-          ) : (
-            <div className="py-8 text-center text-xs text-zinc-500">{t.details.noEpisodes}</div>
-          )}
-        </section>
-      )}
+      {/* Unified Voiceover, Seasons & Episodes Navigation */}
+      <SeriesNavigationPanel
+        translators={details.translators}
+        selectedTranslatorId={selectedTranslatorId}
+        onTranslatorChange={handleTranslatorChange}
+        seasons={seasons}
+        selectedSeasonId={selectedSeasonId}
+        onSeasonChange={setSelectedSeasonId}
+        loadingEpisodes={loadingEpisodes}
+        onSelectEpisode={(sId, epId) => handleWatch(sId, epId)}
+        lastWatchedSeason={lastWatch?.season}
+        lastWatchedEpisode={lastWatch?.episode}
+        isSeriesLike={isSeriesLike}
+      />
 
       {/* Description & Cast */}
       <div className="mb-10 grid grid-cols-1 md:grid-cols-3 gap-6">

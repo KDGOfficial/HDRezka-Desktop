@@ -152,3 +152,137 @@ test('getYummyAnimeStream resolves chosen dubbing embed URL and reports unreleas
     globalThis.fetch = origFetch;
   }
 });
+
+test('ANIME_MIRROR_SEEDS includes Anime365 (smotret-anime.org) and AnimeGO mirrors', () => {
+  assert.ok(ANIME_MIRROR_SEEDS.includes('https://smotret-anime.org'));
+  assert.ok(ANIME_MIRROR_SEEDS.includes('https://anime365.ru'));
+  assert.ok(ANIME_MIRROR_SEEDS.includes('https://animego.org'));
+});
+
+test('parseAnime365Items parses CIS anime series cleanly', () => {
+  const provider = new RezkaProvider();
+  const items = provider.parseAnime365Items([
+    {
+      id: 8762,
+      titles: { ru: 'Ван-Пис', romaji: 'One Piece' },
+      year: 1999,
+      myAnimeListScore: 8.72,
+      posterUrl: 'https://smotret-anime.org/posters/8762.jpg',
+      isHentai: 0,
+    },
+  ]);
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, 'anime365-8762');
+  assert.equal(items[0].title, 'Ван-Пис');
+  assert.equal(items[0].origTitle, 'One Piece');
+  assert.equal(items[0].year, 1999);
+  assert.equal(items[0].type, 'animation');
+});
+
+test('getAniLibertyStream returns null instead of episode 1 when requested episode is missing', async () => {
+  const provider = new RezkaProvider();
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    if (s.includes('/api/v1/anime/releases/10290')) {
+      return new Response(
+        JSON.stringify({
+          id: 10290,
+          episodes: [{ ordinal: 1, hls_1080: 'https://cdn.example/ep1.m3u8' }],
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response('', { status: 404 });
+  };
+  try {
+    const ep1 = await provider.getAniLibertyStream({ mediaId: 'aniliberty-10290', episode: 1 });
+    assert.ok(ep1?.streams?.length === 1);
+    const ep500 = await provider.getAniLibertyStream({ mediaId: 'aniliberty-10290', episode: 500 });
+    assert.equal(ep500, null);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('enrichAnimeDetails merges full YummyAnime episodes and CIS dubs into truncated anime cards', async () => {
+  const provider = new RezkaProvider();
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    if (s.includes('api.yani.tv/search')) {
+      return new Response(
+        JSON.stringify({
+          response: [{ anime_id: 1512, title: 'Ван-Пис', other_titles: ['One Piece'], year: 1999 }],
+        }),
+        { status: 200 }
+      );
+    }
+    if (s.includes('api.yani.tv/anime/1512/videos')) {
+      return new Response(
+        JSON.stringify({
+          response: [
+            { number: '1', data: { dubbing: 'Озвучка Persona99', player: 'Kodik' }, iframe_url: '//kodik.info/ep1' },
+            { number: '500', data: { dubbing: 'Озвучка Persona99', player: 'Kodik' }, iframe_url: '//kodik.info/ep500' },
+            { number: '1180', data: { dubbing: 'Озвучка Animedia', player: 'Kodik' }, iframe_url: '//kodik.info/ep1180' },
+          ],
+        }),
+        { status: 200 }
+      );
+    }
+    if (s.includes('api.yani.tv/anime/1512')) {
+      return new Response(
+        JSON.stringify({
+          response: { anime_id: 1512, title: 'Ван-Пис', other_titles: ['One Piece'], year: 1999, genres: [{ title: 'Аниме' }], viewing_order: [] },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response('', { status: 404 });
+  };
+  try {
+    const enriched = await provider.enrichAnimeDetails({
+      id: 'aniliberty-10290',
+      title: 'Ван-Пис',
+      origTitle: 'One Piece',
+      poster: '',
+      year: 1999,
+      country: 'Япония',
+      genres: ['Аниме'],
+      type: 'animation',
+      description: '',
+      directors: [],
+      actors: [],
+      translators: [{ id: 1, name: 'AniLibria (1080p)', premium: false }],
+      seasons: [{ id: 1, title: 'Сезон 1', episodes: [{ id: 1, episodeId: 1, seasonId: 1, title: 'Серия 1' }] }],
+      similar: [],
+    });
+    const eps = enriched.seasons?.[0]?.episodes || [];
+    assert.ok(eps.some((e) => e.episodeId === 500));
+    assert.ok(eps.some((e) => e.episodeId === 1180));
+    assert.ok(enriched.translators.some((tr) => tr.name.includes('Persona99')));
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('SeriesNavigationPanel buildEpisodeChunks splits 1180 episodes into 50-episode ranges', () => {
+  const navBuild = esbuild.buildSync({
+    entryPoints: [path.resolve(__dirname, '../src/renderer/components/SeriesNavigationPanel.tsx')],
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    external: ['react', 'lucide-react'],
+    write: false,
+  });
+  const nm = { exports: {} };
+  new Function('module', 'exports', 'require', navBuild.outputFiles[0].text)(nm, nm.exports, (id) => {
+    if (id === 'react' || id === 'lucide-react') return new Proxy({}, { get: () => () => null });
+    return require(id);
+  });
+  const eps = Array.from({ length: 1180 }, (_, i) => ({ id: i + 1, episodeId: i + 1, seasonId: 1, title: `Серия ${i + 1}` }));
+  const chunks = nm.exports.buildEpisodeChunks(eps, 50);
+  assert.equal(chunks.length, 24);
+  assert.equal(chunks[0].label, '1–50');
+  assert.equal(chunks[23].label, '1151–1180');
+});

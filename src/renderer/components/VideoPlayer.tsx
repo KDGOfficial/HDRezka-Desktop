@@ -26,11 +26,14 @@ import {
   ShieldCheck,
   Clock,
   X,
+  Search,
+  Check,
+  ArrowUpDown,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { HorizontalSlider } from './HorizontalSlider';
+import { buildEpisodeChunks } from './SeriesNavigationPanel';
 import { useTranslation } from '../i18n';
 import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
 import {
@@ -172,6 +175,10 @@ export const VideoPlayer: React.FC = () => {
   const [showControls, setShowControls] = useState(true);
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
   const [episodeMenuSeasonId, setEpisodeMenuSeasonId] = useState<number | undefined>(seasonId);
+  const [episodeMenuChunkIdx, setEpisodeMenuChunkIdx] = useState<number>(0);
+  const [episodeMenuQuery, setEpisodeMenuQuery] = useState<string>('');
+  const [episodeMenuReverse, setEpisodeMenuReverse] = useState<boolean>(false);
+  const [translatorMenuQuery, setTranslatorMenuQuery] = useState<string>('');
   const [isUiLocked, setIsUiLocked] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
@@ -223,7 +230,14 @@ export const VideoPlayer: React.FC = () => {
 
   useEffect(() => {
     setEpisodeMenuSeasonId(seasonId);
-  }, [seasonId, mediaDetails?.id]);
+    const activeSeason = mediaDetails?.seasons?.find((s) => s.id === seasonId);
+    if (activeSeason?.episodes && episodeId && activeSeason.episodes.length > 50) {
+      const idx = activeSeason.episodes.findIndex((ep) => ep.episodeId === episodeId);
+      setEpisodeMenuChunkIdx(idx >= 0 ? Math.floor(idx / 50) : 0);
+    } else {
+      setEpisodeMenuChunkIdx(0);
+    }
+  }, [seasonId, episodeId, mediaDetails?.id]);
 
   // Sync displayed time immediately when OSD reappears after being hidden
   useEffect(() => {
@@ -2132,146 +2146,243 @@ export const VideoPlayer: React.FC = () => {
           </div>
         )}
 
-        {/* Translator Menu Popup (uses HorizontalSlider when many voiceovers) */}
-        {activeMenu === 'translator' && mediaDetails?.translators && (
-          mediaDetails.translators.length > 8 ? (
-            <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[420px] space-y-2.5">
+        {/* Translator Menu Popup (searchable list for 20+ anime dubs) */}
+        {activeMenu === 'translator' && mediaDetails?.translators && (() => {
+          const q = translatorMenuQuery.trim().toLowerCase();
+          const filtered = q
+            ? mediaDetails.translators.filter((tr) => tr.name.toLowerCase().includes(q))
+            : mediaDetails.translators;
+          return (
+            <div
+              className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-3 shadow-elevated pointer-events-auto w-[min(340px,calc(100%-1.5rem))] space-y-2"
+              onKeyDown={(e) => e.stopPropagation()}
+            >
               <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-1">
                 <span>Выбор озвучки</span>
                 <span className="font-mono text-zinc-400 tabular-nums">{mediaDetails.translators.length}</span>
               </div>
-              <HorizontalSlider
-                ariaLabel="Выбор озвучки"
-                compact
-                itemCount={mediaDetails.translators.length}
-                trackClassName="grid grid-rows-3 grid-flow-col auto-cols-[185px] gap-1.5"
-              >
-                {mediaDetails.translators.map((tr) => (
-                  <button
-                    key={tr.id}
-                    type="button"
-                    aria-pressed={translatorId === tr.id}
-                    onClick={() => handleSwitchTranslator(tr.id)}
-                    className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
-                      translatorId === tr.id
-                        ? 'btn-ember text-white'
-                        : 'bg-white/[0.06] text-zinc-200 hover:bg-white/[0.14] hover:text-white'
-                    }`}
-                  >
-                    <span className="truncate pr-1.5">{tr.name}</span>
-                    {tr.premium && <span className="text-[9px] bg-brand-gold/20 text-brand-gold px-1.5 py-0.5 rounded-full flex-shrink-0">PRO</span>}
-                  </button>
-                ))}
-              </HorizontalSlider>
-            </div>
-          ) : (
-            <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto w-[min(320px,calc(100%-1.5rem))] space-y-1">
-              <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
-                <span>Выбор озвучки</span>
-                <span className="font-mono text-zinc-500">{mediaDetails.translators.length}</span>
+              {mediaDetails.translators.length > 6 && (
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={translatorMenuQuery}
+                    onChange={(e) => setTranslatorMenuQuery(e.target.value)}
+                    placeholder="Поиск озвучки..."
+                    aria-label="Поиск озвучки"
+                    className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white/[0.06] border border-white/[0.12] focus:border-brand-orange/60 text-xs text-white placeholder:text-zinc-500"
+                  />
+                  {translatorMenuQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setTranslatorMenuQuery('')}
+                      aria-label="Очистить поиск"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+              <div className="max-h-64 overflow-y-auto overscroll-contain space-y-1 pr-0.5">
+                {filtered.map((tr) => {
+                  const isActive = translatorId === tr.id;
+                  return (
+                    <button
+                      key={tr.id}
+                      type="button"
+                      aria-pressed={isActive}
+                      onClick={() => {
+                        setTranslatorMenuQuery('');
+                        handleSwitchTranslator(tr.id);
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between gap-2 cursor-pointer ${
+                        isActive
+                          ? 'btn-ember text-white'
+                          : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
+                      }`}
+                    >
+                      <span className="flex items-center gap-1.5 min-w-0">
+                        {isActive && <Check className="w-3.5 h-3.5 flex-shrink-0" aria-hidden="true" />}
+                        <span className="truncate">{tr.name}</span>
+                      </span>
+                      {tr.premium && <span className="text-[9px] bg-brand-gold/20 text-brand-gold px-1.5 py-0.5 rounded-full flex-shrink-0">PRO</span>}
+                    </button>
+                  );
+                })}
+                {filtered.length === 0 && (
+                  <div className="py-4 text-center text-xs text-zinc-500">Озвучка не найдена</div>
+                )}
               </div>
-              {mediaDetails.translators.map((tr) => (
-                <button
-                  key={tr.id}
-                  type="button"
-                  aria-pressed={translatorId === tr.id}
-                  onClick={() => handleSwitchTranslator(tr.id)}
-                  className={`w-full text-left px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between cursor-pointer ${
-                    translatorId === tr.id
-                      ? 'btn-ember text-white'
-                      : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
-                  }`}
-                >
-                  <span className="truncate pr-2">{tr.name}</span>
-                  {tr.premium && <span className="text-[9px] bg-brand-gold/20 text-brand-gold px-1.5 py-0.5 rounded-full">PRO</span>}
-                </button>
-              ))}
             </div>
-          )
-        )}
+          );
+        })()}
 
-        {/* Episodes Menu Popup (with Season & Episode Sliders) */}
+        {/* Episodes Menu Popup (Season tabs + 50-ep range chunks + quick episode jump) */}
         {activeMenu === 'episodes' && mediaDetails?.seasons && mediaDetails.seasons.length > 0 && (() => {
           const menuSeason =
             mediaDetails.seasons.find((s) => s.id === episodeMenuSeasonId) ||
             currentSeason ||
             mediaDetails.seasons[0];
-          const eps = menuSeason?.episodes || [];
+          const rawEps = menuSeason?.episodes || [];
+          const orderedEps = episodeMenuReverse ? [...rawEps].reverse() : rawEps;
+          const epChunks = orderedEps.length > 50 ? buildEpisodeChunks(orderedEps, 50) : [];
+          const safeChunkIdx = Math.min(episodeMenuChunkIdx, Math.max(0, epChunks.length - 1));
+          const q = episodeMenuQuery.trim().toLowerCase();
+          const displayedEps = q
+            ? orderedEps.filter((ep) => String(ep.episodeId).includes(q) || (ep.title && ep.title.toLowerCase().includes(q)))
+            : epChunks.length > 0
+              ? (epChunks[safeChunkIdx] || epChunks[0])?.episodes || []
+              : orderedEps;
+
           return (
-            <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[360px] space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="font-display text-xs font-black text-white">
-                  Серии ({menuSeason.title || `Сезон ${menuSeason.id}`})
+            <div
+              className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-3.5 shadow-elevated pointer-events-auto w-[min(420px,calc(100%-1.5rem))] space-y-2.5"
+              onKeyDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-display text-xs font-black text-white truncate">
+                  {menuSeason.title || `Сезон ${menuSeason.id}`}
                 </div>
-                <span className="text-[10px] font-mono font-bold text-zinc-400">{eps.length} сер.</span>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <span className="text-[10px] font-mono font-bold text-zinc-400 tabular-nums">{rawEps.length} сер.</span>
+                  {rawEps.length > 12 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEpisodeMenuReverse((v) => !v);
+                        setEpisodeMenuChunkIdx(0);
+                      }}
+                      title={episodeMenuReverse ? 'Сначала новые' : 'Сначала первые'}
+                      className={`p-1 rounded-lg border text-[10px] font-bold cursor-pointer ${
+                        episodeMenuReverse
+                          ? 'bg-brand-orange/20 border-brand-orange/50 text-brand-orange'
+                          : 'bg-white/[0.06] border-white/[0.1] text-zinc-300 hover:text-white'
+                      }`}
+                    >
+                      <ArrowUpDown className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {mediaDetails.seasons.length > 1 && (
-                <HorizontalSlider
-                  ariaLabel="Выбор сезона"
-                  compact
-                  itemCount={mediaDetails.seasons.length}
-                  trackClassName="flex items-center gap-1.5"
+                <div
+                  role="tablist"
+                  aria-label="Выбор сезона"
+                  className="tabs-scroll-fade flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1"
                 >
-                  {mediaDetails.seasons.map((s) => (
-                    <button
-                      key={s.id}
-                      type="button"
-                      aria-pressed={menuSeason.id === s.id}
-                      onClick={() => setEpisodeMenuSeasonId(s.id)}
-                      className={`flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap cursor-pointer ${
-                        menuSeason.id === s.id
-                          ? 'btn-ember text-white'
-                          : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-300'
-                      }`}
-                    >
-                      {s.title || `Сезон ${s.id}`}
-                    </button>
-                  ))}
-                </HorizontalSlider>
-              )}
-
-              {eps.length > 12 ? (
-                <HorizontalSlider
-                  ariaLabel="Выбор серии"
-                  compact
-                  itemCount={eps.length}
-                  trackClassName="grid grid-rows-3 grid-flow-col auto-cols-[74px] gap-1.5"
-                >
-                  {eps.map((ep) => (
-                    <button
-                      key={ep.episodeId}
-                      type="button"
-                      aria-pressed={seasonId === menuSeason.id && episodeId === ep.episodeId}
-                      onClick={() => handleSwitchEpisode(menuSeason.id, ep.episodeId)}
-                      className={`py-2 px-1 text-center rounded-xl text-xs font-bold cursor-pointer ${
-                        seasonId === menuSeason.id && episodeId === ep.episodeId
-                          ? 'btn-ember text-white'
-                          : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-200'
-                      }`}
-                    >
-                      {ep.episodeId} сер.
-                    </button>
-                  ))}
-                </HorizontalSlider>
-              ) : (
-                <div className="grid grid-cols-[repeat(auto-fill,minmax(64px,1fr))] gap-2 max-h-60 overflow-y-auto">
-                  {eps.map((ep) => (
-                    <button
-                      key={ep.episodeId}
-                      type="button"
-                      onClick={() => handleSwitchEpisode(menuSeason.id, ep.episodeId)}
-                      className={`py-2 px-1 text-center rounded-xl text-xs font-bold cursor-pointer ${
-                        seasonId === menuSeason.id && episodeId === ep.episodeId
-                          ? 'btn-ember text-white'
-                          : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-200'
-                      }`}
-                    >
-                      {ep.episodeId} сер.
-                    </button>
-                  ))}
+                  {mediaDetails.seasons.map((s) => {
+                    const isSel = menuSeason.id === s.id;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={isSel}
+                        onClick={() => {
+                          setEpisodeMenuSeasonId(s.id);
+                          setEpisodeMenuChunkIdx(0);
+                          setEpisodeMenuQuery('');
+                        }}
+                        className={`tab-indicator relative flex-shrink-0 px-2.5 py-1 rounded-full text-[11px] font-bold whitespace-nowrap cursor-pointer ${
+                          isSel
+                            ? 'btn-ember text-white'
+                            : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-300'
+                        }`}
+                      >
+                        {s.title || `Сезон ${s.id}`}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
+
+              {rawEps.length > 20 && (
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden="true" />
+                  <input
+                    type="text"
+                    value={episodeMenuQuery}
+                    onChange={(e) => setEpisodeMenuQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && displayedEps.length > 0) {
+                        e.preventDefault();
+                        const num = parseInt(episodeMenuQuery.replace(/[^\d]/g, ''), 10);
+                        const exact = rawEps.find((ep) => ep.episodeId === num);
+                        handleSwitchEpisode(menuSeason.id, exact ? exact.episodeId : displayedEps[0].episodeId);
+                        setEpisodeMenuQuery('');
+                      }
+                    }}
+                    placeholder="№ серии (напр. 500)..."
+                    aria-label="Поиск серии"
+                    className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white/[0.06] border border-white/[0.12] focus:border-brand-orange/60 text-xs text-white placeholder:text-zinc-500 tabular-nums"
+                  />
+                  {episodeMenuQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setEpisodeMenuQuery('')}
+                      aria-label="Очистить"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {epChunks.length > 1 && !q && (
+                <div
+                  role="tablist"
+                  aria-label="Диапазоны серий"
+                  className="tabs-scroll-fade flex items-center gap-1 overflow-x-auto scrollbar-none pb-1"
+                >
+                  {epChunks.map((chunk) => {
+                    const isSel = chunk.index === safeChunkIdx;
+                    return (
+                      <button
+                        key={chunk.index}
+                        type="button"
+                        role="tab"
+                        aria-selected={isSel}
+                        onClick={() => setEpisodeMenuChunkIdx(chunk.index)}
+                        className={`tab-indicator relative flex-shrink-0 px-2.5 py-1 rounded-full text-[10px] font-mono font-bold whitespace-nowrap cursor-pointer tabular-nums ${
+                          isSel
+                            ? 'bg-brand-orange/25 border border-brand-orange/60 text-white'
+                            : 'bg-white/[0.06] hover:bg-white/[0.14] text-zinc-300'
+                        }`}
+                      >
+                        {chunk.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="grid grid-cols-5 gap-1.5 max-h-56 overflow-y-auto overscroll-contain pr-0.5">
+                {displayedEps.map((ep) => {
+                  const isCurrent = seasonId === menuSeason.id && episodeId === ep.episodeId;
+                  return (
+                    <button
+                      key={ep.episodeId}
+                      type="button"
+                      aria-pressed={isCurrent}
+                      onClick={() => handleSwitchEpisode(menuSeason.id, ep.episodeId)}
+                      title={ep.title || `Серия ${ep.episodeId}`}
+                      className={`py-2 px-1 text-center rounded-xl text-xs font-bold tabular-nums cursor-pointer ${
+                        isCurrent
+                          ? 'btn-ember text-white'
+                          : 'bg-white/[0.08] hover:bg-white/[0.18] text-zinc-200 hover:text-white'
+                      }`}
+                    >
+                      {ep.episodeId}
+                    </button>
+                  );
+                })}
+                {displayedEps.length === 0 && (
+                  <div className="col-span-5 py-4 text-center text-xs text-zinc-500">Серия не найдена</div>
+                )}
+              </div>
             </div>
           );
         })()}

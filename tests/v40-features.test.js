@@ -22,8 +22,8 @@ const { fixKeyboardLayout, getT9Correction, sortMediaItems, formatCompactNumber 
 const { isAdUrl, APP_VERSION, ANIME_MIRROR_SEEDS } = loadTsModule('../src/shared/constants/index.ts');
 const { RezkaProvider } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('Version constants and anime mirror seeds are configured for 0.0.67', () => {
-  assert.equal(APP_VERSION, '0.0.67');
+test('Version constants and anime mirror seeds are configured for 0.0.68', () => {
+  assert.equal(APP_VERSION, '0.0.68');
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('yani.tv')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('animego')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('uakino')));
@@ -244,8 +244,9 @@ test('Light Mode CSS guards preserve .cinema-player-surface isolation and contra
   assert.match(css, /\[class\*=" bg-rose-950\/"\][^{]*\{\s*background-color:\s*#FFF1F2/);
 
   // DetailsPage hero stage must not mix cinema-player-surface with bg-dark-void, and episode title stays white on gradient hover
+  const seriesNavTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/SeriesNavigationPanel.tsx'), 'utf8');
   assert.doesNotMatch(detailsTsx, /cinema-player-surface[^>]*bg-dark-void/);
-  assert.match(detailsTsx, /text-white group-hover:text-white/);
+  assert.match(seriesNavTsx, /text-white group-hover:text-white/);
   // HistoryPage poster thumbnail must isolate its dark hover scrim via cinema-player-surface
   assert.match(historyTsx, /cinema-player-surface[^>]*w-16 h-24/);
   // MediaCard must not set color-scheme (.cinema-player-surface) on a transparent overlay

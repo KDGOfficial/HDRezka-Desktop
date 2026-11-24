@@ -36,10 +36,10 @@ const {
   pickBetterQualityStream,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('v0.0.67 version synchronization and About Author configuration', () => {
+test('v0.0.68 version synchronization and About Author configuration', () => {
   const provider = new RezkaProvider();
-  assert.equal(APP_VERSION, '0.0.67');
-  assert.equal(provider.version, '0.0.67');
+  assert.equal(APP_VERSION, '0.0.68');
+  assert.equal(provider.version, '0.0.68');
   assert.equal(AUTHOR_YOUTUBE_URL, 'https://www.youtube.com/@KanalDobrogoGamera');
   assert.equal(AUTHOR_TELEGRAM_URL, 'https://t.me/kdg_yt');
   assert.equal(AUTHOR_GITHUB_URL, 'https://github.com/KDGOfficial');
@@ -301,11 +301,11 @@ test('VideoPlayer, usePlayerStore, HorizontalSlider & main.ts enforce lag-free V
   assert.match(playerStoreTs, /translatorName:\s*tr\?\.name/);
   assert.match(videoPlayerTsx, /Продолжить с/);
 
-  // Issue 1: HorizontalSlider wired into DetailsPage, VideoPlayer episodes & translator popups, non-passive wheel, MutationObserver
-  assert.match(detailsTsx, /HorizontalSlider/);
+  // Issue 1: SeriesNavigationPanel & buildEpisodeChunks wired into DetailsPage & VideoPlayer, HorizontalSlider still intact
+  assert.match(detailsTsx, /SeriesNavigationPanel/);
   assert.doesNotMatch(detailsTsx, /sm:max-w-\[65%\]/);
-  assert.match(videoPlayerTsx, /HorizontalSlider/);
-  assert.match(videoPlayerTsx, /mediaDetails\.translators\.length > 8/);
+  assert.match(videoPlayerTsx, /buildEpisodeChunks/);
+  assert.match(videoPlayerTsx, /mediaDetails\.translators\.length > 6/);
   assert.match(sliderTsx, /type="range"/);
   assert.match(sliderTsx, /passive:\s*false/);
   assert.match(sliderTsx, /MutationObserver/);

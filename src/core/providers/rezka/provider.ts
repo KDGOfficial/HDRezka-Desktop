@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.67';
+  public version = '0.0.68';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -674,6 +674,8 @@ export class RezkaProvider implements IProvider {
   private mediaCache: Map<string, Partial<MediaItem>> = new Map();
   private mediaUrlCache: Map<string, string> = new Map();
   private kpIdCache: Map<string, string> = new Map();
+  private animeSeasonMap: Map<string, Map<number, { anilibertyId?: string; yummyId?: string; anime365Id?: string }>> = new Map();
+  private animeMirrorLinkCache: Map<string, { yummyId?: string; anilibertyId?: string; anime365Id?: string }> = new Map();
   private detailsCache: Map<string, { ts: number; data: MediaDetails }> = new Map();
   private inFlightDetails: Map<string, Promise<MediaDetails>> = new Map();
   private homeSectionsCache: { mirror: string; ts: number; data: any } | null = null;
@@ -1310,6 +1312,11 @@ export class RezkaProvider implements IProvider {
     return target.includes('api.animetop.info') || target.includes('api.animevost.org') || /^animevost-\d+$/i.test(target);
   }
 
+  private isAnime365(urlOrMirror?: string): boolean {
+    const target = (urlOrMirror || '').toLowerCase();
+    return target.includes('smotret-anime.') || target.includes('anime365.ru') || /^anime365-\d+$/i.test(target);
+  }
+
   private isAnimeGo(urlOrMirror?: string): boolean {
     const target = (urlOrMirror || '').toLowerCase();
     return target.includes('animego.');
@@ -1325,6 +1332,7 @@ export class RezkaProvider implements IProvider {
       this.isAniLiberty(urlOrMirror) ||
       this.isAnimeVost(urlOrMirror) ||
       this.isYummyAnime(urlOrMirror) ||
+      this.isAnime365(urlOrMirror) ||
       this.isAnimeGo(urlOrMirror) ||
       this.isUaKino(urlOrMirror)
     );
@@ -1332,6 +1340,7 @@ export class RezkaProvider implements IProvider {
 
   private static readonly ANILIBERTY_BASES = ['https://aniliberty.top', 'https://anilibria.wtf'];
   private static readonly ANIMEVOST_BASES = ['https://api.animetop.info', 'https://api.animevost.org'];
+  private static readonly ANIME365_BASES = ['https://smotret-anime.org', 'https://anime365.ru'];
 
   private async fetchAniLibertyJson(path: string, timeoutMs = 4500): Promise<{ data: any; origin: string } | null> {
     for (const base of RezkaProvider.ANILIBERTY_BASES) {
@@ -1559,15 +1568,193 @@ export class RezkaProvider implements IProvider {
     return bestScore >= 60 ? best : null;
   }
 
+  private recordAnimeSeasonLink(
+    mediaKey: string,
+    seasonNum: number,
+    link: { anilibertyId?: string; yummyId?: string; anime365Id?: string }
+  ): void {
+    if (!mediaKey || !Number.isFinite(seasonNum) || seasonNum <= 0) return;
+    let map = this.animeSeasonMap.get(mediaKey);
+    if (!map) {
+      map = new Map();
+      this.animeSeasonMap.set(mediaKey, map);
+    }
+    const prev = map.get(seasonNum) || {};
+    map.set(seasonNum, {
+      anilibertyId: link.anilibertyId || prev.anilibertyId,
+      yummyId: link.yummyId || prev.yummyId,
+      anime365Id: link.anime365Id || prev.anime365Id,
+    });
+  }
+
+  private async fetchAnime365Json(path: string, timeoutMs = 4500): Promise<any | null> {
+    for (const base of RezkaProvider.ANIME365_BASES) {
+      try {
+        const res = await appFetch(`${base}${path}`, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+        if (!res.ok) continue;
+        const json = await res.json();
+        if (json?.data !== undefined) return json.data;
+      } catch {
+        continue;
+      }
+    }
+    return null;
+  }
+
+  public parseAnime365Items(list: any[]): MediaItem[] {
+    if (!Array.isArray(list)) return [];
+    const items: MediaItem[] = [];
+    const seen = new Set<string>();
+    for (const raw of list) {
+      if (!raw?.id || raw?.isHentai) continue;
+      const id = `anime365-${raw.id}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const title = String(raw.titles?.ru || raw.titles?.romaji || raw.titles?.en || '').trim();
+      if (!title) continue;
+      const origTitle = String(raw.titles?.romaji || raw.titles?.en || '').trim();
+      const yearNum = Number(raw.year || 0);
+      const poster = String(raw.posterUrl || raw.posterUrlSmall || '').trim();
+      const ratingNum = Number(raw.myAnimeListScore || 0);
+      const url = `https://smotret-anime.org/api/series/${raw.id}`;
+      const item: MediaItem = {
+        id,
+        title,
+        origTitle: origTitle !== title ? origTitle : undefined,
+        url,
+        poster,
+        year: yearNum > 1900 ? yearNum : undefined,
+        type: 'animation',
+        rating: ratingNum > 0 ? Math.round(ratingNum * 10) / 10 : undefined,
+        info: `Anime365${yearNum > 1900 ? ` · ${yearNum}` : ''}`,
+      };
+      this.mediaCache.set(url, item);
+      this.mediaCache.set(id, item);
+      this.mediaUrlCache.set(id, url);
+      items.push(item);
+    }
+    return this.filterNonCamRipItems(items);
+  }
+
+  private async searchAnime365(query: string): Promise<MediaItem[]> {
+    const q = query.trim();
+    if (!q) return [];
+    const data = await this.fetchAnime365Json(`/api/series?query=${encodeURIComponent(q)}&limit=10`, 3500);
+    return this.parseAnime365Items(Array.isArray(data) ? data : []);
+  }
+
+  public async getAnime365Stream(params: {
+    mediaId?: string;
+    title?: string;
+    origTitle?: string;
+    year?: number;
+    season?: number;
+    episode?: number;
+    translatorName?: string;
+  }): Promise<StreamData | null> {
+    try {
+      const seasonLink = params.mediaId && params.season
+        ? this.animeSeasonMap.get(params.mediaId)?.get(params.season)
+        : undefined;
+      const cachedLink = params.mediaId ? this.animeMirrorLinkCache.get(params.mediaId) : undefined;
+      let seriesId =
+        seasonLink?.anime365Id ||
+        params.mediaId?.match(/anime365-(\d+)/i)?.[1] ||
+        params.mediaId?.match(/\/api\/series\/(\d+)/i)?.[1] ||
+        cachedLink?.anime365Id ||
+        '';
+      if (!seriesId) {
+        const safeOrig =
+          params.origTitle && !RezkaProvider.NON_TITLE_SOURCE_RE.test(params.origTitle.trim())
+            ? params.origTitle
+            : undefined;
+        const queries = [safeOrig, params.title]
+          .filter((q): q is string => Boolean(q && q.trim().length >= 2))
+          .map((q) => q.replace(/\s*\(\d{4}\).*$/, '').trim());
+        for (const q of queries) {
+          const hits = await this.searchAnime365(q);
+          const match = this.pickBestAnimeMatch(hits, params.title, safeOrig, params.year);
+          if (match) {
+            seriesId = match.id.replace(/^anime365-/i, '');
+            break;
+          }
+        }
+      }
+      if (!seriesId) return null;
+
+      const series = await this.fetchAnime365Json(`/api/series/${seriesId}`, 4500);
+      const rawEps: any[] = Array.isArray(series?.episodes) ? series.episodes : [];
+      const tvEps = rawEps.filter((e) => e && e.episodeType !== 'preview' && e.episodeType !== 'trailer');
+      const pool = tvEps.length > 0 ? tvEps : rawEps;
+      if (pool.length === 0) return null;
+
+      const epNum = Math.max(1, params.episode || 1);
+      const matchedEp =
+        pool.find((e) => Number(e.episodeInt) === epNum) ||
+        (epNum === 1 ? pool[0] : undefined);
+      if (!matchedEp?.id) return null;
+
+      const epData = await this.fetchAnime365Json(`/api/episodes/${matchedEp.id}`, 4500);
+      const translations: any[] = Array.isArray(epData?.translations)
+        ? epData.translations.filter((tr: any) => tr?.isActive && tr?.embedUrl)
+        : [];
+      if (translations.length === 0) return null;
+
+      const normDub = (s?: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
+      const targetDub = normDub(params.translatorName);
+      let chosen: any = null;
+      if (targetDub && !/^(?:озвучка|дубляж|субтитры)/i.test(targetDub)) {
+        chosen = translations.find((tr) => {
+          const name = normDub(tr.authorsSummary || tr.title);
+          return name.length >= 2 && (name.includes(targetDub) || targetDub.includes(name));
+        });
+      }
+      if (!chosen) {
+        const rank = (tr: any) => {
+          if (tr.type === 'voiceRu') return 4;
+          if (tr.type === 'subRu') return 3;
+          if (tr.type === 'voiceEn') return 2;
+          if (tr.type === 'subEn') return 1;
+          return 0;
+        };
+        chosen = [...translations].sort((a, b) => rank(b) - rank(a))[0];
+      }
+      if (!chosen?.embedUrl) return null;
+
+      return {
+        streams: [],
+        subtitles: [],
+        embedUrl: String(chosen.embedUrl).trim(),
+        embedReferer: 'https://smotret-anime.org/',
+        isAlternative: true,
+        sourceName: chosen.authorsSummary ? `Anime365 (${chosen.authorsSummary})` : 'Anime365',
+      };
+    } catch {
+      return null;
+    }
+  }
+
   public async getAniLibertyStream(params: {
     mediaId?: string;
     title?: string;
     origTitle?: string;
     year?: number;
+    season?: number;
     episode?: number;
   }): Promise<StreamData | null> {
     try {
-      let releaseId = params.mediaId?.match(/aniliberty-(\d+)/i)?.[1] || '';
+      const seasonLink = params.mediaId && params.season
+        ? this.animeSeasonMap.get(params.mediaId)?.get(params.season)
+        : undefined;
+      const cachedLink = params.mediaId ? this.animeMirrorLinkCache.get(params.mediaId) : undefined;
+      let releaseId =
+        seasonLink?.anilibertyId ||
+        params.mediaId?.match(/aniliberty-(\d+)/i)?.[1] ||
+        cachedLink?.anilibertyId ||
+        '';
       if (!releaseId) {
         const safeOrig =
           params.origTitle && !RezkaProvider.NON_TITLE_SOURCE_RE.test(params.origTitle.trim())
@@ -1586,6 +1773,24 @@ export class RezkaProvider implements IProvider {
         }
       }
       if (!releaseId) return null;
+
+      // If caller asked for season > 1 and we don't have a cached season mapping yet, resolve via franchise API
+      if (params.season && params.season > 1 && !seasonLink?.anilibertyId) {
+        const frRes = await this.fetchAniLibertyJson(`/api/v1/anime/franchises/release/${releaseId}`, 3500);
+        const frList: any[] = Array.isArray(frRes?.data?.[0]?.franchise_releases)
+          ? frRes.data[0].franchise_releases
+          : [];
+        const tvReleases = frList
+          .filter((r) => r?.release?.id && r.release?.type?.value === 'TV')
+          .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0));
+        const targetRel = tvReleases[params.season - 1]?.release;
+        if (targetRel?.id) {
+          releaseId = String(targetRel.id);
+        } else {
+          return null;
+        }
+      }
+
       const res = await this.fetchAniLibertyJson(`/api/v1/anime/releases/${releaseId}`, 4500);
       const episodes: any[] = res?.data?.episodes || [];
       if (episodes.length === 0) return null;
@@ -1593,7 +1798,7 @@ export class RezkaProvider implements IProvider {
       const ep =
         episodes.find((e) => Number(e?.ordinal) === epNum) ||
         episodes[epNum - 1] ||
-        episodes[0];
+        (epNum === 1 ? episodes[0] : undefined);
       if (!ep) return null;
       const streams: VideoQualityStream[] = [];
       if (ep.hls_1080) streams.push({ quality: '1080p', hls: ep.hls_1080, mp4: '' });
@@ -1647,7 +1852,7 @@ export class RezkaProvider implements IProvider {
           return m && parseInt(m[1], 10) === epNum;
         }) ||
         playlist[epNum - 1] ||
-        playlist[0];
+        (epNum === 1 ? playlist[0] : undefined);
       if (!ep) return null;
       const streams: VideoQualityStream[] = [];
       if (ep.hd) streams.push({ quality: '720p', hls: '', mp4: String(ep.hd) });
@@ -1691,12 +1896,19 @@ export class RezkaProvider implements IProvider {
     title?: string;
     origTitle?: string;
     year?: number;
+    season?: number;
     episode?: number;
     translatorName?: string;
   }): Promise<StreamData | null> {
+    const seasonLink = params.mediaId && params.season
+      ? this.animeSeasonMap.get(params.mediaId)?.get(params.season)
+      : undefined;
+    const cachedLink = params.mediaId ? this.animeMirrorLinkCache.get(params.mediaId) : undefined;
     let animeId =
+      seasonLink?.yummyId ||
       params.mediaId?.match(/yani-(\d+)/i)?.[1] ||
       params.mediaId?.match(/api\.yani\.tv\/anime\/(\d+)/i)?.[1] ||
+      cachedLink?.yummyId ||
       '';
     if (!animeId) {
       const safeOrig =
@@ -1716,6 +1928,25 @@ export class RezkaProvider implements IProvider {
       }
     }
     if (!animeId) return null;
+
+    // Resolve season > 1 via viewing_order if not already mapped in animeSeasonMap
+    if (params.season && params.season > 1 && !seasonLink?.yummyId) {
+      try {
+        const ir = await appFetch(`https://api.yani.tv/anime/${animeId}`, {
+          headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+          signal: AbortSignal.timeout(3500),
+        });
+        if (ir.ok) {
+          const raw = ((await ir.json()) as any)?.response;
+          const tvOrder: any[] = Array.isArray(raw?.viewing_order)
+            ? raw.viewing_order.filter((x: any) => x?.anime_id && x?.type?.name === 'Сериал')
+            : [];
+          if (tvOrder[params.season - 1]?.anime_id) {
+            animeId = String(tvOrder[params.season - 1].anime_id);
+          }
+        }
+      } catch {}
+    }
 
     let vids: any[] = [];
     try {
@@ -1754,6 +1985,7 @@ export class RezkaProvider implements IProvider {
 
     const epNum = Math.max(1, params.episode || 1);
     const epMatched = valid.filter((v) => parseInt(String(v?.number || '1'), 10) === epNum);
+    if (epMatched.length === 0 && epNum > 1) return null;
     const pool = epMatched.length > 0 ? epMatched : valid;
 
     const normDub = (s?: string) => (s || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -2121,8 +2353,9 @@ export class RezkaProvider implements IProvider {
         const genres = Array.isArray(raw.genres)
           ? raw.genres.map((g: any) => g?.name).filter(Boolean)
           : ['Аниме'];
+        const mediaKey = `aniliberty-${releaseId}`;
         const rawEps: any[] = Array.isArray(raw.episodes) ? raw.episodes : [];
-        const episodes = rawEps
+        const baseEpisodes = rawEps
           .map((e: any, idx: number) => {
             const epNum = Number(e?.ordinal) || idx + 1;
             return {
@@ -2133,13 +2366,61 @@ export class RezkaProvider implements IProvider {
             };
           })
           .sort((a, b) => a.episodeId - b.episodeId);
-        const seasons = episodes.length > 0 ? [{ id: 1, title: 'Сезон 1', episodes }] : undefined;
+
+        let seasons: Season[] | undefined = baseEpisodes.length > 0 ? [{ id: 1, title: 'Сезон 1', episodes: baseEpisodes }] : undefined;
+
+        // Fetch full TV franchise seasons from AniLiberty so multi-season anime (e.g. Jujutsu Kaisen S1-S3) show every season
+        try {
+          const frRes = await this.fetchAniLibertyJson(`/api/v1/anime/franchises/release/${releaseId}`, 3500);
+          const frList: any[] = Array.isArray(frRes?.data?.[0]?.franchise_releases)
+            ? frRes.data[0].franchise_releases
+            : [];
+          const tvReleases = frList
+            .filter((r) => r?.release?.id && r.release?.type?.value === 'TV')
+            .sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0))
+            .slice(0, 10);
+          if (tvReleases.length > 1) {
+            const fetched = await Promise.all(
+              tvReleases.map(async (entry, idx) => {
+                const sNum = idx + 1;
+                const relId = String(entry.release.id);
+                this.recordAnimeSeasonLink(mediaKey, sNum, { anilibertyId: relId });
+                if (relId === String(releaseId)) {
+                  return {
+                    id: sNum,
+                    title: `Сезон ${sNum}`,
+                    episodes: baseEpisodes.map((ep) => ({ ...ep, seasonId: sNum })),
+                  };
+                }
+                const sRes = await this.fetchAniLibertyJson(`/api/v1/anime/releases/${relId}`, 3500);
+                const sRawEps: any[] = Array.isArray(sRes?.data?.episodes) ? sRes.data.episodes : [];
+                const eps = sRawEps
+                  .map((e: any, eIdx: number) => {
+                    const epNum = Number(e?.ordinal) || eIdx + 1;
+                    return {
+                      id: epNum,
+                      episodeId: epNum,
+                      seasonId: sNum,
+                      title: e?.name ? `${epNum}. ${String(e.name).trim()}` : `Серия ${epNum}`,
+                    };
+                  })
+                  .sort((a, b) => a.episodeId - b.episodeId);
+                return eps.length > 0 ? { id: sNum, title: `Сезон ${sNum}`, episodes: eps } : null;
+              })
+            );
+            const validSeasons = fetched.filter((s): s is Season => Boolean(s && s.episodes.length > 0));
+            if (validSeasons.length > 0) seasons = validSeasons;
+          } else {
+            this.recordAnimeSeasonLink(mediaKey, 1, { anilibertyId: String(releaseId) });
+          }
+        } catch {}
+
         const [kpReviews, criticReviews] = await Promise.all([
           this.fetchKinopoiskReviews(title, year, origTitle),
           this.fetchCriticReviews(title, year, { ratingRezka: meta?.rating, genres }),
         ]);
         return {
-          id: `aniliberty-${releaseId}`,
+          id: mediaKey,
           title,
           origTitle,
           poster,
@@ -2264,30 +2545,72 @@ export class RezkaProvider implements IProvider {
         const kpId = raw.remote_ids?.kp_id ? String(raw.remote_ids.kp_id) : undefined;
         const genres = Array.isArray(raw.genres) ? raw.genres.map((g: any) => g?.title).filter(Boolean) : ['Аниме'];
 
+        const mediaKey = `yani-${animeId}`;
         const translators: Translator[] = [];
-        const episodesMap = new Map<number, { id: number; episodeId: number; seasonId: number; title: string }>();
+        const seenDubs = new Set<string>();
+        const collectVids = (vids: any[], sNum: number) => {
+          const epMap = new Map<number, { id: number; episodeId: number; seasonId: number; title: string }>();
+          for (const v of vids) {
+            const dub = String(v?.data?.dubbing || v?.data?.player || 'Озвучка').trim();
+            if (dub && !seenDubs.has(dub.toLowerCase())) {
+              seenDubs.add(dub.toLowerCase());
+              translators.push({ id: translators.length + 1, name: dub, premium: false });
+            }
+            const epNum = parseInt(String(v?.number || '0'), 10);
+            if (epNum > 0 && !epMap.has(epNum)) {
+              epMap.set(epNum, { id: epNum, episodeId: epNum, seasonId: sNum, title: `Серия ${epNum}` });
+            }
+          }
+          return Array.from(epMap.values()).sort((a, b) => a.episodeId - b.episodeId);
+        };
+
+        let baseVids: any[] = [];
         if (vidRes?.ok) {
           try {
-            const vids: any[] = ((await vidRes.json()) as any)?.response || [];
-            const seenDubs = new Set<string>();
-            for (const v of vids) {
-              const dub = String(v?.data?.dubbing || v?.data?.player || 'Озвучка').trim();
-              if (dub && !seenDubs.has(dub.toLowerCase())) {
-                seenDubs.add(dub.toLowerCase());
-                translators.push({ id: translators.length + 1, name: dub, premium: false });
-              }
-              const epNum = parseInt(String(v?.number || '0'), 10);
-              if (epNum > 0 && !episodesMap.has(epNum)) {
-                episodesMap.set(epNum, { id: epNum, episodeId: epNum, seasonId: 1, title: `Серия ${epNum}` });
-              }
-            }
+            const parsed = ((await vidRes.json()) as any)?.response;
+            baseVids = Array.isArray(parsed) ? parsed : [];
           } catch {}
+        }
+
+        // Load all TV seasons from YummyAnime viewing_order so multi-season anime show every season
+        const tvOrder: any[] = Array.isArray(raw.viewing_order)
+          ? raw.viewing_order.filter((x: any) => x?.anime_id && x?.type?.name === 'Сериал').slice(0, 10)
+          : [];
+        let seasons: Season[] | undefined;
+        if (tvOrder.length > 1) {
+          const fetched = await Promise.all(
+            tvOrder.map(async (entry, idx) => {
+              const sNum = idx + 1;
+              const entryId = String(entry.anime_id);
+              this.recordAnimeSeasonLink(mediaKey, sNum, { yummyId: entryId });
+              let vids = entryId === String(animeId) ? baseVids : [];
+              if (entryId !== String(animeId)) {
+                try {
+                  const r = await appFetch(`https://api.yani.tv/anime/${entryId}/videos`, {
+                    headers: { 'User-Agent': BROWSER_USER_AGENT, 'Accept': 'application/json' },
+                    signal: AbortSignal.timeout(3500),
+                  });
+                  if (r.ok) {
+                    const j = ((await r.json()) as any)?.response;
+                    vids = Array.isArray(j) ? j : [];
+                  }
+                } catch {}
+              }
+              const eps = collectVids(vids, sNum);
+              return eps.length > 0 ? { id: sNum, title: `Сезон ${sNum}`, episodes: eps } : null;
+            })
+          );
+          const validSeasons = fetched.filter((s): s is Season => Boolean(s && s.episodes.length > 0));
+          if (validSeasons.length > 0) seasons = validSeasons;
+        }
+        if (!seasons) {
+          this.recordAnimeSeasonLink(mediaKey, 1, { yummyId: String(animeId) });
+          const episodes = collectVids(baseVids, 1);
+          seasons = episodes.length > 0 ? [{ id: 1, title: 'Сезон 1', episodes }] : undefined;
         }
         if (translators.length === 0) {
           translators.push({ id: 1, name: 'Озвучка / Субтитры', premium: false });
         }
-        const episodes = Array.from(episodesMap.values()).sort((a, b) => a.episodeId - b.episodeId);
-        const seasons = episodes.length > 0 ? [{ id: 1, title: 'Сезон 1', episodes }] : undefined;
 
         const [kpReviews, criticReviews] = await Promise.all([
           this.fetchKinopoiskReviews(title, year, origTitle, kpId),
@@ -2295,7 +2618,7 @@ export class RezkaProvider implements IProvider {
         ]);
 
         return {
-          id: `yani-${animeId}`,
+          id: mediaKey,
           title,
           origTitle,
           poster,
@@ -2315,6 +2638,66 @@ export class RezkaProvider implements IProvider {
           similar: [],
           reviews: [...kpReviews, ...criticReviews],
           url: target,
+          antiBot: false,
+        };
+      }
+
+      // Anime365 (smotret-anime.org) JSON API details
+      if (this.isAnime365(target) || this.isAnime365(urlOrId)) {
+        const idMatch = target.match(/\/api\/series\/(\d+)/i) || urlOrId.match(/anime365-(\d+)/i);
+        const seriesId = idMatch?.[1];
+        if (!seriesId) return null;
+        const raw = await this.fetchAnime365Json(`/api/series/${seriesId}`, 4500);
+        if (!raw) return null;
+        const title = String(raw.titles?.ru || raw.titles?.romaji || meta?.title || '').trim();
+        if (!title) return null;
+        const origTitle = String(raw.titles?.romaji || raw.titles?.en || meta?.origTitle || '').trim();
+        const year = Number(raw.year || meta?.year || 0);
+        const poster = String(raw.posterUrl || meta?.poster || '').trim();
+        const genres = Array.isArray(raw.genres)
+          ? raw.genres.map((g: any) => g?.title).filter(Boolean)
+          : ['Аниме'];
+        const rawEps: any[] = Array.isArray(raw.episodes) ? raw.episodes : [];
+        const tvEps = rawEps.filter((e) => e && e.episodeType !== 'preview' && e.episodeType !== 'trailer');
+        const episodes = (tvEps.length > 0 ? tvEps : rawEps)
+          .map((e: any, idx: number) => {
+            const epNum = Number(e?.episodeInt) || idx + 1;
+            return {
+              id: epNum,
+              episodeId: epNum,
+              seasonId: 1,
+              title: e?.episodeTitle ? `${epNum}. ${String(e.episodeTitle).trim()}` : `Серия ${epNum}`,
+            };
+          })
+          .filter((ep, i, arr) => arr.findIndex((x) => x.episodeId === ep.episodeId) === i)
+          .sort((a, b) => a.episodeId - b.episodeId);
+        const seasons = episodes.length > 0 ? [{ id: 1, title: 'Сезон 1', episodes }] : undefined;
+        const mediaKey = `anime365-${seriesId}`;
+        this.recordAnimeSeasonLink(mediaKey, 1, { anime365Id: seriesId });
+        const [kpReviews, criticReviews] = await Promise.all([
+          this.fetchKinopoiskReviews(title, year, origTitle),
+          this.fetchCriticReviews(title, year, { ratingRezka: Number(raw.myAnimeListScore || 0) || meta?.rating, genres }),
+        ]);
+        return {
+          id: mediaKey,
+          title,
+          origTitle: origTitle !== title ? origTitle : '',
+          poster,
+          backdrop: poster,
+          year,
+          country: 'Япония',
+          genres,
+          type: 'animation',
+          ratingRezka: Number(raw.myAnimeListScore || 0) ? Math.round(Number(raw.myAnimeListScore) * 10) / 10 : meta?.rating,
+          description: String(raw.descriptions?.[0]?.value || '').replace(/<[^>]+>/g, '').trim(),
+          directors: [],
+          actors: [],
+          translators: [{ id: 1, name: 'Anime365 (Озвучка / Субтитры)', premium: false }],
+          currentTranslatorId: 1,
+          seasons,
+          similar: [],
+          reviews: [...kpReviews, ...criticReviews],
+          url: `https://smotret-anime.org/api/series/${seriesId}`,
           antiBot: false,
         };
       }
@@ -4690,6 +5073,92 @@ export class RezkaProvider implements IProvider {
     return results;
   }
 
+  /**
+   * Enrich any anime details (from Kinobase, Kinogo, HDStudio, AniLiberty, AnimeVost, etc.)
+   * with full seasons, episodes (e.g. One Piece 1,180+ eps, Jujutsu Kaisen S1-S3), and CIS dubs
+   * from YummyAnime + Anime365 so users never hit missing seasons or truncated episode lists.
+   */
+  public async enrichAnimeDetails(details: MediaDetails): Promise<MediaDetails> {
+    if (!details || details.antiBot) return details;
+    const isAnime =
+      details.type === 'animation' ||
+      details.genres?.some((g) => /аниме|anime/i.test(g)) ||
+      this.isAnimeMirror(details.id) ||
+      this.isAnimeMirror(details.url);
+    if (!isAnime) return details;
+
+    const alreadyYummy = this.isYummyAnime(details.id) || this.isYummyAnime(details.url);
+    const totalEps = (details.seasons || []).reduce((sum, s) => sum + (s.episodes?.length || 0), 0);
+    // If already a rich multi-season YummyAnime card with episodes, no extra lookup needed
+    if (alreadyYummy && totalEps > 0) return details;
+
+    const safeOrig =
+      details.origTitle && !RezkaProvider.NON_TITLE_SOURCE_RE.test(details.origTitle.trim())
+        ? details.origTitle
+        : undefined;
+    const searchQuery = cleanTitleForSearch(details.title || safeOrig || '');
+    const altQuery = cleanTitleForSearch(safeOrig || '');
+    if (!searchQuery && !altQuery) return details;
+
+    const [yummyEnrichRes, a365EnrichRes] = await Promise.allSettled([
+      (async () => {
+        if (alreadyYummy) return null;
+        for (const q of [searchQuery, altQuery].filter((x, i, a) => x.length >= 2 && a.indexOf(x) === i)) {
+          const hits = await this.searchYummyAnime(q);
+          const match = this.pickBestAnimeMatch(hits, details.title, safeOrig, details.year);
+          if (match) {
+            return await this.getAnimeMirrorDetails(match.id, match);
+          }
+        }
+        return null;
+      })(),
+      (async () => {
+        if (this.isAnime365(details.id) || totalEps >= 100) return null;
+        for (const q of [altQuery, searchQuery].filter((x, i, a) => x.length >= 2 && a.indexOf(x) === i)) {
+          const hits = await this.searchAnime365(q);
+          const match = this.pickBestAnimeMatch(hits, details.title, safeOrig, details.year);
+          if (match) {
+            return await this.getAnimeMirrorDetails(match.id, match);
+          }
+        }
+        return null;
+      })(),
+    ]);
+
+    const yummyDetails = yummyEnrichRes.status === 'fulfilled' ? yummyEnrichRes.value : null;
+    const a365Details = a365EnrichRes.status === 'fulfilled' ? a365EnrichRes.value : null;
+    if (!yummyDetails && !a365Details) return details;
+
+    const prevLinks = this.animeMirrorLinkCache.get(details.id) || {};
+    const yummyId = yummyDetails?.id?.match(/yani-(\d+)/i)?.[1] || prevLinks.yummyId;
+    const anime365Id = a365Details?.id?.match(/anime365-(\d+)/i)?.[1] || prevLinks.anime365Id;
+    if (yummyId || anime365Id) {
+      this.animeMirrorLinkCache.set(details.id, { ...prevLinks, yummyId, anime365Id });
+      if (details.url) this.animeMirrorLinkCache.set(details.url, { ...prevLinks, yummyId, anime365Id });
+    }
+    // Propagate season->id links from YummyAnime / Anime365 onto the primary details.id
+    for (const sourceId of [yummyDetails?.id, a365Details?.id].filter(Boolean) as string[]) {
+      const srcMap = this.animeSeasonMap.get(sourceId);
+      if (srcMap) {
+        for (const [sNum, link] of srcMap.entries()) {
+          this.recordAnimeSeasonLink(details.id, sNum, link);
+        }
+      }
+    }
+
+    const mergedSeasons = mergeSeasons(details.seasons, yummyDetails?.seasons, a365Details?.seasons);
+    let translators = details.translators || [];
+    if (yummyDetails?.translators?.length) {
+      translators = this.mergeCrossMirrorTranslators(translators, yummyDetails.translators, 4000);
+    }
+
+    return {
+      ...details,
+      translators: translators.length > 0 ? translators : details.translators,
+      seasons: mergedSeasons.length > 0 ? mergedSeasons : details.seasons,
+    };
+  }
+
   public async getDetails(urlOrId: string, meta?: Partial<MediaItem>): Promise<MediaDetails> {
     const cached = this.getCachedDetails(urlOrId);
     if (cached) return cached;
@@ -4699,6 +5168,7 @@ export class RezkaProvider implements IProvider {
     if (existing) return await existing;
 
     const promise = this.getDetailsUncached(urlOrId, meta)
+      .then((details) => this.enrichAnimeDetails(details))
       .then((details) => {
         if (details && !details.antiBot && details.translators && details.translators.length > 0) {
           this.storeDetailsCache(urlOrId, details);
@@ -4734,7 +5204,7 @@ export class RezkaProvider implements IProvider {
     if (
       this.isAnimeMirror(urlOrId) ||
       this.isAnimeMirror(explicitUrl) ||
-      /^(?:yani|aniliberty|animevost)-\d+$/i.test(urlOrId)
+      /^(?:yani|aniliberty|animevost|anime365)-\d+$/i.test(urlOrId)
     ) {
       const ad = await this.getAnimeMirrorDetails(urlOrId, cachedMeta);
       if (ad) return ad;
@@ -5700,21 +6170,23 @@ export class RezkaProvider implements IProvider {
     const isAnimeItem =
       this.isAnimeMirror(params.mediaId) ||
       this.isAnimeMirror(cachedUrl) ||
-      /^(?:yani|aniliberty|animevost)-\d+$/i.test(params.mediaId) ||
+      /^(?:yani|aniliberty|animevost|anime365)-\d+$/i.test(params.mediaId) ||
+      this.animeMirrorLinkCache.has(params.mediaId) ||
       cachedItem?.type === 'animation' ||
       cachedUrl.includes('/animation/') ||
       cachedUrl.includes('/anime');
 
-    // Open captcha-free anime mirrors (AniLiberty 1080p HLS, AnimeVost 720p MP4, YummyAnime YouTube/Kodik/Aksor embeds)
+    // Open captcha-free anime mirrors (AniLiberty 1080p HLS, AnimeVost 720p MP4, YummyAnime & Anime365)
     let triedYummy = false;
     const isYummyDirect =
       this.isYummyAnime(params.mediaId) ||
       this.isYummyAnime(cachedUrl) ||
-      /^yani-\d+$/i.test(params.mediaId);
+      /^yani-\d+$/i.test(params.mediaId) ||
+      Boolean(this.animeMirrorLinkCache.get(params.mediaId)?.yummyId);
     const wantsSpecificYummyDub = Boolean(
       isYummyDirect &&
         params.translatorName &&
-        !/^(?:anilibria|animevost|озвучка\s*\/\s*субтитры|дубляж\s*\/\s*озвучка)$/i.test(
+        !/^(?:anilibria|animevost|anime365|озвучка\s*\/\s*субтитры|дубляж\s*\/\s*озвучка)$/i.test(
           params.translatorName.trim()
         )
     );
@@ -5728,6 +6200,7 @@ export class RezkaProvider implements IProvider {
           title: metaForResolve.title,
           origTitle: metaForResolve.origTitle,
           year: metaForResolve.year,
+          season: params.season,
           episode: params.episode,
           translatorName: params.translatorName,
         });
@@ -5752,6 +6225,7 @@ export class RezkaProvider implements IProvider {
         title: metaForResolve.title,
         origTitle: metaForResolve.origTitle,
         year: metaForResolve.year,
+        season: params.season,
         episode: params.episode,
       });
       if (considerStream(libStream)) return state.best;
@@ -5774,6 +6248,7 @@ export class RezkaProvider implements IProvider {
           title: metaForResolve.title,
           origTitle: metaForResolve.origTitle,
           year: metaForResolve.year,
+          season: params.season,
           episode: params.episode,
           translatorName: params.translatorName,
         });
@@ -5939,18 +6414,33 @@ export class RezkaProvider implements IProvider {
       }
     }
 
-    // Final safety net for any anime without direct HLS/MP4: resolve YummyAnime embed player
-    if (!state.best && isAnimeItem && !triedYummy) {
-      const yFallback = await this.getYummyAnimeStream({
+    // Final safety net for any anime without direct HLS/MP4: resolve YummyAnime or Anime365 embed player
+    if (!state.best && isAnimeItem) {
+      if (!triedYummy) {
+        const yFallback = await this.getYummyAnimeStream({
+          mediaId: params.mediaId,
+          title: metaForResolve.title,
+          origTitle: metaForResolve.origTitle,
+          year: metaForResolve.year,
+          season: params.season,
+          episode: params.episode,
+          translatorName: params.translatorName,
+        });
+        if (yFallback?.embedUrl || (yFallback?.streams && yFallback.streams.length > 0)) {
+          return yFallback;
+        }
+      }
+      const a365Fallback = await this.getAnime365Stream({
         mediaId: params.mediaId,
         title: metaForResolve.title,
         origTitle: metaForResolve.origTitle,
         year: metaForResolve.year,
+        season: params.season,
         episode: params.episode,
         translatorName: params.translatorName,
       });
-      if (yFallback?.embedUrl || (yFallback?.streams && yFallback.streams.length > 0)) {
-        return yFallback;
+      if (a365Fallback?.embedUrl || (a365Fallback?.streams && a365Fallback.streams.length > 0)) {
+        return a365Fallback;
       }
     }
 
