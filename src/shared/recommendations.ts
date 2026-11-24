@@ -1,4 +1,4 @@
-import { ContentType, MediaItem, TasteSignal, UserInterestsProfile, WatchHistoryEntry } from './types';
+import { ContentType, FavoriteItem, MediaItem, TasteSignal, UserInterestsProfile, WatchHistoryEntry } from './types';
 import { DEFAULT_USER_INTERESTS } from './constants';
 
 const HALF_LIFE_MS = 14 * 24 * 60 * 60 * 1000; // 14-day half-life so shifting tastes overtake old habits
@@ -453,4 +453,476 @@ export function pickWhatToWatchCandidate(params: {
 
   scored.sort((a, b) => b.score - a.score);
   return scored[0] || null;
+}
+
+export type MoodId = 'auto' | 'adrenaline' | 'relax' | 'mindbend' | 'dark' | 'fresh';
+
+export const MOOD_PRESETS: Record<MoodId, { genres: string[]; preferFresh?: boolean; minRatingBias?: number }> = {
+  auto: { genres: [] },
+  adrenaline: { genres: ['action', 'adventures', 'thriller', 'crime', 'war'] },
+  relax: { genres: ['comedy', 'family', 'melodrama', 'adventures', 'animation'] },
+  mindbend: { genres: ['fiction', 'detective', 'thriller', 'drama', 'fantasy'], minRatingBias: 7.2 },
+  dark: { genres: ['horror', 'thriller', 'crime', 'detective'] },
+  fresh: { genres: [], preferFresh: true },
+};
+
+export interface EnrichedTitleSignal {
+  id: string;
+  title: string;
+  genres?: string[];
+  year?: number;
+  rating?: number;
+  type?: ContentType;
+  similar?: MediaItem[];
+}
+
+export interface TasteAnchor {
+  id: string;
+  title: string;
+  poster: string;
+  type: ContentType;
+  url?: string;
+  percent?: number;
+  source: 'history' | 'favorite';
+}
+
+export interface AnalyzedGenre {
+  id: string;
+  score: number;
+  sharePercent: number;
+  source: 'history' | 'favorite' | 'profile' | 'both';
+}
+
+export interface AnalyzedType {
+  type: ContentType;
+  score: number;
+  sharePercent: number;
+}
+
+export interface SimilarCandidate {
+  item: MediaItem;
+  similarToTitle: string;
+  weight: number;
+}
+
+export interface UserTasteAnalysis {
+  topGenres: AnalyzedGenre[];
+  topTypes: AnalyzedType[];
+  dominantType: ContentType;
+  recentAnchors: TasteAnchor[];
+  similarCandidates: SimilarCandidate[];
+  watchedCount: number;
+  favoritesCount: number;
+  hasHistorySignal: boolean;
+}
+
+export type InteractiveFeedbackAction = 'more_like_this' | 'not_for_me' | 'already_seen';
+
+export interface InteractiveSessionState {
+  genreDeltas: Record<string, number>;
+  typeDeltas: Partial<Record<ContentType, number>>;
+  dismissedIds: string[];
+}
+
+export interface InteractiveRecommendation {
+  item: MediaItem;
+  score: number;
+  matchPercent: number;
+  matchedGenres: string[];
+  matchedType: boolean;
+  matchedMood?: MoodId;
+  similarToTitle?: string;
+  highRated: boolean;
+}
+
+export function createEmptyInteractiveSession(persistedDismissed: string[] = []): InteractiveSessionState {
+  return {
+    genreDeltas: {},
+    typeDeltas: {},
+    dismissedIds: Array.from(new Set(persistedDismissed.filter(Boolean))),
+  };
+}
+
+/**
+ * Analyzes what the user actually watches (watch history with completion & recency weighting,
+ * favorites, explicit profile, and optional enriched details/similar lists) to build a live taste profile.
+ */
+export function analyzeUserTaste(params: {
+  watchHistory?: WatchHistoryEntry[];
+  favorites?: FavoriteItem[];
+  profile?: Partial<UserInterestsProfile>;
+  enrichedDetailsMap?: Record<string, EnrichedTitleSignal>;
+  now?: number;
+}): UserTasteAnalysis {
+  const now = params.now ?? Date.now();
+  const watchHistory = params.watchHistory || [];
+  const favorites = params.favorites || [];
+  const profile = normalizeInterestsProfile(params.profile);
+  const enrichedMap = params.enrichedDetailsMap || {};
+
+  const genreWeights = new Map<string, { history: number; favorite: number; profile: number }>();
+  const typeWeights = new Map<ContentType, number>();
+
+  const addGenre = (id: string, bucket: 'history' | 'favorite' | 'profile', amount: number) => {
+    if (!id || amount <= 0) return;
+    const prev = genreWeights.get(id) || { history: 0, favorite: 0, profile: 0 };
+    prev[bucket] += amount;
+    genreWeights.set(id, prev);
+  };
+
+  const addType = (type: ContentType | undefined, amount: number) => {
+    if (!type || !SELECTABLE_TYPES.includes(type) || amount <= 0) return;
+    typeWeights.set(type, (typeWeights.get(type) || 0) + amount);
+  };
+
+  // 1. Existing adaptive profile & explicit favorites
+  for (const g of getTopGenres(profile, 20, now)) {
+    addGenre(g.id, 'profile', g.score * 0.9);
+  }
+  for (const t of getTopTypes(profile, now)) {
+    addType(t.type, t.score * 0.85);
+  }
+
+  // 2. Watch history weighted by recency decay + watch completion percentage
+  const sortedHistory = [...watchHistory].sort((a, b) => (b.lastWatchedAt || 0) - (a.lastWatchedAt || 0));
+  const anchorSeen = new Set<string>();
+  const recentAnchors: TasteAnchor[] = [];
+  const watchedIds = buildWatchedIdSet(watchHistory);
+
+  for (const h of sortedHistory.slice(0, 40)) {
+    const decay = computeDecayFactor(h.lastWatchedAt || now, now);
+    const pct = typeof h.percent === 'number' && Number.isFinite(h.percent) ? h.percent : 50;
+    // Titles watched past 60% are strong signals; barely started (<12%) weigh lightly
+    const engagement = pct >= 60 ? 1.35 : pct >= 20 ? 0.95 : 0.35;
+    const weight = 2.8 * decay * engagement;
+
+    addType(h.type, weight * 0.75);
+
+    const enriched = enrichedMap[h.mediaId] || (h.url ? enrichedMap[h.url] : undefined);
+    const genres = extractItemGenreIds({
+      genres: enriched?.genres,
+      url: h.url,
+      type: h.type,
+    });
+    for (const gid of genres) {
+      addGenre(gid, 'history', weight);
+    }
+
+    const key = (h.mediaId || h.url || '').trim();
+    if (key && !anchorSeen.has(key) && recentAnchors.length < 4 && pct >= 10) {
+      anchorSeen.add(key);
+      recentAnchors.push({
+        id: h.mediaId,
+        title: h.title,
+        poster: h.poster,
+        type: h.type,
+        url: h.url,
+        percent: Math.round(pct),
+        source: 'history',
+      });
+    }
+  }
+
+  // 3. Favorites as strong explicit taste signals
+  const sortedFavorites = [...favorites].sort((a, b) => (b.addedAt || 0) - (a.addedAt || 0));
+  for (const f of sortedFavorites.slice(0, 30)) {
+    const decay = Math.max(0.45, computeDecayFactor(f.addedAt || now, now));
+    const weight = 2.4 * decay;
+    addType(f.type, weight * 0.65);
+
+    const enriched = enrichedMap[f.mediaId];
+    const genres = extractItemGenreIds({
+      genres: enriched?.genres,
+      url: f.mediaId.startsWith('http') ? f.mediaId : undefined,
+      type: f.type,
+    });
+    for (const gid of genres) {
+      addGenre(gid, 'favorite', weight);
+    }
+
+    if (f.mediaId && !anchorSeen.has(f.mediaId) && recentAnchors.length < 4) {
+      anchorSeen.add(f.mediaId);
+      recentAnchors.push({
+        id: f.mediaId,
+        title: f.title,
+        poster: f.poster,
+        type: f.type,
+        source: 'favorite',
+      });
+    }
+  }
+
+  // 4. Collect "similar to what you watched" candidates from enriched title details
+  const similarMap = new Map<string, SimilarCandidate>();
+  for (let i = 0; i < recentAnchors.length; i++) {
+    const anchor = recentAnchors[i];
+    const enriched = enrichedMap[anchor.id] || (anchor.url ? enrichedMap[anchor.url] : undefined);
+    if (!enriched?.similar?.length) continue;
+    const anchorWeight = Math.max(1, 3.2 - i * 0.55);
+    for (const sim of enriched.similar) {
+      if (!sim?.poster) continue;
+      const simKey = (sim.id || sim.url || '').trim().toLowerCase();
+      if (!simKey || watchedIds.has(sim.id) || (sim.url && watchedIds.has(sim.url))) continue;
+      const existing = similarMap.get(simKey);
+      if (!existing || anchorWeight > existing.weight) {
+        similarMap.set(simKey, {
+          item: sim,
+          similarToTitle: anchor.title,
+          weight: anchorWeight,
+        });
+      }
+    }
+  }
+
+  const rawGenres = Array.from(genreWeights.entries())
+    .map(([id, b]) => {
+      const score = Number((b.history + b.favorite + b.profile).toFixed(2));
+      const hasHistory = b.history >= 0.4;
+      const hasFav = b.favorite >= 0.4;
+      const source: AnalyzedGenre['source'] =
+        hasHistory && (hasFav || b.profile >= 0.6)
+          ? 'both'
+          : hasHistory
+            ? 'history'
+            : hasFav
+              ? 'favorite'
+              : 'profile';
+      return { id, score, source };
+    })
+    .filter((g) => g.score > 0.2)
+    .sort((a, b) => b.score - a.score);
+
+  const maxGenreScore = rawGenres[0]?.score || 1;
+  const topGenres: AnalyzedGenre[] = rawGenres.slice(0, 8).map((g) => ({
+    ...g,
+    sharePercent: Math.max(18, Math.min(100, Math.round((g.score / maxGenreScore) * 100))),
+  }));
+
+  const totalTypeScore = Array.from(typeWeights.values()).reduce((sum, v) => sum + v, 0) || 1;
+  const topTypes: AnalyzedType[] = Array.from(typeWeights.entries())
+    .map(([type, score]) => ({
+      type,
+      score: Number(score.toFixed(2)),
+      sharePercent: Math.round((score / totalTypeScore) * 100),
+    }))
+    .filter((t) => t.score > 0.2)
+    .sort((a, b) => b.score - a.score);
+
+  const dominantType: ContentType = topTypes[0]?.type || 'films';
+
+  return {
+    topGenres,
+    topTypes,
+    dominantType,
+    recentAnchors,
+    similarCandidates: Array.from(similarMap.values()),
+    watchedCount: watchHistory.length,
+    favoritesCount: favorites.length,
+    hasHistorySignal: watchHistory.length > 0 || favorites.length > 0 || topGenres.length > 0,
+  };
+}
+
+/** Updates interactive session deltas when the user reacts to a recommendation. */
+export function applyInteractiveFeedback(
+  session: InteractiveSessionState,
+  item: MediaItem,
+  action: InteractiveFeedbackAction
+): InteractiveSessionState {
+  const nextGenreDeltas = { ...session.genreDeltas };
+  const nextTypeDeltas = { ...session.typeDeltas };
+  const itemGenres = extractItemGenreIds(item);
+
+  const genreStep = action === 'more_like_this' ? 2.6 : action === 'not_for_me' ? -3.4 : 0.7;
+  const typeStep = action === 'more_like_this' ? 0.9 : action === 'not_for_me' ? -0.6 : 0.25;
+
+  for (const gid of itemGenres) {
+    const prev = nextGenreDeltas[gid] || 0;
+    nextGenreDeltas[gid] = Number(Math.max(-14, Math.min(14, prev + genreStep)).toFixed(2));
+  }
+
+  if (item.type && SELECTABLE_TYPES.includes(item.type)) {
+    const prevType = nextTypeDeltas[item.type] || 0;
+    nextTypeDeltas[item.type] = Number(Math.max(-6, Math.min(6, prevType + typeStep)).toFixed(2));
+  }
+
+  const nextDismissed = new Set(session.dismissedIds);
+  if (item.id) nextDismissed.add(item.id);
+  if (item.url) nextDismissed.add(item.url);
+
+  return {
+    genreDeltas: nextGenreDeltas,
+    typeDeltas: nextTypeDeltas,
+    dismissedIds: Array.from(nextDismissed),
+  };
+}
+
+/**
+ * Ranks interactive recommendations from catalog candidates + similar-to-watched titles,
+ * combining analyzed watch taste, active mood, category, genre override, and live session reactions.
+ */
+export function rankInteractiveRecommendations(params: {
+  candidates: MediaItem[];
+  analysis: UserTasteAnalysis;
+  category: ContentType | 'auto';
+  genreOverride?: string;
+  mood?: MoodId;
+  watchHistory?: WatchHistoryEntry[];
+  session?: InteractiveSessionState;
+  excludedIds?: Set<string>;
+  limit?: number;
+  currentYear?: number;
+}): InteractiveRecommendation[] {
+  const mood: MoodId = params.mood || 'auto';
+  const moodSpec = MOOD_PRESETS[mood];
+  const currentYear = params.currentYear ?? new Date().getFullYear();
+  const watchedIds = buildWatchedIdSet(params.watchHistory || []);
+  const session = params.session || createEmptyInteractiveSession();
+  const excluded = new Set<string>([
+    ...Array.from(params.excludedIds || []),
+    ...session.dismissedIds,
+  ]);
+
+  // Index "similar to watched" boosts by normalized key
+  const similarLookup = new Map<string, SimilarCandidate>();
+  for (const sc of params.analysis.similarCandidates) {
+    const kId = (sc.item.id || '').trim().toLowerCase();
+    const kUrl = (sc.item.url || '').trim().toLowerCase();
+    if (kId) similarLookup.set(kId, sc);
+    if (kUrl) similarLookup.set(kUrl, sc);
+  }
+
+  const combined = dedupeItems([
+    ...params.analysis.similarCandidates.map((s) => s.item),
+    ...params.candidates,
+  ]);
+
+  const filterUnseen = (items: MediaItem[]) =>
+    items.filter((item) => {
+      if (!item?.poster) return false;
+      const id = (item.id || '').trim();
+      const url = (item.url || '').trim();
+      if ((id && (excluded.has(id) || watchedIds.has(id))) || (url && (excluded.has(url) || watchedIds.has(url)))) {
+        return false;
+      }
+      return true;
+    });
+
+  const unseen = filterUnseen(combined);
+  const categoryFiltered =
+    params.category === 'auto'
+      ? unseen
+      : unseen.filter((item) =>
+          params.category === 'cartoons'
+            ? item.type === 'cartoons' || item.type === 'animation'
+            : item.type === params.category
+        );
+
+  const pool = categoryFiltered.length > 0 ? categoryFiltered : unseen;
+  if (pool.length === 0) return [];
+
+  const analyzedGenreMap = new Map(params.analysis.topGenres.map((g) => [g.id, g.score]));
+  const analyzedTypeMap = new Map(params.analysis.topTypes.map((t) => [t.type, t.score]));
+
+  const scored: InteractiveRecommendation[] = pool.map((item) => {
+    const itemGenres = extractItemGenreIds(item);
+    const matchedGenres: string[] = [];
+    let genreScore = 0;
+
+    for (const gid of itemGenres) {
+      const baseW = analyzedGenreMap.get(gid) || 0;
+      const deltaW = session.genreDeltas[gid] || 0;
+      const effective = baseW + deltaW;
+      if (effective > 0.25) {
+        genreScore += Math.min(11, effective);
+        matchedGenres.push(gid);
+      } else if (deltaW < 0) {
+        genreScore += deltaW * 1.4;
+      }
+    }
+
+    const baseTypeW = analyzedTypeMap.get(item.type) || 0;
+    const typeDelta = session.typeDeltas[item.type] || 0;
+    const matchedType = baseTypeW + typeDelta > 0.4;
+    const typeScore = Math.max(-4, Math.min(6, (baseTypeW + typeDelta) * 0.75));
+
+    // Similar-to-watched match bonus
+    const simHit =
+      similarLookup.get((item.id || '').trim().toLowerCase()) ||
+      similarLookup.get((item.url || '').trim().toLowerCase());
+    const similarBonus = simHit ? 5.5 + simHit.weight : 0;
+
+    // Explicit genre override bonus
+    let genreOverrideBonus = 0;
+    if (params.genreOverride) {
+      if (itemGenres.includes(params.genreOverride)) {
+        genreOverrideBonus = 13;
+        if (!matchedGenres.includes(params.genreOverride)) {
+          matchedGenres.unshift(params.genreOverride);
+        }
+      } else {
+        genreOverrideBonus = -4;
+      }
+    }
+
+    // Mood preset bonus
+    let moodBonus = 0;
+    let matchedMood: MoodId | undefined;
+    if (mood !== 'auto') {
+      if (moodSpec.genres.length > 0) {
+        const moodOverlap = itemGenres.filter((g) => moodSpec.genres.includes(g));
+        if (moodOverlap.length > 0) {
+          moodBonus += 6 + moodOverlap.length * 2.5;
+          matchedMood = mood;
+        } else {
+          moodBonus -= 2.5;
+        }
+      }
+      if (moodSpec.preferFresh) {
+        if (item.year && item.year >= currentYear - 1) {
+          moodBonus += 9;
+          matchedMood = 'fresh';
+        } else if (item.year && item.year >= currentYear - 2) {
+          moodBonus += 4;
+          matchedMood = 'fresh';
+        } else {
+          moodBonus -= 3;
+        }
+      }
+      if (moodSpec.minRatingBias && typeof item.rating === 'number' && item.rating >= moodSpec.minRatingBias) {
+        moodBonus += 2.2;
+      }
+    }
+
+    const rating = typeof item.rating === 'number' && item.rating > 0 ? item.rating : 0;
+    const highRated = rating >= 7.5;
+    const ratingBoost = rating > 0 ? (rating - 5.8) * 1.1 : 0;
+    const recencyBoost = item.year && item.year >= currentYear - 1 ? 1.4 : item.year && item.year >= currentYear - 3 ? 0.6 : 0;
+
+    const totalScore = genreScore * 1.45 + typeScore + similarBonus + genreOverrideBonus + moodBonus + ratingBoost + recencyBoost;
+
+    // Calibrate a believable 64–99% Match percentage from concrete alignment signals
+    const rawPct =
+      64 +
+      Math.min(14, matchedGenres.length * 6.5) +
+      (simHit ? 11 : 0) +
+      (matchedMood ? 7 : 0) +
+      (matchedType ? 4 : 0) +
+      (rating > 0 ? Math.max(-4, Math.min(7, (rating - 6.2) * 2.8)) : 1) +
+      (params.genreOverride && itemGenres.includes(params.genreOverride) ? 6 : 0);
+    const matchPercent = Math.max(62, Math.min(99, Math.round(rawPct)));
+
+    return {
+      item,
+      score: Number(totalScore.toFixed(2)),
+      matchPercent,
+      matchedGenres,
+      matchedType,
+      matchedMood,
+      similarToTitle: simHit?.similarToTitle,
+      highRated,
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return typeof params.limit === 'number' ? scored.slice(0, params.limit) : scored;
 }

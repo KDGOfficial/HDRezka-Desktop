@@ -1059,6 +1059,51 @@ html[data-theme="light"] .ember-range:not(.cinema-player-surface *) {
 }
 
 /* Accessibility: Reduced motion & Windows High Contrast (Forced Colors Mode) */
+/* Interactive What-to-Watch snap scrollers, focus-within poster controls & compositor card reveal */
+.wtw-snap-strip {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  touch-action: pan-x;
+}
+
+.wtw-snap-item {
+  scroll-snap-align: start;
+}
+
+.wtw-poster-overlay {
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+.wtw-poster-trigger:hover .wtw-poster-overlay,
+.wtw-poster-trigger:focus-visible .wtw-poster-overlay,
+.wtw-poster-trigger:focus-within .wtw-poster-overlay {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .wtw-poster-overlay {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .wtw-card-enter {
+    animation: wtw-reveal 0.28s ease-out both;
+    animation-timing-function: linear(0, 0.55 25%, 1.02 65%, 1);
+  }
+}
+
+@keyframes wtw-reveal {
+  from {
+    opacity: 0;
+    translate: 0 10px;
+    scale: 0.985;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
