@@ -666,7 +666,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.66';
+  public version = '0.0.67';
 
   private activeMirror: string;
   private mirrors: string[];
@@ -2378,8 +2378,16 @@ export class RezkaProvider implements IProvider {
     }
   }
 
-  private getKinogoBaseUrl(): string {
-    return this.isKinogo(this.activeMirror) ? this.activeMirror : 'https://kinogo.film';
+  private getKinogoBaseUrl(urlOrMirror?: string): string {
+    if (urlOrMirror && /^https?:\/\//i.test(urlOrMirror)) {
+      try {
+        const parsed = new URL(urlOrMirror);
+        if (/kinogo\./i.test(parsed.hostname)) {
+          return parsed.origin;
+        }
+      } catch {}
+    }
+    return this.isKinogo(this.activeMirror) ? this.activeMirror.replace(/\/$/, '') : 'https://kinogo.film';
   }
 
   private parseKinobaseItems(html: string, defaultType: ContentType = 'films', origin = 'https://kinobase.org'): MediaItem[] {
@@ -3202,8 +3210,13 @@ export class RezkaProvider implements IProvider {
       const title = $('#title h1').first().text().trim() || ld.name || meta?.title || '';
       if (!title) return null;
 
-      let poster = $('#media .poster img').first().attr('src') || ld.image || meta?.poster || '';
-      if (poster && !poster.startsWith('http')) {
+      let poster = $('#media .poster img').first().attr('data-src') || $('#media .poster img').first().attr('src') || ld.image || '';
+      if (!poster || poster.startsWith('data:') || /no[-_]?image|blank\.|spacer\.|loading\./i.test(poster)) {
+        poster = meta?.poster || '';
+      }
+      if (poster.startsWith('//')) {
+        poster = `https:${poster}`;
+      } else if (poster && !poster.startsWith('http')) {
         poster = `${siteOrigin}${poster.startsWith('/') ? '' : '/'}${poster}`;
       }
 
@@ -3768,7 +3781,7 @@ export class RezkaProvider implements IProvider {
 
   private async fetchKinogoPage(url: string, timeoutMs = 5000): Promise<string | null> {
     try {
-      const base = this.getKinogoBaseUrl();
+      const base = this.getKinogoBaseUrl(url);
       const res = await appFetch(url, {
         headers: { 'User-Agent': BROWSER_USER_AGENT, 'Referer': `${base}/` },
         signal: AbortSignal.timeout(timeoutMs),
@@ -3782,8 +3795,8 @@ export class RezkaProvider implements IProvider {
     }
   }
 
-  private parseKinogoItems(html: string, defaultType: ContentType = 'films'): MediaItem[] {
-    const base = this.getKinogoBaseUrl();
+  private parseKinogoItems(html: string, defaultType: ContentType = 'films', origin?: string): MediaItem[] {
+    const base = (origin || this.getKinogoBaseUrl()).replace(/\/$/, '');
     const $ = cheerio.load(html);
     const items: MediaItem[] = [];
     const seen = new Set<string>();
@@ -3862,10 +3875,10 @@ export class RezkaProvider implements IProvider {
         this.fetchKinogoPage(`${base}/cartoons/`),
       ]);
 
-      const homeItems = homeHtml ? this.parseKinogoItems(homeHtml) : [];
-      const filmsItems = filmsHtml ? this.parseKinogoItems(filmsHtml, 'films') : [];
-      const seriesItems = seriesHtml ? this.parseKinogoItems(seriesHtml, 'series') : [];
-      const cartoonItems = cartoonsHtml ? this.parseKinogoItems(cartoonsHtml, 'cartoons') : [];
+      const homeItems = homeHtml ? this.parseKinogoItems(homeHtml, 'films', base) : [];
+      const filmsItems = filmsHtml ? this.parseKinogoItems(filmsHtml, 'films', base) : [];
+      const seriesItems = seriesHtml ? this.parseKinogoItems(seriesHtml, 'series', base) : [];
+      const cartoonItems = cartoonsHtml ? this.parseKinogoItems(cartoonsHtml, 'cartoons', base) : [];
 
       if (homeItems.length === 0 && filmsItems.length === 0 && seriesItems.length === 0) {
         return null;
@@ -3925,7 +3938,7 @@ export class RezkaProvider implements IProvider {
       const html = await this.fetchKinogoPage(`${base}${pagePath}`);
       if (!html) return null;
 
-      let items = this.parseKinogoItems(html, filter.type);
+      let items = this.parseKinogoItems(html, filter.type, base);
       if (isAdultOrErotica) {
         items = items.map((it) => ({
           ...it,
@@ -3950,7 +3963,7 @@ export class RezkaProvider implements IProvider {
     if (!cleanQ) return [];
     const base = this.getKinogoBaseUrl();
     const html = await this.fetchKinogoPage(`${base}/?do=search&subaction=search&story=${encodeURIComponent(cleanQ)}`, 4500);
-    return html ? this.parseKinogoItems(html) : [];
+    return html ? this.parseKinogoItems(html, 'films', base) : [];
   }
 
   private async resolveKinogoUrl(urlOrId: string, meta?: Partial<MediaItem>): Promise<string | null> {
@@ -3989,7 +4002,7 @@ export class RezkaProvider implements IProvider {
     });
     if (!embedUrl) return null;
 
-    const base = this.getKinogoBaseUrl();
+    const base = this.getKinogoBaseUrl(filmUrl);
     const embedRes = await appFetch(embedUrl, {
       headers: { 'Referer': `${base}/`, 'User-Agent': BROWSER_USER_AGENT },
       signal: AbortSignal.timeout(5000),
@@ -4084,7 +4097,7 @@ export class RezkaProvider implements IProvider {
       const html = await this.fetchKinogoPage(filmUrl, 5000);
       if (!html) return null;
 
-      const base = this.getKinogoBaseUrl();
+      const base = this.getKinogoBaseUrl(filmUrl);
       const $ = cheerio.load(html);
       const idMatch = filmUrl.match(/\/(\d+)-/);
       const id = idMatch ? idMatch[1] : meta?.id || urlOrId;
@@ -4156,11 +4169,12 @@ export class RezkaProvider implements IProvider {
         this.fetchCriticReviews(title, year, { ratingRezka: ratingKp || meta?.rating, ratingKp, genres, directors }),
         (async () => {
           const kbUrl = await this.resolveKinobaseUrl('', { title, year, type: inferredKinogoType });
-          if (!kbUrl) return { translators: [] as Translator[], seasons: undefined as Season[] | undefined, kpId: undefined as string | undefined };
+          if (!kbUrl) return { translators: [] as Translator[], seasons: undefined as Season[] | undefined, kpId: undefined as string | undefined, poster: '' };
+          const kbPoster = this.mediaCache.get(kbUrl)?.poster || '';
           const pd = await this.extractKinobasePlayerData(kbUrl);
-          if (!pd) return { translators: [] as Translator[], seasons: undefined as Season[] | undefined, kpId: undefined as string | undefined };
+          if (!pd) return { translators: [] as Translator[], seasons: undefined as Season[] | undefined, kpId: undefined as string | undefined, poster: kbPoster };
           const parsed = pd.file ? this.parseKinobaseSeriesAndTranslators(pd.file) : { translators: [], seasons: undefined };
-          return { translators: parsed.translators, seasons: parsed.seasons, kpId: pd.kpId };
+          return { translators: parsed.translators, seasons: parsed.seasons, kpId: pd.kpId, poster: kbPoster };
         })(),
         this.fetchKinopoiskReviews(title, year, meta?.origTitle, html),
       ]);
@@ -4212,12 +4226,15 @@ export class RezkaProvider implements IProvider {
         ? mergeSeasons(tree?.seasons, kbEnrich?.seasons, collapsEnrich?.seasons)
         : tree?.seasons;
 
+      const finalPoster = poster || kbEnrich?.poster || '';
+      const fallbackBackdrop = kbEnrich?.poster || finalPoster;
+
       return {
         id,
         title,
         origTitle: meta?.origTitle || '',
-        poster,
-        backdrop: poster,
+        poster: finalPoster,
+        backdrop: fallbackBackdrop,
         year,
         country,
         genres,

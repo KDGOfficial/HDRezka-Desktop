@@ -79,6 +79,7 @@ export function createMainWindow(): BrowserWindow {
     }
 
     const activeMirror = provider.getActiveMirror();
+    const isImage = details.resourceType === 'image';
 
     if (
       url.includes('redcdn.org') ||
@@ -90,7 +91,8 @@ export function createMainWindow(): BrowserWindow {
     ) {
       const origin = url.includes('kinovod.pro') ? 'https://kinovod.pro' : 'https://kinobase.org';
       details.requestHeaders['Referer'] = `${origin}/`;
-      details.requestHeaders['Origin'] = origin;
+      if (!isImage) details.requestHeaders['Origin'] = origin;
+      else delete details.requestHeaders['Origin'];
       details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
       return callback({ requestHeaders: details.requestHeaders });
     }
@@ -101,14 +103,16 @@ export function createMainWindow(): BrowserWindow {
       url.includes('interkh.com')
     ) {
       details.requestHeaders['Referer'] = 'https://apiplayers.insertunit.ws/';
-      details.requestHeaders['Origin'] = 'https://apiplayers.insertunit.ws';
+      if (!isImage) details.requestHeaders['Origin'] = 'https://apiplayers.insertunit.ws';
+      else delete details.requestHeaders['Origin'];
       details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
       return callback({ requestHeaders: details.requestHeaders });
     }
 
     if (url.includes('hdstudio.org')) {
       details.requestHeaders['Referer'] = 'http://hdstudio.org/';
-      details.requestHeaders['Origin'] = 'http://hdstudio.org';
+      if (!isImage) details.requestHeaders['Origin'] = 'http://hdstudio.org';
+      else delete details.requestHeaders['Origin'];
       details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
       return callback({ requestHeaders: details.requestHeaders });
     }
@@ -117,9 +121,11 @@ export function createMainWindow(): BrowserWindow {
       try {
         const origin = new URL(details.url).origin;
         details.requestHeaders['Referer'] = `${origin}/`;
-        details.requestHeaders['Origin'] = origin;
+        if (!isImage) details.requestHeaders['Origin'] = origin;
+        else delete details.requestHeaders['Origin'];
       } catch {
         details.requestHeaders['Referer'] = 'https://kinogo.film/';
+        if (isImage) delete details.requestHeaders['Origin'];
       }
       details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
       return callback({ requestHeaders: details.requestHeaders });
@@ -127,7 +133,8 @@ export function createMainWindow(): BrowserWindow {
 
     if (url.includes('cinemar.cc') || url.includes('cinemap.cc')) {
       details.requestHeaders['Referer'] = 'https://cinemar.cc/';
-      details.requestHeaders['Origin'] = 'https://cinemar.cc';
+      if (!isImage) details.requestHeaders['Origin'] = 'https://cinemar.cc';
+      else delete details.requestHeaders['Origin'];
       details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
       return callback({ requestHeaders: details.requestHeaders });
     }

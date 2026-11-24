@@ -1,14 +1,16 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { History, Play, Trash2, Clock } from 'lucide-react';
 import { useMediaStore } from '../stores/useMediaStore';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { formatRelativeTime, formatDuration, getResumableTime } from '../../shared/utils';
 import { useTranslation } from '../i18n';
+import appLogo from '../assets/logo.png';
 
 export const HistoryPage: React.FC = () => {
   const { watchHistory, loadWatchHistory, openDetails } = useMediaStore();
   const { openPlayer } = usePlayerStore();
   const { t } = useTranslation();
+  const [failedPosters, setFailedPosters] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     loadWatchHistory();
@@ -102,7 +104,18 @@ export const HistoryPage: React.FC = () => {
                 onClick={() => openDetails(item.url || item.mediaId, item)}
               >
                 <div className="cinema-player-surface relative w-16 h-24 rounded-2xl overflow-hidden flex-shrink-0 shadow-md border border-white/[0.08]">
-                  <img src={item.poster} alt={item.title} className="w-full h-full object-cover" />
+                  {item.poster && !failedPosters[item.id] ? (
+                    <img
+                      src={item.poster}
+                      alt={item.title}
+                      onError={() => setFailedPosters((prev) => ({ ...prev, [item.id]: true }))}
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-[#1C1218] via-[#120B10] to-[#090608]">
+                      <img src={appLogo} alt="" className="w-8 h-8 rounded-full object-cover opacity-80" />
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                     <div className="w-8 h-8 rounded-xl play-squircle flex items-center justify-center">
                       <Play className="w-3.5 h-3.5 fill-white text-white ml-0.5" />

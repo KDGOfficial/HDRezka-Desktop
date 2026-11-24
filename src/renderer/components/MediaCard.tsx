@@ -1,10 +1,11 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { Star, Heart, Play, Plus, X, Eye } from 'lucide-react';
 import { MediaItem } from '../../shared/types';
 import { getRatingColor, formatCompactNumber, inferAgeRating, getAgeRatingBadgeClass } from '../../shared/utils';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useTranslation } from '../i18n';
 import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
+import appLogo from '../assets/logo.png';
 
 interface MediaCardProps {
   item: MediaItem;
@@ -20,6 +21,11 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
   const ageRating = inferAgeRating(item);
   const isFav = favorites.some((f) => f.mediaId === item.id);
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [posterFailed, setPosterFailed] = useState(false);
+
+  useEffect(() => {
+    setPosterFailed(false);
+  }, [item.poster]);
 
   useEffect(() => {
     return () => {
@@ -88,20 +94,22 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
       <div
         className="cinema-player-surface relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-dark-surface border border-white/[0.08] shadow-card group-hover:border-brand-ember/60 group-hover:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.88),0_0_26px_-6px_rgba(255,42,66,0.45)] transition-all duration-300"
       >
-        {item.poster ? (
+        {item.poster && !posterFailed ? (
           <img
             src={item.poster}
             alt={displayTitle}
             loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src =
-                'https://via.placeholder.com/300x450/140E12/ffffff?text=HDREZKA';
-            }}
+            onError={() => setPosterFailed(true)}
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-zinc-500 bg-dark-surface font-bold text-xs">
-            {t.home.noPoster}
+          <div className="w-full h-full flex flex-col items-center justify-center p-3 text-center bg-gradient-to-br from-[#1C1218] via-[#120B10] to-[#090608]">
+            <div className="logo-ring rounded-full mb-2.5 opacity-85">
+              <img src={appLogo} alt="" className="w-10 h-10 rounded-full object-cover block" />
+            </div>
+            <span className="font-display text-[11px] font-extrabold text-zinc-200 line-clamp-3 leading-snug">
+              {displayTitle || t.home.noPoster}
+            </span>
           </div>
         )}
 

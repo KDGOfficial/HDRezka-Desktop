@@ -54,17 +54,22 @@ export const DetailsPage: React.FC = () => {
   const [reviewFilter, setReviewFilter] = useState<'all' | 'kinopoisk' | 'critic' | 'user'>('all');
   const [posterSrc, setPosterSrc] = useState<string>(selectedMediaDetails?.poster || '');
   const [posterFailed, setPosterFailed] = useState<boolean>(false);
+  const [backdropSrc, setBackdropSrc] = useState<string>(selectedMediaDetails?.backdrop || selectedMediaDetails?.poster || '');
   const [backdropFailed, setBackdropFailed] = useState<boolean>(false);
+  const triedPostersRef = useRef<Set<string>>(new Set());
   const syncedResumeSeasonRef = useRef<string | null>(null);
   const displayTitle = useLocalizedTitle(details?.title, details?.origTitle);
   const resolvedAgeRating = details ? inferAgeRating(details) : '';
 
   useEffect(() => {
     const nextPoster = details?.poster || selectedMediaDetails?.poster || '';
+    const nextBackdrop = details?.backdrop || nextPoster;
+    triedPostersRef.current = new Set(nextPoster ? [nextPoster] : []);
     setPosterSrc(nextPoster);
     setPosterFailed(!nextPoster);
-    setBackdropFailed(false);
-  }, [details?.id, details?.poster, selectedMediaDetails?.poster]);
+    setBackdropSrc(nextBackdrop);
+    setBackdropFailed(!nextBackdrop);
+  }, [details?.id, details?.poster, details?.backdrop, selectedMediaDetails?.poster]);
 
   const matchesMediaHistory = (h: { mediaId: string; url?: string }, d: MediaDetails) =>
     h.mediaId === d.id ||
@@ -245,12 +250,18 @@ export const DetailsPage: React.FC = () => {
     <div className="w-full pb-20 text-left select-none animate-fadeIn">
       {/* Full-Bleed Theater Backdrop Stage */}
       <section className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 overflow-hidden border-b border-white/[0.06]">
-        {(details.backdrop || posterSrc) && !backdropFailed && (
+        {backdropSrc && !backdropFailed && (
           <img
-            src={details.backdrop || posterSrc}
+            src={backdropSrc}
             alt=""
             aria-hidden="true"
-            onError={() => setBackdropFailed(true)}
+            onError={() => {
+              if (posterSrc && posterSrc !== backdropSrc && !posterFailed) {
+                setBackdropSrc(posterSrc);
+              } else {
+                setBackdropFailed(true);
+              }
+            }}
             className="absolute inset-0 w-full h-full object-cover filter brightness-[0.38] blur-xl scale-110 saturate-125 pointer-events-none"
           />
         )}
@@ -275,9 +286,12 @@ export const DetailsPage: React.FC = () => {
                   src={posterSrc}
                   alt={displayTitle || details.title}
                   onError={() => {
-                    const fallback = selectedMediaDetails?.poster;
-                    if (fallback && fallback !== posterSrc) {
-                      setPosterSrc(fallback);
+                    const candidates = [details?.backdrop, selectedMediaDetails?.poster].filter(
+                      (c): c is string => typeof c === 'string' && c.length > 0 && !triedPostersRef.current.has(c)
+                    );
+                    if (candidates.length > 0) {
+                      triedPostersRef.current.add(candidates[0]);
+                      setPosterSrc(candidates[0]);
                     } else {
                       setPosterFailed(true);
                     }
