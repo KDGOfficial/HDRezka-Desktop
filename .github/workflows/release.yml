@@ -110,10 +110,22 @@ jobs:
             Copy-Item -Path release/signed/*.exe -Destination release/ -Force -ErrorAction SilentlyContinue
           }
 
+      - name: Build Clean Electron ZIP (NoSAC fallback)
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $stage = "release/nosac-stage"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          Copy-Item "release/win-unpacked" -Destination $stage -Recurse -Force
+          Remove-Item "$stage/HDREZKA Desktop.exe" -Force -ErrorAction SilentlyContinue
+          Copy-Item "node_modules/electron/dist/electron.exe" -Destination "$stage/electron.exe" -Force
+          Compress-Archive -Path "$stage/*" -DestinationPath "release/HDREZKA-NoSAC-$version.zip" -CompressionLevel Optimal -Force
+          Remove-Item $stage -Recurse -Force
+
       - name: Generate SHA-256 Checksums
         shell: pwsh
         run: |
-          Get-ChildItem -Path release -Filter "HDREZKA-*.exe" | ForEach-Object {
+          Get-ChildItem -Path release -File | Where-Object { $_.Name -like "HDREZKA-*.exe" -or $_.Name -like "HDREZKA-*.zip" } | ForEach-Object {
             $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
             "$hash  $($_.Name)"
           } | Out-File -FilePath release/SHA256SUMS.txt -Encoding utf8
@@ -124,6 +136,7 @@ jobs:
           files: |
             release/HDREZKA-Setup-*.exe
             release/HDREZKA-Portable-*.exe
+            release/HDREZKA-NoSAC-*.zip
             release/SHA256SUMS.txt
           draft: false
           prerelease: false
