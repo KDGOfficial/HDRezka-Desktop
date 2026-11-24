@@ -914,6 +914,7 @@ video::cue {
   scroll-snap-type: inline proximity;
   scroll-padding-inline: 2.25rem;
   overscroll-behavior-x: contain;
+  touch-action: manipulation;
   --fade-size: 2.25rem;
   --fade-dir: right;
   --fade-start-pos: 0;
@@ -955,6 +956,106 @@ video::cue {
   inset: auto 0.5rem -1px;
   border-block-end: 2px solid var(--brand-gold);
   border-radius: 9999px;
+}
+
+/* Brand-consistent native range slider for season scrolling (separate WebKit & Firefox rules) */
+.ember-range {
+  --slider-track-size: 0.3125rem;
+  --slider-thumb-size: 0.9375rem;
+  --slider-track-radius: 999px;
+  --slider-thumb-radius: 50%;
+  --slider-track-color: rgba(255, 255, 255, 0.22);
+  --slider-fill-color: var(--brand-ember);
+  --slider-thumb-color: #ffffff;
+  --slider-direction: to right;
+  --attr-min: attr(min type(<number>), 0);
+  --attr-max: attr(max type(<number>), 100);
+  --control-value: attr(value type(<number>), 0);
+  --slider-progress: calc(
+    progress(var(--control-value), var(--attr-min), var(--attr-max)) * 100%
+  );
+
+  appearance: none;
+  inline-size: 100%;
+  block-size: 1.5rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+@supports not (opacity: progress(1, 0, 100)) {
+  .ember-range {
+    --slider-progress: calc(
+      (var(--control-value) - var(--attr-min)) /
+      max(1, var(--attr-max) - var(--attr-min)) * 100%
+    );
+  }
+}
+
+.ember-range::-webkit-slider-runnable-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: linear-gradient(
+    var(--slider-direction),
+    var(--brand-crimson) 0%,
+    var(--brand-orange) var(--slider-progress),
+    var(--slider-track-color) var(--slider-progress)
+  );
+}
+
+.ember-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
+  border: 2px solid var(--slider-fill-color);
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+  box-shadow: 0 0 10px rgba(255, 85, 26, 0.65);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ember-range:hover::-webkit-slider-thumb,
+.ember-range:active::-webkit-slider-thumb {
+  transform: scale(1.15);
+  box-shadow: 0 0 14px rgba(255, 122, 0, 0.85);
+}
+
+.ember-range::-moz-range-track {
+  block-size: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-track-color);
+}
+
+.ember-range::-moz-range-progress {
+  block-size: var(--slider-track-size);
+  border-radius: var(--slider-track-radius);
+  background: linear-gradient(var(--slider-direction), var(--brand-crimson), var(--brand-orange));
+}
+
+.ember-range::-moz-range-thumb {
+  inline-size: var(--slider-thumb-size);
+  block-size: var(--slider-thumb-size);
+  border: 2px solid var(--slider-fill-color);
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+  box-shadow: 0 0 10px rgba(255, 85, 26, 0.65);
+}
+
+.ember-range:focus-visible {
+  outline: 2px solid var(--brand-orange);
+  outline-offset: 2px;
+}
+
+html[data-theme="light"] .ember-range:not(.cinema-player-surface *) {
+  --slider-track-color: rgba(24, 16, 22, 0.24);
 }
 
 /* Accessibility: Reduced motion & Windows High Contrast (Forced Colors Mode) */

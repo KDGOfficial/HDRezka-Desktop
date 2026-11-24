@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   Mic2,
   Tv,
@@ -9,6 +9,8 @@ import {
   Play,
   History,
   Hash,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { Season, Translator } from '../../shared/types';
 import { useTranslation } from '../i18n';
@@ -47,6 +49,183 @@ export function buildEpisodeChunks(episodes: Season['episodes'], chunkSize = EPI
   return chunks;
 }
 
+interface SeasonScrollTrackProps {
+  ariaLabel: string;
+  activeKey: number | string;
+  itemCount: number;
+  onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
+  trackClassName?: string;
+  wrapperClassName?: string;
+  compact?: boolean;
+  children: React.ReactNode;
+}
+
+export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
+  ariaLabel,
+  activeKey,
+  itemCount,
+  onKeyDown,
+  trackClassName = '',
+  wrapperClassName = '',
+  compact = false,
+  children,
+}) => {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const prevBtnRef = useRef<HTMLButtonElement>(null);
+  const nextBtnRef = useRef<HTMLButtonElement>(null);
+  const rafRef = useRef<number | null>(null);
+  const [scrollPos, setScrollPos] = useState({ left: 0, max: 0 });
+
+  const syncMetrics = useCallback(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const max = Math.max(0, Math.round(el.scrollWidth - el.clientWidth));
+    const left = Math.min(max, Math.max(0, Math.round(el.scrollLeft)));
+    setScrollPos((prev) => (prev.left === left && prev.max === max ? prev : { left, max }));
+  }, []);
+
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    syncMetrics();
+
+    const onScroll = () => {
+      if (rafRef.current !== null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        syncMetrics();
+      });
+    };
+
+    const onWheel = (e: WheelEvent) => {
+      const max = el.scrollWidth - el.clientWidth;
+      if (max <= 4 || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || e.deltaY === 0) return;
+      const canForward = e.deltaY > 0 && el.scrollLeft < max - 1;
+      const canBack = e.deltaY < 0 && el.scrollLeft > 1;
+      if (canForward || canBack) {
+        e.preventDefault();
+        el.scrollLeft += e.deltaY;
+      }
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    el.addEventListener('wheel', onWheel, { passive: false });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(syncMetrics) : null;
+    ro?.observe(el);
+
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      el.removeEventListener('wheel', onWheel);
+      ro?.disconnect();
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+  }, [syncMetrics, itemCount]);
+
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el) return;
+    const activeTab = el.querySelector<HTMLElement>('[aria-selected="true"]');
+    activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const id = requestAnimationFrame(syncMetrics);
+    return () => cancelAnimationFrame(id);
+  }, [activeKey, itemCount, syncMetrics]);
+
+  const isOverflowing = scrollPos.max > 4;
+  const canScrollLeft = scrollPos.left > 2;
+  const canScrollRight = scrollPos.left < scrollPos.max - 2;
+
+  // Redirect focus to the opposite control if the focused button reaches an end and disables
+  useEffect(() => {
+    if (!canScrollLeft && document.activeElement === prevBtnRef.current) {
+      nextBtnRef.current?.focus();
+    } else if (!canScrollRight && document.activeElement === nextBtnRef.current) {
+      prevBtnRef.current?.focus();
+    }
+  }, [canScrollLeft, canScrollRight]);
+
+  const stepScroll = (direction: -1 | 1) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const step = Math.max(compact ? 180 : 260, Math.round(el.clientWidth * 0.72));
+    const reducedMotion =
+      typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    el.scrollBy({ left: direction * step, behavior: reducedMotion ? 'auto' : 'smooth' });
+  };
+
+  const handleRangeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const next = Number(e.target.value);
+    el.scrollLeft = next;
+    setScrollPos((prev) => ({ ...prev, left: next }));
+  };
+
+  const clampedLeft = Math.min(scrollPos.left, scrollPos.max);
+  const progressPct = scrollPos.max > 0 ? Math.round((clampedLeft / scrollPos.max) * 100) : 0;
+
+  return (
+    <div className={wrapperClassName}>
+      <div
+        ref={trackRef}
+        role="tablist"
+        aria-label={ariaLabel}
+        onKeyDown={onKeyDown}
+        className={`tabs-scroll-fade flex items-center gap-1.5 overflow-x-auto scrollbar-none ${trackClassName}`}
+      >
+        {children}
+      </div>
+
+      {isOverflowing && (
+        <div className={`flex items-center gap-2 ${compact ? 'mt-1.5' : 'mt-2.5'}`}>
+          <button
+            ref={prevBtnRef}
+            type="button"
+            disabled={!canScrollLeft}
+            onClick={() => stepScroll(-1)}
+            aria-label="Прокрутить сезоны влево"
+            className="w-6 h-6 min-w-[24px] min-h-[24px] rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-default cursor-pointer active:scale-95 flex-shrink-0"
+          >
+            <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+
+          <input
+            type="range"
+            min={0}
+            max={scrollPos.max}
+            step={1}
+            value={clampedLeft}
+            onChange={handleRangeChange}
+            aria-label="Перемотка сезонов"
+            aria-valuetext={`${progressPct}%`}
+            style={
+              {
+                '--attr-min': 0,
+                '--attr-max': scrollPos.max,
+                '--control-value': clampedLeft,
+              } as React.CSSProperties
+            }
+            className="ember-range flex-1"
+          />
+
+          <button
+            ref={nextBtnRef}
+            type="button"
+            disabled={!canScrollRight}
+            onClick={() => stepScroll(1)}
+            aria-label="Прокрутить сезоны вправо"
+            className="w-6 h-6 min-w-[24px] min-h-[24px] rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-default cursor-pointer active:scale-95 flex-shrink-0"
+          >
+            <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
   translators = [],
   selectedTranslatorId,
@@ -66,7 +245,6 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
   const [reverseOrder, setReverseOrder] = useState(false);
   const [selectedChunkIdx, setSelectedChunkIdx] = useState(0);
 
-  const seasonListRef = useRef<HTMLDivElement>(null);
   const chunkListRef = useRef<HTMLDivElement>(null);
 
   const currentSeason = useMemo(
@@ -102,12 +280,6 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
     }
     setSelectedChunkIdx(0);
   }, [currentSeason?.id, reverseOrder, chunks.length, lastWatchedSeason, lastWatchedEpisode]);
-
-  // Keep selected season tab scrolled smoothly into view inside the tablist only
-  useEffect(() => {
-    const activeTab = seasonListRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-    activeTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [selectedSeasonId, seasons.length]);
 
   useEffect(() => {
     const activeChunk = chunkListRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
@@ -354,12 +526,12 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
             </div>
           </div>
 
-          {/* Season Tabs (single-row accessible tablist with edge fade + non-color-only underline) */}
+          {/* Season Tabs with horizontal scroll slider & prev/next controls */}
           {seasons.length > 1 && (
-            <div
-              ref={seasonListRef}
-              role="tablist"
-              aria-label={t.details.season}
+            <SeasonScrollTrack
+              ariaLabel={t.details.season}
+              activeKey={selectedSeasonId}
+              itemCount={seasons.length}
               onKeyDown={(e) =>
                 handleTabListKeyDown(
                   e,
@@ -368,7 +540,8 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
                   onSeasonChange
                 )
               }
-              className="tabs-scroll-fade flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-2 mb-4 border-b border-white/[0.07]"
+              wrapperClassName="pb-3 mb-4 border-b border-white/[0.07]"
+              trackClassName="pb-1"
             >
               {seasons.map((s) => {
                 const isSelected = selectedSeasonId === s.id;
@@ -397,7 +570,7 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
                   </button>
                 );
               })}
-            </div>
+            </SeasonScrollTrack>
           )}
 
           {/* Episode Range Chunk Tabs (for long anime like One Piece 1-50, 51-100, ..., 1151-1180) */}

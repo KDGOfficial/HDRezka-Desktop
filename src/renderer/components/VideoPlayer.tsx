@@ -33,7 +33,7 @@ import {
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
-import { buildEpisodeChunks } from './SeriesNavigationPanel';
+import { buildEpisodeChunks, SeasonScrollTrack } from './SeriesNavigationPanel';
 import { useTranslation } from '../i18n';
 import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
 import {
@@ -2267,10 +2267,12 @@ export const VideoPlayer: React.FC = () => {
               </div>
 
               {mediaDetails.seasons.length > 1 && (
-                <div
-                  role="tablist"
-                  aria-label="Выбор сезона"
-                  className="tabs-scroll-fade flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-1"
+                <SeasonScrollTrack
+                  ariaLabel="Выбор сезона"
+                  activeKey={menuSeason.id}
+                  itemCount={mediaDetails.seasons.length}
+                  compact
+                  trackClassName="pb-1"
                 >
                   {mediaDetails.seasons.map((s) => {
                     const isSel = menuSeason.id === s.id;
@@ -2295,7 +2297,7 @@ export const VideoPlayer: React.FC = () => {
                       </button>
                     );
                   })}
-                </div>
+                </SeasonScrollTrack>
               )}
 
               {rawEps.length > 20 && (
