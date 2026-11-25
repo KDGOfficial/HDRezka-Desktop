@@ -29,6 +29,7 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { getTopGenres, normalizeInterestsProfile } from '../../shared/recommendations';
 import {
   APP_VERSION,
+  ANIME_MIRROR_SEEDS,
   DEFAULT_HOTKEYS,
   TELEGRAM_CHANNEL_URL,
   AUTHOR_YOUTUBE_URL,
@@ -553,9 +554,10 @@ export const SettingsPage: React.FC = () => {
           )}
 
           {(() => {
+            const mainMirrorSet = new Set(settings.app.mirrors || []);
             const activeStatus = mirrorsStatus.find((m) => m.url === settings.app.activeMirror);
             const activeNeedsVerification = activeStatus?.isAvailable && activeStatus?.needsVerification;
-            const availableMirrors = mirrorsStatus.filter((m) => m.isAvailable);
+            const availableMirrors = mirrorsStatus.filter((m) => mainMirrorSet.has(m.url) && m.isAvailable);
             const allAvailableNeedVerification =
               availableMirrors.length > 0 && availableMirrors.every((m) => m.needsVerification);
             const shouldShowBanner = activeNeedsVerification || allAvailableNeedVerification;
@@ -577,77 +579,177 @@ export const SettingsPage: React.FC = () => {
             ) : null;
           })()}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {settings.app.mirrors?.map((mirror) => {
-              const isActive = settings.app.activeMirror === mirror;
-              const status = mirrorsStatus.find((m) => m.url === mirror);
-              return (
-                <div
-                  key={mirror}
-                  onClick={() => setActiveMirror(mirror)}
-                  className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer group ${
-                    isActive
-                      ? 'bg-brand-crimson/15 border-brand-ember text-white shadow-glow-sm'
-                      : 'bg-white/[0.04] border-white/[0.07] hover:border-white/20 text-zinc-300'
-                  }`}
-                >
-                  <div className="flex items-center gap-2.5 truncate min-w-0 mr-2">
-                    <span
-                      className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                        status?.isAvailable
-                          ? status.needsVerification
-                            ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
-                            : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
-                          : 'bg-rose-500'
-                      }`}
-                    />
-                    <span className="text-xs font-bold truncate font-mono">{mirror}</span>
-                  </div>
+          <div className="space-y-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] font-display font-extrabold uppercase tracking-wider text-zinc-400">
+                {t.settings.mainMirrors}
+              </span>
+              <span className="text-[10px] font-mono text-zinc-500 tabular-nums">
+                {settings.app.mirrors?.length || 0}
+              </span>
+            </div>
 
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {status && (
-                      <span className="text-[10px] text-zinc-400 font-mono tabular-nums">
-                        {status.latencyMs < 9000
-                          ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
-                          : t.settings.error}
-                      </span>
-                    )}
-                    {status?.needsVerification && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleVerifyMirror(mirror);
-                        }}
-                        className="px-2.5 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/35 text-[10px] font-bold cursor-pointer"
-                        title={t.details.passVerification}
-                      >
-                        {t.details.passVerification}
-                      </button>
-                    )}
-                    {isActive && (
-                      <span className="px-2 py-0.5 rounded-full btn-ember text-white text-[9px] font-black uppercase">
-                        {t.settings.active}
-                      </span>
-                    )}
-                    {settings.app.mirrors && settings.app.mirrors.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          removeCustomMirror(mirror);
-                        }}
-                        className="p-1 rounded-full hover:bg-rose-500/20 text-zinc-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
-                        title={t.settings.deleteMirror}
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {settings.app.mirrors?.map((mirror) => {
+                const isActive = settings.app.activeMirror === mirror;
+                const status = mirrorsStatus.find((m) => m.url === mirror);
+                return (
+                  <div
+                    key={mirror}
+                    onClick={() => setActiveMirror(mirror)}
+                    className={`flex items-center justify-between p-3.5 rounded-2xl border transition-all cursor-pointer group ${
+                      isActive
+                        ? 'bg-brand-crimson/15 border-brand-ember text-white shadow-glow-sm'
+                        : 'bg-white/[0.04] border-white/[0.07] hover:border-white/20 text-zinc-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 truncate min-w-0 mr-2">
+                      <span
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                          status?.isAvailable
+                            ? status.needsVerification
+                              ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                              : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+                            : 'bg-rose-500'
+                        }`}
+                      />
+                      <span className="text-xs font-bold truncate font-mono">{mirror}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {status && (
+                        <span className="text-[10px] text-zinc-400 font-mono tabular-nums">
+                          {status.latencyMs < 9000
+                            ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
+                            : t.settings.error}
+                        </span>
+                      )}
+                      {status?.needsVerification && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleVerifyMirror(mirror);
+                          }}
+                          className="px-2.5 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/35 text-[10px] font-bold cursor-pointer"
+                          title={t.details.passVerification}
+                        >
+                          {t.details.passVerification}
+                        </button>
+                      )}
+                      {isActive && (
+                        <span className="px-2 py-0.5 rounded-full btn-ember text-white text-[9px] font-black uppercase">
+                          {t.settings.active}
+                        </span>
+                      )}
+                      {settings.app.mirrors && settings.app.mirrors.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeCustomMirror(mirror);
+                          }}
+                          className="p-1 rounded-full hover:bg-rose-500/20 text-zinc-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-all cursor-pointer"
+                          title={t.settings.deleteMirror}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
+
+          {(() => {
+            const mainMirrorSet = new Set(settings.app.mirrors || []);
+            const animeMirrors = ANIME_MIRROR_SEEDS.filter((m) => !mainMirrorSet.has(m));
+            const sortedAnimeMirrors = animeMirrors.slice().sort((a, b) => {
+              const sa = mirrorsStatus.find((m) => m.url === a);
+              const sb = mirrorsStatus.find((m) => m.url === b);
+              const rank = (s?: typeof sa) => (!s ? 3 : s.isAvailable ? (s.needsVerification ? 1 : 0) : 2);
+              const diff = rank(sa) - rank(sb);
+              if (diff !== 0) return diff;
+              if (sa && sb) return sa.latencyMs - sb.latencyMs;
+              return 0;
+            });
+            const onlineAnimeCount = sortedAnimeMirrors.filter((url) => {
+              const s = mirrorsStatus.find((m) => m.url === url);
+              return s?.isAvailable && !s?.needsVerification;
+            }).length;
+            const hasCheckedAnime = sortedAnimeMirrors.some((url) => mirrorsStatus.some((m) => m.url === url));
+
+            return sortedAnimeMirrors.length > 0 ? (
+              <div className="space-y-2.5 pt-2 border-t border-white/[0.06]">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[11px] font-display font-extrabold uppercase tracking-wider text-zinc-400">
+                      {t.settings.animeMirrors}
+                    </span>
+                    <span className="text-[10px] text-zinc-500 truncate">
+                      · {t.settings.animeMirrorsHint}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-400 tabular-nums">
+                    {hasCheckedAnime ? `${onlineAnimeCount}/${sortedAnimeMirrors.length}` : sortedAnimeMirrors.length}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {sortedAnimeMirrors.map((mirror) => {
+                    const status = mirrorsStatus.find((m) => m.url === mirror);
+                    return (
+                      <div
+                        key={mirror}
+                        className="flex items-center justify-between p-3.5 rounded-2xl border bg-white/[0.04] border-white/[0.07] text-zinc-300"
+                      >
+                        <div className="flex items-center gap-2.5 truncate min-w-0 mr-2">
+                          <span
+                            className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                              !status
+                                ? isCheckingMirrors
+                                  ? 'bg-zinc-500 animate-pulse'
+                                  : 'bg-zinc-600'
+                                : status.isAvailable
+                                  ? status.needsVerification
+                                    ? 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]'
+                                    : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]'
+                                  : 'bg-rose-500'
+                            }`}
+                          />
+                          <span className="text-xs font-bold truncate font-mono">{mirror}</span>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          {status && (
+                            <span className="text-[10px] text-zinc-400 font-mono tabular-nums">
+                              {status.latencyMs < 9000
+                                ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
+                                : t.settings.error}
+                            </span>
+                          )}
+                          {status?.needsVerification && (
+                            <button
+                              type="button"
+                              onClick={() => handleVerifyMirror(mirror)}
+                              className="px-2.5 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/35 text-[10px] font-bold cursor-pointer"
+                              title={t.details.passVerification}
+                            >
+                              {t.details.passVerification}
+                            </button>
+                          )}
+                          <span className="logo-pill px-2 py-0.5 rounded-full text-zinc-200 text-[9px] font-black uppercase">
+                            {t.settings.animeBadge}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null;
+          })()}
 
           <div className="flex items-center gap-2 pt-1">
             <input

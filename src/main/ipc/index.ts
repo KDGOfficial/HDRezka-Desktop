@@ -4,7 +4,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { spawn } from 'child_process';
-import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, HDREZKA_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
+import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, ANIME_MIRROR_SEEDS, HDREZKA_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
 import { getMainWindow, restoreDefaultWindowBounds } from '../window';
 import { setBrowserAdBlockEnabled, getBrowserAdBlockStats } from '../main';
 import { ProviderManager } from '../../core/providers/manager';
@@ -182,12 +182,26 @@ export function registerIpcHandlers(): void {
     const provider = providerManager.getProvider();
     const curSettings = db.getSettings();
     const cleanedMirrors = (curSettings.app?.mirrors || DEFAULT_MIRRORS).filter((m) => !isBadMirrorUrl(m));
-    const seededMirrors = Array.from(new Set([...OPEN_MIRROR_SEEDS, ...HDREZKA_MIRRORS, ...cleanedMirrors]));
-    const statuses = await provider.checkMirrors(seededMirrors);
-    const cleanStatuses = statuses.filter((s) => s.isAvailable && !s.needsVerification);
+    const animeMirrors = Array.from(new Set(ANIME_MIRROR_SEEDS.filter((m) => !isBadMirrorUrl(m))));
+    const animeSet = new Set(animeMirrors);
+    const mainMirrors = Array.from(
+      new Set([...OPEN_MIRROR_SEEDS, ...HDREZKA_MIRRORS, ...cleanedMirrors])
+    ).filter((m) => !animeSet.has(m));
+    const allToCheck = Array.from(new Set([...mainMirrors, ...animeMirrors]));
+    const statuses = await provider.checkMirrors(allToCheck);
+    const mainStatuses = statuses.filter((s) => !animeSet.has(s.url));
+    const animeStatuses = statuses
+      .filter((s) => animeSet.has(s.url))
+      .sort((a, b) => {
+        const rank = (s: typeof a) => (s.isAvailable ? (s.needsVerification ? 1 : 0) : 2);
+        const diff = rank(a) - rank(b);
+        return diff !== 0 ? diff : a.latencyMs - b.latencyMs;
+      });
+    const cleanStatuses = mainStatuses.filter((s) => s.isAvailable && !s.needsVerification);
 
     if (cleanStatuses.length > 0) {
       const isRezkaOpen = (url: string) =>
+        !animeSet.has(url) &&
         !url.includes('kinobase.org') &&
         !url.includes('kinovod.pro') &&
         !url.includes('kinogo.') &&
@@ -218,16 +232,16 @@ export function registerIpcHandlers(): void {
           },
         });
       }
-      return sortedClean;
+      return [...sortedClean, ...animeStatuses];
     }
 
     if (
       !curSettings.app?.mirrors ||
-      seededMirrors.join('|') !== curSettings.app.mirrors.join('|')
+      mainMirrors.join('|') !== curSettings.app.mirrors.join('|')
     ) {
-      db.saveSettings({ app: { ...curSettings.app, mirrors: seededMirrors } });
+      db.saveSettings({ app: { ...curSettings.app, mirrors: mainMirrors } });
     }
-    return statuses;
+    return [...mainStatuses, ...animeStatuses];
   });
 
   ipcMain.handle(IPC_CHANNELS.FIND_ONLINE_MIRRORS, async () => {

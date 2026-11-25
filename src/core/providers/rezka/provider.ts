@@ -667,7 +667,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.72';
+  public version = '0.0.73';
 
   public static readonly ANILIBERTY_GENRE_IDS: Record<string, number> = {
     action: 14,
@@ -934,6 +934,23 @@ export class RezkaProvider implements IProvider {
     throw new Error(`Failed to fetch ${url}: ${lastError?.message}`);
   }
 
+  private getMirrorProbe(cleanUrl: string): { url: string; isJsonApi: boolean } {
+    const lower = cleanUrl.toLowerCase();
+    if (this.isAniLiberty(lower)) {
+      return { url: `${cleanUrl}/api/v1/anime/releases/latest?limit=1`, isJsonApi: true };
+    }
+    if (lower.includes('api.yani.tv')) {
+      return { url: `${cleanUrl}/anime?limit=1`, isJsonApi: true };
+    }
+    if (this.isAnime365(lower)) {
+      return { url: `${cleanUrl}/api/series?limit=1`, isJsonApi: true };
+    }
+    if (this.isAnimeVost(lower)) {
+      return { url: `${cleanUrl}/v1/last?page=1&quantity=1`, isJsonApi: true };
+    }
+    return { url: cleanUrl, isJsonApi: false };
+  }
+
   public async checkMirrors(mirrorsToCheck?: string[]): Promise<MirrorStatus[]> {
     const list = mirrorsToCheck && mirrorsToCheck.length > 0 ? mirrorsToCheck : this.mirrors;
 
@@ -950,15 +967,43 @@ export class RezkaProvider implements IProvider {
           };
         }
 
+        const probe = this.getMirrorProbe(cleanUrl);
         const rootT0 = Date.now();
         try {
-          const rootRes = await appFetch(cleanUrl, {
-            headers: this.getHeaders(cleanUrl),
+          const headers = probe.isJsonApi
+            ? { ...this.getHeaders(cleanUrl), Accept: 'application/json' }
+            : this.getHeaders(cleanUrl);
+          const rootRes = await appFetch(probe.url, {
+            headers,
             signal: AbortSignal.timeout(5000),
           });
           const latency = Date.now() - rootT0;
           const text = await rootRes.text();
           const isBlocked = this.isAntiBot(text);
+          const isChallengeStatus =
+            isBlocked &&
+            (rootRes.status === 401 || rootRes.status === 403 || rootRes.status === 429 || rootRes.status === 503);
+
+          if (probe.isJsonApi) {
+            const hasApiPayload =
+              rootRes.ok &&
+              !isBlocked &&
+              text.length > 20 &&
+              (text.includes('"id"') ||
+                text.includes('"anime_id"') ||
+                text.includes('"data"') ||
+                text.includes('"response"'));
+            const isAvail = hasApiPayload || ((rootRes.ok || isChallengeStatus) && isBlocked && text.length > 200);
+            return {
+              url: cleanUrl,
+              isAvailable: isAvail,
+              latencyMs: isAvail ? latency : 9999,
+              lastChecked: Date.now(),
+              needsVerification: isAvail && isBlocked && !hasApiPayload,
+            };
+          }
+
+          const lowerText = text.toLowerCase();
           const hasRezkaContent =
             text.includes('b-content') ||
             text.includes('b-post') ||
@@ -975,15 +1020,11 @@ export class RezkaProvider implements IProvider {
             text.includes('kinogo') ||
             text.includes('YummyAnime') ||
             text.includes('anime_id') ||
-            text.includes('animego') ||
-            text.includes('UAKino') ||
-            text.includes('uakino');
+            lowerText.includes('animego') ||
+            lowerText.includes('uakino');
           const isFakeLogin = text.includes('Вход на HDrezka') || (text.includes('card-face') && !hasRezkaContent);
           const isLiveRezka = (hasRezkaContent || isBlocked) && !isFakeLogin;
           const isLiveSite = isLiveRezka && text.length > 200;
-          const isChallengeStatus =
-            isBlocked &&
-            (rootRes.status === 401 || rootRes.status === 403 || rootRes.status === 429 || rootRes.status === 503);
           const isAvail = (rootRes.ok || isChallengeStatus) && isLiveSite;
           return {
             url: cleanUrl,
@@ -1044,15 +1085,17 @@ export class RezkaProvider implements IProvider {
         ? mirrorsToCheck.map((m) => m.replace(/\/$/, ''))
         : [...this.mirrors];
     const statuses = await this.checkMirrors(targetList);
-    const isRezkaOpen = (url: string) => !this.isKinobase(url) && !this.isKinogo(url) && !this.isHdStudio(url);
-    const clean = statuses
-      .filter((s) => s.isAvailable && !s.needsVerification)
+    const isRezkaOpen = (url: string) =>
+      !this.isKinobase(url) && !this.isKinogo(url) && !this.isHdStudio(url) && !this.isAnimeMirror(url);
+    const mainClean = statuses
+      .filter((s) => !this.isAnimeMirror(s.url) && s.isAvailable && !s.needsVerification)
       .sort((a, b) => {
         const aRezka = isRezkaOpen(a.url) ? 0 : 1;
         const bRezka = isRezkaOpen(b.url) ? 0 : 1;
         if (aRezka !== bRezka) return aRezka - bRezka;
         return a.latencyMs - b.latencyMs;
       });
+    const clean = mainClean;
 
     if (clean.length > 0) {
       this.mirrors = clean.map((s) => s.url);

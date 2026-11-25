@@ -286,3 +286,71 @@ test('SeriesNavigationPanel buildEpisodeChunks splits 1180 episodes into 50-epis
   assert.equal(chunks[0].label, '1–50');
   assert.equal(chunks[23].label, '1151–1180');
 });
+
+test('checkMirrors probes all ANIME_MIRROR_SEEDS via real API/HTML endpoints and pruneProtectedMirrors never activates anime mirrors', async () => {
+  const provider = new RezkaProvider('https://kinobase.org', ['https://kinobase.org']);
+  const probedUrls = [];
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const s = String(url);
+    probedUrls.push(s);
+    if (s.includes('/api/v1/anime/releases/latest')) {
+      return new Response(JSON.stringify([{ id: 10305, name: { main: 'Тест' } }]), { status: 200 });
+    }
+    if (s.includes('api.yani.tv/anime?limit=1')) {
+      return new Response(JSON.stringify({ response: [{ anime_id: 1, title: 'Тест' }] }), { status: 200 });
+    }
+    if (s.includes('/api/series?limit=1')) {
+      return new Response(JSON.stringify({ data: [{ id: 10, titles: { ru: 'Тест' } }] }), { status: 200 });
+    }
+    if (s.includes('/v1/last?page=1&quantity=1')) {
+      return new Response(JSON.stringify({ data: [{ id: 20, title: 'Тест' }] }), { status: 200 });
+    }
+    if (s.includes('animego.')) {
+      return new Response('<html><title>AnimeGO</title><body>animego ' + 'x'.repeat(250) + '</body></html>', { status: 200 });
+    }
+    if (s.includes('uakino.')) {
+      return new Response('<html><title>UAKino</title><body>uakino ' + 'x'.repeat(250) + '</body></html>', { status: 200 });
+    }
+    if (s.includes('kinobase.org')) {
+      return new Response('<html><title>Кинобейс</title><body>kinobase ' + 'x'.repeat(250) + '</body></html>', { status: 200 });
+    }
+    return new Response('', { status: 404 });
+  };
+
+  try {
+    const statuses = await provider.checkMirrors(ANIME_MIRROR_SEEDS);
+    assert.equal(statuses.length, ANIME_MIRROR_SEEDS.length);
+    for (const st of statuses) {
+      assert.equal(st.isAvailable, true, `Expected ${st.url} to be available`);
+      assert.equal(st.needsVerification, false, `Expected ${st.url} not to need verification`);
+    }
+    assert.ok(probedUrls.some((u) => u.includes('aniliberty.top/api/v1/anime/releases/latest?limit=1')));
+    assert.ok(probedUrls.some((u) => u.includes('api.yani.tv/anime?limit=1')));
+    assert.ok(probedUrls.some((u) => u.includes('smotret-anime.org/api/series?limit=1')));
+    assert.ok(probedUrls.some((u) => u.includes('api.animevost.org/v1/last?page=1&quantity=1')));
+
+    // Anime mirrors must never be promoted as the main activeMirror
+    const active = await provider.pruneProtectedMirrors(['https://aniliberty.top', 'https://kinobase.org']);
+    assert.equal(active, 'https://kinobase.org');
+    assert.deepEqual(provider.getMirrors(), ['https://kinobase.org']);
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('SettingsPage, IPC CHECK_MIRRORS, useSettingsStore, and project rules include all anime mirrors', () => {
+  const fs = require('node:fs');
+  const settingsSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/SettingsPage.tsx'), 'utf8');
+  const storeSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/stores/useSettingsStore.ts'), 'utf8');
+  const ipcSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/ipc/index.ts'), 'utf8');
+  const agentsMd = fs.readFileSync(path.resolve(__dirname, '../AGENTS.md'), 'utf8');
+  const geminiMd = fs.readFileSync(path.resolve(__dirname, '../GEMINI.md'), 'utf8');
+
+  assert.match(settingsSrc, /ANIME_MIRROR_SEEDS/);
+  assert.match(settingsSrc, /t\.settings\.animeMirrors/);
+  assert.match(storeSrc, /ANIME_MIRROR_SEEDS/);
+  assert.match(ipcSrc, /ANIME_MIRROR_SEEDS/);
+  assert.match(agentsMd, /ANIME_MIRROR_SEEDS/);
+  assert.match(geminiMd, /ANIME_MIRROR_SEEDS/);
+});

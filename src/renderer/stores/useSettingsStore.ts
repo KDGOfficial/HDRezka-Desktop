@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { UserSettings, MirrorStatus, UpdateInfo, UpdateProgress, ContentType, UserInterestsProfile } from '../../shared/types';
-import { DEFAULT_USER_SETTINGS } from '../../shared/constants';
+import { DEFAULT_USER_SETTINGS, ANIME_MIRROR_SEEDS } from '../../shared/constants';
 import {
   InteractionKind,
   createEmptyInterestsProfile,
@@ -161,7 +161,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       try {
         const statuses = await window.api.checkMirrors();
         const s = await window.api.getSettings();
-        const allowed = new Set(s.app?.mirrors || []);
+        const allowed = new Set([...(s.app?.mirrors || []), ...ANIME_MIRROR_SEEDS]);
         const visibleStatuses = allowed.size > 0 ? statuses.filter((st: MirrorStatus) => allowed.has(st.url)) : statuses;
         set({ settings: s, mirrorsStatus: visibleStatuses, isCheckingMirrors: false });
       } catch (err) {
