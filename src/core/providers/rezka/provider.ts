@@ -667,7 +667,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.76';
+  public version = '0.0.77';
 
   public static readonly ANILIBERTY_GENRE_IDS: Record<string, number> = {
     action: 14,
@@ -1223,18 +1223,42 @@ export class RezkaProvider implements IProvider {
     };
   }
 
+  private resolveMediaUrl(raw?: string, baseOrigin?: string): string {
+    const s = (raw || '').trim();
+    if (!s || /^data:/i.test(s)) return '';
+    if (s.startsWith('//')) return `https:${s}`;
+    if (/^https?:\/\//i.test(s)) return s;
+    const origin = (baseOrigin || this.activeMirror || 'https://rezka.ac').replace(/\/+$/, '');
+    return `${origin}${s.startsWith('/') ? '' : '/'}${s}`;
+  }
+
+  private pickImageUrl(imgEl: cheerio.Cheerio<any>, baseOrigin?: string): string {
+    const src = (imgEl.attr('src') || '').trim();
+    const dataSrc = (imgEl.attr('data-src') || imgEl.attr('data-original') || '').trim();
+    const raw = src && !/^data:/i.test(src) ? src : dataSrc;
+    return this.resolveMediaUrl(raw, baseOrigin);
+  }
+
   private parseItem(element: cheerio.Cheerio<any>, $: cheerio.CheerioAPI): MediaItem | null {
     const el = $(element);
     const id = el.attr('data-id') || '';
     if (!id) return null;
 
     const linkEl = el.find('.b-content__inline_item-link a');
-    const url = linkEl.attr('href') || el.attr('data-url') || '';
+    const rawUrl = linkEl.attr('href') || el.attr('data-url') || '';
+    const url = this.resolveMediaUrl(rawUrl) || rawUrl;
     const title = linkEl.text().trim();
     if (!title) return null;
 
+    let itemOrigin = this.activeMirror;
+    if (/^https?:\/\//i.test(url)) {
+      try {
+        itemOrigin = new URL(url).origin;
+      } catch {}
+    }
+
     const imgEl = el.find('.b-content__inline_item-cover img');
-    const poster = imgEl.attr('src') || imgEl.attr('data-src') || '';
+    const poster = this.pickImageUrl(imgEl, itemOrigin);
 
     const catEl = el.find('.cat');
     let type: ContentType = 'films';
@@ -5630,12 +5654,15 @@ export class RezkaProvider implements IProvider {
       if (!title) {
         return getFallbackDetails(urlOrId, cachedMeta);
       }
+      let pageOrigin = this.activeMirror;
+      if (/^https?:\/\//i.test(targetUrl)) {
+        try {
+          pageOrigin = new URL(targetUrl).origin;
+        } catch {}
+      }
       const origTitle = $('.b-post__origtitle').first().text().trim();
-    const poster =
-      $('.b-sidecover img').first().attr('src') ||
-      $('.b-sidecover img').first().attr('data-src') ||
-      '';
-    const backdrop = $('.b-sidecover a').first().attr('href') || poster;
+    const poster = this.pickImageUrl($('.b-sidecover img').first(), pageOrigin);
+    const backdrop = this.resolveMediaUrl($('.b-sidecover a').first().attr('href'), pageOrigin) || poster;
     const description = $('.b-post__description_text').first().text().trim();
 
     const embfMatch = html.match(
@@ -5820,9 +5847,10 @@ export class RezkaProvider implements IProvider {
     const similar: MediaItem[] = [];
     $('.b-post__partcontent_item, .b-scontent__item').each((_, el) => {
       const sLink = $(el).find('a').first();
-      const sUrl = sLink.attr('href') || '';
+      const sRawUrl = sLink.attr('href') || '';
+      const sUrl = this.resolveMediaUrl(sRawUrl, pageOrigin) || sRawUrl;
       const sTitle = $(el).find('.title').text().trim() || sLink.text().trim();
-      const sPoster = $(el).find('img').attr('src') || '';
+      const sPoster = this.pickImageUrl($(el).find('img').first(), pageOrigin);
       const sId = sUrl.split('/').pop()?.split('-')[0] || '';
       if (sTitle && sUrl) {
         similar.push({

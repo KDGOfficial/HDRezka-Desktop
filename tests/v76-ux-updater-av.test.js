@@ -83,24 +83,24 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   new Function('exports', 'require', 'module', res.outputFiles[0].text)(mod.exports, fakeRequire, mod);
 
   const assets = [
-    { name: 'HDREZKA-NoSAC-0.0.76.zip', browser_download_url: 'https://example/nosac.zip' },
-    { name: 'HDREZKA-Portable-0.0.76.exe', browser_download_url: 'https://example/portable.exe' },
-    { name: 'HDREZKA-Setup-0.0.76.exe', browser_download_url: 'https://example/setup.exe' },
+    { name: 'HDREZKA-NoSAC-0.0.77.zip', browser_download_url: 'https://example/nosac.zip' },
+    { name: 'HDREZKA-Portable-0.0.77.exe', browser_download_url: 'https://example/portable.exe' },
+    { name: 'HDREZKA-Setup-0.0.77.exe', browser_download_url: 'https://example/setup.exe' },
   ];
 
-  assert.equal(mod.exports.selectUpdateAsset(assets, true)?.name, 'HDREZKA-Portable-0.0.76.exe');
-  assert.equal(mod.exports.selectUpdateAsset(assets, false)?.name, 'HDREZKA-Setup-0.0.76.exe');
+  assert.equal(mod.exports.selectUpdateAsset(assets, true)?.name, 'HDREZKA-Portable-0.0.77.exe');
+  assert.equal(mod.exports.selectUpdateAsset(assets, false)?.name, 'HDREZKA-Setup-0.0.77.exe');
   // Portable runtime MUST NEVER fall back to Setup .exe (would overwrite Portable with NSIS Setup)
   assert.equal(
-    mod.exports.selectUpdateAsset([{ name: 'HDREZKA-Setup-0.0.76.exe', browser_download_url: 'https://example/setup.exe' }], true),
+    mod.exports.selectUpdateAsset([{ name: 'HDREZKA-Setup-0.0.77.exe', browser_download_url: 'https://example/setup.exe' }], true),
     null
   );
-  assert.equal(mod.exports.selectUpdateAsset([{ name: 'HDREZKA-NoSAC-0.0.76.zip' }], false), null);
+  assert.equal(mod.exports.selectUpdateAsset([{ name: 'HDREZKA-NoSAC-0.0.77.zip' }], false), null);
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.0.76 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.0.76');
+test('v0.0.77 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.0.77');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -186,4 +186,43 @@ test('Portable PowerShell self-replacement handles spaces, Cyrillic, and single 
   } finally {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
+});
+
+test('RezkaProvider resolves relative /uploads/posts posters and data:image lazy placeholders against mirror origin', () => {
+  const cheerio = require('cheerio');
+  const { RezkaProvider } = loadTs('src/core/providers/rezka/provider.ts');
+  const p = new RezkaProvider();
+  p.setActiveMirror('https://rezka.ai');
+
+  const html = `
+    <div class="b-content__inline_item" data-id="101">
+      <div class="b-content__inline_item-cover">
+        <a href="/films/thriller/101-zver.html">
+          <img src="/uploads/posts/2026-10/101-zver.jpg" />
+        </a>
+      </div>
+      <div class="b-content__inline_item-link">
+        <a href="/films/thriller/101-zver.html">Зверь</a>
+        <div>2026, США, Триллеры</div>
+      </div>
+    </div>
+    <div class="b-content__inline_item" data-id="102">
+      <div class="b-content__inline_item-cover">
+        <a href="https://rezka.ac/films/action/102-test.html">
+          <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="/uploads/posts/2026-11/102-test.jpg" />
+        </a>
+      </div>
+      <div class="b-content__inline_item-link">
+        <a href="https://rezka.ac/films/action/102-test.html">Тест</a>
+        <div>2026, США, Боевики</div>
+      </div>
+    </div>
+  `;
+  const $ = cheerio.load(html);
+  const items = $('.b-content__inline_item').map((_, el) => p.parseItem($(el), $)).get();
+
+  assert.equal(items.length, 2);
+  assert.equal(items[0].poster, 'https://rezka.ai/uploads/posts/2026-10/101-zver.jpg');
+  assert.equal(items[0].url, 'https://rezka.ai/films/thriller/101-zver.html');
+  assert.equal(items[1].poster, 'https://rezka.ac/uploads/posts/2026-11/102-test.jpg');
 });
