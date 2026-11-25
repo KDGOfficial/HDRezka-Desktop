@@ -57,6 +57,9 @@ interface SeasonScrollTrackProps {
   trackClassName?: string;
   wrapperClassName?: string;
   compact?: boolean;
+  prevLabel?: string;
+  nextLabel?: string;
+  sliderLabel?: string;
   children: React.ReactNode;
 }
 
@@ -68,6 +71,9 @@ export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
   trackClassName = '',
   wrapperClassName = '',
   compact = false,
+  prevLabel = 'Прокрутить сезоны влево',
+  nextLabel = 'Прокрутить сезоны вправо',
+  sliderLabel = 'Перемотка сезонов',
   children,
 }) => {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -185,7 +191,7 @@ export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
             type="button"
             disabled={!canScrollLeft}
             onClick={() => stepScroll(-1)}
-            aria-label="Прокрутить сезоны влево"
+            aria-label={prevLabel}
             className="w-6 h-6 min-w-[24px] min-h-[24px] rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-default cursor-pointer active:scale-95 flex-shrink-0"
           >
             <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
@@ -198,7 +204,7 @@ export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
             step={1}
             value={clampedLeft}
             onChange={handleRangeChange}
-            aria-label="Перемотка сезонов"
+            aria-label={sliderLabel}
             aria-valuetext={`${progressPct}%`}
             style={
               {
@@ -215,7 +221,7 @@ export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
             type="button"
             disabled={!canScrollRight}
             onClick={() => stepScroll(1)}
-            aria-label="Прокрутить сезоны вправо"
+            aria-label={nextLabel}
             className="w-6 h-6 min-w-[24px] min-h-[24px] rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-default cursor-pointer active:scale-95 flex-shrink-0"
           >
             <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
@@ -244,8 +250,6 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
   const [episodeQuery, setEpisodeQuery] = useState('');
   const [reverseOrder, setReverseOrder] = useState(false);
   const [selectedChunkIdx, setSelectedChunkIdx] = useState(0);
-
-  const chunkListRef = useRef<HTMLDivElement>(null);
 
   const currentSeason = useMemo(
     () => seasons.find((s) => s.id === selectedSeasonId) || seasons[0],
@@ -280,11 +284,6 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
     }
     setSelectedChunkIdx(0);
   }, [currentSeason?.id, reverseOrder, chunks.length, lastWatchedSeason, lastWatchedEpisode]);
-
-  useEffect(() => {
-    const activeChunk = chunkListRef.current?.querySelector<HTMLElement>('[aria-selected="true"]');
-    activeChunk?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-  }, [selectedChunkIdx, chunks.length]);
 
   const filteredTranslators = useMemo(() => {
     const q = translatorQuery.trim().toLowerCase();
@@ -573,12 +572,15 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
             </SeasonScrollTrack>
           )}
 
-          {/* Episode Range Chunk Tabs (for long anime like One Piece 1-50, 51-100, ..., 1151-1180) */}
+          {/* Episode Range Chunk Tabs with horizontal scroll slider & prev/next controls */}
           {chunks.length > 1 && !episodeQuery.trim() && (
-            <div
-              ref={chunkListRef}
-              role="tablist"
-              aria-label="Диапазоны серий"
+            <SeasonScrollTrack
+              ariaLabel="Диапазоны серий"
+              activeKey={selectedChunkIdx}
+              itemCount={chunks.length}
+              prevLabel="Прокрутить серии влево"
+              nextLabel="Прокрутить серии вправо"
+              sliderLabel="Перемотка серий"
               onKeyDown={(e) =>
                 handleTabListKeyDown(
                   e,
@@ -587,7 +589,8 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
                   setSelectedChunkIdx
                 )
               }
-              className="tabs-scroll-fade flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-2.5 mb-3"
+              wrapperClassName="mb-3.5"
+              trackClassName="pb-1"
             >
               {chunks.map((chunk) => {
                 const isSelected = chunk.index === selectedChunkIdx;
@@ -616,7 +619,7 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
                   </button>
                 );
               })}
-            </div>
+            </SeasonScrollTrack>
           )}
 
           {/* Episodes Grid */}

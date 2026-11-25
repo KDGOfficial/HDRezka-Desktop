@@ -2334,10 +2334,15 @@ export const VideoPlayer: React.FC = () => {
               )}
 
               {epChunks.length > 1 && !q && (
-                <div
-                  role="tablist"
-                  aria-label="Диапазоны серий"
-                  className="tabs-scroll-fade flex items-center gap-1 overflow-x-auto scrollbar-none pb-1"
+                <SeasonScrollTrack
+                  ariaLabel="Диапазоны серий"
+                  activeKey={safeChunkIdx}
+                  itemCount={epChunks.length}
+                  compact
+                  prevLabel="Прокрутить серии влево"
+                  nextLabel="Прокрутить серии вправо"
+                  sliderLabel="Перемотка серий"
+                  trackClassName="gap-1 pb-1"
                 >
                   {epChunks.map((chunk) => {
                     const isSel = chunk.index === safeChunkIdx;
@@ -2358,7 +2363,7 @@ export const VideoPlayer: React.FC = () => {
                       </button>
                     );
                   })}
-                </div>
+                </SeasonScrollTrack>
               )}
 
               <div className="grid grid-cols-5 gap-1.5 max-h-56 overflow-y-auto overscroll-contain pr-0.5">
