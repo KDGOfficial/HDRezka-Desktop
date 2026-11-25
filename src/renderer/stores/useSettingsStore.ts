@@ -21,6 +21,7 @@ interface SettingsState {
   isCheckingUpdate: boolean;
   updateProgress: UpdateProgress | null;
   isUpdateModalOpen: boolean;
+  updateScheduledOnExit: boolean;
 
   // Adaptive Interests Modal
   isInterestsModalOpen: boolean;
@@ -41,8 +42,9 @@ interface SettingsState {
   removeCustomMirror: (mirror: string) => Promise<void>;
 
   checkForUpdates: (notifyIfAvailable?: boolean) => Promise<UpdateInfo | null>;
-  downloadUpdate: () => Promise<void>;
+  downloadUpdate: (scheduleOnExitAfter?: boolean) => Promise<void>;
   installUpdate: () => Promise<void>;
+  scheduleUpdateOnExit: (enabled?: boolean) => Promise<boolean>;
   setUpdateModalOpen: (open: boolean) => void;
 }
 
@@ -68,6 +70,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   isCheckingUpdate: false,
   updateProgress: null,
   isUpdateModalOpen: false,
+  updateScheduledOnExit: false,
   isInterestsModalOpen: false,
 
   loadSettings: async () => {
@@ -76,9 +79,16 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const s = await window.api.getSettings();
         set({ settings: s, settingsLoaded: true });
 
-        // Auto check updates on start if enabled
+        // Check updates silently on start; download in background & install on exit instead of interrupting startup
         if (s.app?.checkUpdatesOnStart) {
-          get().checkForUpdates(true);
+          get()
+            .checkForUpdates(false)
+            .then((info) => {
+              if (info?.hasUpdate && info.assetUrl) {
+                get().downloadUpdate(true);
+              }
+            })
+            .catch(() => {});
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
@@ -260,10 +270,17 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  downloadUpdate: async () => {
+  downloadUpdate: async (scheduleOnExitAfter = false) => {
     if (!window.api) return;
-    const { updateInfo } = get();
+    const { updateInfo, updateProgress } = get();
     if (!updateInfo) return;
+    if (updateProgress?.status === 'downloading') return;
+    if (updateProgress?.status === 'ready') {
+      if (scheduleOnExitAfter) {
+        await get().scheduleUpdateOnExit(true);
+      }
+      return;
+    }
 
     set({
       updateProgress: {
@@ -302,6 +319,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             filePath: res.filePath,
           },
         }));
+        if (scheduleOnExitAfter) {
+          await get().scheduleUpdateOnExit(true);
+        }
       } else {
         set({
           updateProgress: {
@@ -367,6 +387,18 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       });
     } finally {
       unsubscribe();
+    }
+  },
+
+  scheduleUpdateOnExit: async (enabled = true) => {
+    if (!window.api?.scheduleUpdateOnExit) return false;
+    try {
+      const scheduled = await window.api.scheduleUpdateOnExit(enabled);
+      set({ updateScheduledOnExit: scheduled });
+      return scheduled;
+    } catch (err) {
+      console.error('Failed to schedule update on exit:', err);
+      return false;
     }
   },
 

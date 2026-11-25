@@ -1,7 +1,7 @@
 import { BrowserWindow, shell, session, screen } from 'electron';
 import path from 'path';
 import { ProviderManager } from '../core/providers/manager';
-import { BROWSER_USER_AGENT } from '../shared/constants';
+import { BROWSER_USER_AGENT, IPC_CHANNELS } from '../shared/constants';
 import { getDefaultWindowBounds } from '../shared/utils';
 
 let mainWindow: BrowserWindow | null = null;
@@ -213,6 +213,15 @@ export function createMainWindow(): BrowserWindow {
       shell.openExternal(url);
     }
     return { action: 'deny' };
+  });
+
+  // Support hardware Mouse4/Mouse5 (Back / Forward) on Windows
+  mainWindow.on('app-command', (_event, cmd) => {
+    if (cmd === 'browser-backward') {
+      mainWindow?.webContents.send(IPC_CHANNELS.APP_NAVIGATE, 'back');
+    } else if (cmd === 'browser-forward') {
+      mainWindow?.webContents.send(IPC_CHANNELS.APP_NAVIGATE, 'forward');
+    }
   });
 
   mainWindow.on('closed', () => {

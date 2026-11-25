@@ -14,6 +14,131 @@ import { matchSubtitleLanguageCode } from '../../shared/utils';
 import { AppDatabase } from '../database';
 import { CatalogFilter, WatchHistoryEntry, FavoriteItem, CollectionItem, UserSettings, UpdateInfo, UpdateProgress } from '../../shared/types';
 
+export function isPortableRuntime(): boolean {
+  return Boolean(process.env.PORTABLE_EXECUTABLE_FILE && process.env.PORTABLE_EXECUTABLE_FILE.trim());
+}
+
+export function selectUpdateAsset(assets: any[], isPortable: boolean): any | null {
+  if (!Array.isArray(assets) || assets.length === 0) return null;
+  const exeAssets = assets.filter((a) => typeof a?.name === 'string' && a.name.toLowerCase().endsWith('.exe'));
+  if (exeAssets.length === 0) return null;
+  if (isPortable) {
+    // Never fall back to a Setup installer for Portable runtime (would overwrite Portable .exe with NSIS Setup)
+    return exeAssets.find((a) => /portable/i.test(a.name)) || null;
+  }
+  return (
+    exeAssets.find((a) => /setup/i.test(a.name)) ||
+    exeAssets.find((a) => !/portable/i.test(a.name)) ||
+    exeAssets[0] ||
+    null
+  );
+}
+
+let downloadedUpdatePath: string | null = null;
+let pendingUpdateOnExit = false;
+
+function launchUpdateInstaller(
+  installerPath: string,
+  options: { relaunch: boolean }
+): Promise<{ ok: boolean; error?: string }> {
+  const portableTarget = isPortableRuntime() ? process.env.PORTABLE_EXECUTABLE_FILE!.trim() : '';
+
+  if (portableTarget) {
+    return new Promise((resolve) => {
+      try {
+        const esc = (s: string) => s.replace(/'/g, "''");
+        const relaunchCmd = options.relaunch
+          ? `Start-Process -FilePath $dst -ArgumentList '--updated'`
+          : '';
+        const psScript = [
+          `$pidToWait = ${process.pid}`,
+          `$src = '${esc(installerPath)}'`,
+          `$dst = '${esc(portableTarget)}'`,
+          `for ($i = 0; $i -lt 120; $i++) { if (-not (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) { break }; Start-Sleep -Milliseconds 250 }`,
+          `Start-Sleep -Milliseconds 400`,
+          `$copied = $false`,
+          `for ($j = 0; $j -lt 40; $j++) { try { Copy-Item -LiteralPath $src -Destination $dst -Force -ErrorAction Stop; $copied = $true; break } catch { Start-Sleep -Milliseconds 500 } }`,
+          `if ($copied) { Remove-Item -LiteralPath $src -Force -ErrorAction SilentlyContinue; ${relaunchCmd} }`,
+        ].join('; ');
+
+        const child = spawn(
+          'powershell.exe',
+          ['-NoProfile', '-NonInteractive', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-Command', psScript],
+          {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+          }
+        );
+        child.unref();
+
+        let settled = false;
+        const done = (res: { ok: boolean; error?: string }) => {
+          if (settled) return;
+          settled = true;
+          resolve(res);
+        };
+        child.once('error', (err: NodeJS.ErrnoException) => done({ ok: false, error: err?.message || String(err) }));
+        child.once('spawn', () => {
+          done({ ok: true });
+        });
+      } catch (err: any) {
+        resolve({ ok: false, error: err?.message || String(err) });
+      }
+    });
+  }
+
+  return new Promise<{ ok: boolean; error?: string }>((resolve) => {
+    let settled = false;
+    const done = (res: { ok: boolean; error?: string }) => {
+      if (settled) return;
+      settled = true;
+      resolve(res);
+    };
+
+    try {
+      const args = options.relaunch ? ['/S', '--updated', '--force-run'] : ['/S', '--updated'];
+      const child = spawn(installerPath, args, {
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+      });
+      child.unref();
+
+      child.once('error', (err: NodeJS.ErrnoException) => {
+        done({ ok: false, error: err?.message || String(err) });
+      });
+
+      child.once('exit', (code) => {
+        if (code !== null && code !== 0) {
+          done({ ok: false, error: `Installer exited immediately with code ${code}` });
+        }
+      });
+
+      child.once('spawn', () => {
+        setTimeout(() => done({ ok: true }), options.relaunch ? 450 : 120);
+      });
+    } catch (err: any) {
+      done({ ok: false, error: err?.message || String(err) });
+    }
+  });
+}
+
+export function runPendingUpdateOnExit(): boolean {
+  if (!pendingUpdateOnExit || !downloadedUpdatePath || !fs.existsSync(downloadedUpdatePath)) {
+    return false;
+  }
+  const installerPath = downloadedUpdatePath;
+  pendingUpdateOnExit = false;
+  try {
+    AppDatabase.getInstance().createSafetyBackup();
+  } catch {}
+  launchUpdateInstaller(installerPath, { relaunch: false }).catch((e) => {
+    console.error('[AutoUpdate] On-exit installer launch failed:', e);
+  });
+  return true;
+}
+
 export function registerIpcHandlers(): void {
   const providerManager = ProviderManager.getInstance();
   const db = AppDatabase.getInstance();
@@ -685,7 +810,6 @@ export function registerIpcHandlers(): void {
   });
 
   // --- Updates & Cache ---
-  let downloadedUpdatePath: string | null = null;
   let isDownloading = false;
 
   function downloadFile(url: string, destPath: string, onProgress: (transferred: number, total: number) => void): Promise<void> {
@@ -775,10 +899,8 @@ export function registerIpcHandlers(): void {
         const release = await res.json();
         const latestTag = release.tag_name ? release.tag_name.replace(/^v/, '') : currentVersion;
         const assets: any[] = Array.isArray(release.assets) ? release.assets : [];
-        const setupAsset =
-          assets.find((a) => a.name?.endsWith('.exe') && a.name?.includes('Setup')) ||
-          assets.find((a) => a.name?.endsWith('.exe')) ||
-          null;
+        const portable = isPortableRuntime();
+        const selectedAsset = selectUpdateAsset(assets, portable);
 
         const hasUpdate = latestTag.localeCompare(currentVersion, undefined, { numeric: true }) > 0;
 
@@ -786,12 +908,13 @@ export function registerIpcHandlers(): void {
           currentVersion,
           latestVersion: latestTag,
           hasUpdate,
+          isPortable: portable,
           releaseNotes: release.body || '',
           releaseDate: release.published_at,
           downloadUrl: release.html_url,
-          assetName: setupAsset?.name,
-          assetUrl: setupAsset?.browser_download_url,
-          assetSize: setupAsset?.size,
+          assetName: selectedAsset?.name,
+          assetUrl: selectedAsset?.browser_download_url,
+          assetSize: selectedAsset?.size,
         };
       }
     } catch (e) {
@@ -813,7 +936,8 @@ export function registerIpcHandlers(): void {
       }
 
       let targetUrl = assetUrl;
-      let targetFileName = 'HDREZKA-Setup-update.exe';
+      const portable = isPortableRuntime();
+      let targetFileName = portable ? 'HDREZKA-Portable-update.exe' : 'HDREZKA-Setup-update.exe';
 
       if (!targetUrl) {
         try {
@@ -824,12 +948,10 @@ export function registerIpcHandlers(): void {
           if (res.ok) {
             const release = await res.json();
             const assets: any[] = Array.isArray(release.assets) ? release.assets : [];
-            const setupAsset =
-              assets.find((a) => a.name?.endsWith('.exe') && a.name?.includes('Setup')) ||
-              assets.find((a) => a.name?.endsWith('.exe'));
-            if (setupAsset?.browser_download_url) {
-              targetUrl = setupAsset.browser_download_url;
-              targetFileName = setupAsset.name || targetFileName;
+            const selectedAsset = selectUpdateAsset(assets, portable);
+            if (selectedAsset?.browser_download_url) {
+              targetUrl = selectedAsset.browser_download_url;
+              targetFileName = selectedAsset.name || targetFileName;
             }
           }
         } catch (err: any) {
@@ -913,6 +1035,18 @@ export function registerIpcHandlers(): void {
     return flag;
   });
 
+  ipcMain.handle(IPC_CHANNELS.SCHEDULE_UPDATE_ON_EXIT, (_, enabled = true) => {
+    if (!enabled) {
+      pendingUpdateOnExit = false;
+      return false;
+    }
+    if (downloadedUpdatePath && fs.existsSync(downloadedUpdatePath)) {
+      pendingUpdateOnExit = true;
+      return true;
+    }
+    return false;
+  });
+
   ipcMain.handle(IPC_CHANNELS.INSTALL_UPDATE, async () => {
     // Save a comprehensive library & settings safety backup before proceeding with installer
     try {
@@ -922,10 +1056,12 @@ export function registerIpcHandlers(): void {
     }
     if (!downloadedUpdatePath || !fs.existsSync(downloadedUpdatePath)) {
       const tempDir = app.getPath('temp');
-      const candidatePaths = [
-        path.join(tempDir, 'HDREZKA-Setup-update.exe'),
-        path.join(tempDir, 'HDREZKA-Setup.exe'),
-      ];
+      const candidatePaths = isPortableRuntime()
+        ? [path.join(tempDir, 'HDREZKA-Portable-update.exe')]
+        : [
+            path.join(tempDir, 'HDREZKA-Setup-update.exe'),
+            path.join(tempDir, 'HDREZKA-Setup.exe'),
+          ];
       const found = candidatePaths.find((p) => fs.existsSync(p));
       if (found) {
         downloadedUpdatePath = found;
@@ -935,6 +1071,7 @@ export function registerIpcHandlers(): void {
     }
     const win = getMainWindow();
     const installerPath = downloadedUpdatePath;
+    pendingUpdateOnExit = false;
     try {
       // Notify UI that installation process has begun
       win?.webContents.send(IPC_CHANNELS.ON_UPDATE_PROGRESS, {
@@ -944,46 +1081,7 @@ export function registerIpcHandlers(): void {
         status: 'installing',
       } as UpdateProgress);
 
-      // Launch the NSIS installer directly without generating temporary .bat/.vbs scripts in %TEMP%.
-      // NSIS built-in flags:
-      //   /S           - silent update without wizard dialogs
-      //   --updated    - waits for the running app to close, keeps shortcuts & user data, passes --updated on relaunch
-      //   --force-run  - automatically relaunches HDREZKA Desktop.exe once installation finishes
-      const launchResult = await new Promise<{ ok: boolean; error?: string }>((resolve) => {
-        let settled = false;
-        const done = (res: { ok: boolean; error?: string }) => {
-          if (settled) return;
-          settled = true;
-          resolve(res);
-        };
-
-        try {
-          const child = spawn(installerPath, ['/S', '--updated', '--force-run'], {
-            detached: true,
-            stdio: 'ignore',
-            windowsHide: true,
-          });
-
-          child.once('error', (err: NodeJS.ErrnoException) => {
-            done({ ok: false, error: err?.message || String(err) });
-          });
-
-          child.once('exit', (code) => {
-            // Immediate non-zero exit before app.quit() indicates OS policy block (e.g. Smart App Control / UAC denial)
-            if (code !== null && code !== 0) {
-              done({ ok: false, error: `Installer exited immediately with code ${code}` });
-            }
-          });
-
-          child.once('spawn', () => {
-            child.unref();
-            // Brief grace check to catch synchronous OS policy blocks before quitting the running app
-            setTimeout(() => done({ ok: true }), 450);
-          });
-        } catch (err: any) {
-          done({ ok: false, error: err?.message || String(err) });
-        }
-      });
+      const launchResult = await launchUpdateInstaller(installerPath, { relaunch: true });
 
       if (!launchResult.ok) {
         const msg =

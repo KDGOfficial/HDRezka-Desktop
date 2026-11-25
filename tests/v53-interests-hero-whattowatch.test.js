@@ -164,35 +164,35 @@ test('Renamed "Новое на HDRezka", "Что посмотреть" nav, and 
   assert.equal(translations.en.nav.whatToWatch, 'What to Watch');
 
   // Version sync across all 5 locations
-  assert.equal(APP_VERSION, '0.0.75');
+  assert.equal(APP_VERSION, '0.0.76');
   const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf8'));
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
   const providerSrc = fs.readFileSync(path.resolve(__dirname, '../src/core/providers/rezka/provider.ts'), 'utf8');
   const readmeSrc = fs.readFileSync(path.resolve(__dirname, '../README.md'), 'utf8');
   const ipcSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/ipc/index.ts'), 'utf8');
   const workflowSrc = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/release.yml'), 'utf8');
-  assert.equal(pkg.version, '0.0.75');
+  assert.equal(pkg.version, '0.0.76');
   assert.equal(pkg.build.portable.unpackDirName, 'HDREZKA-Desktop-Portable');
   assert.match(mainSrc, /AudioServiceOutOfProcess,AudioServiceSandbox/);
   assert.match(mainSrc, /setAppUserModelId\('com\.hdrezka\.desktop'\)/);
-  assert.match(providerSrc, /public version = '0\.0\.75'/);
-  assert.match(readmeSrc, /version-0\.0\.75-crimson/);
-  assert.match(readmeSrc, /HDREZKA-Setup-0\.0\.75\.exe/);
-  assert.match(readmeSrc, /HDREZKA-Portable-0\.0\.75\.exe/);
+  assert.match(providerSrc, /public version = '0\.0\.76'/);
+  assert.match(readmeSrc, /version-0\.0\.76-crimson/);
+  assert.match(readmeSrc, /HDREZKA-Setup-0\.0\.76\.exe/);
+  assert.match(readmeSrc, /HDREZKA-Portable-0\.0\.76\.exe/);
   assert.match(workflowSrc, /node_modules\/electron\/dist\/electron\.exe/);
   assert.match(workflowSrc, /HDREZKA-NoSAC-/);
   assert.match(workflowSrc, /HDREZKA-Portable-\*\.exe/);
   assert.match(readmeSrc, /Code Signing Policy/);
 
   // Auto-updater must launch NSIS directly without generating temporary .bat/.vbs scripts
-  assert.match(ipcSrc, /spawn\(installerPath,\s*\['\/S',\s*'--updated',\s*'--force-run'\]/);
+  assert.match(ipcSrc, /options\.relaunch\s*\?\s*\['\/S',\s*'--updated',\s*'--force-run'\]\s*:\s*\['\/S',\s*'--updated'\]/);
   assert.doesNotMatch(ipcSrc, /hdrezka-update-runner\.vbs/);
   assert.doesNotMatch(ipcSrc, /wscript\.exe/);
   assert.match(ipcSrc, /process\.argv\.includes\('--updated'\)/);
 
-  // Release workflow must support code signing and SHA256SUMS.txt
+  // Release workflow must support code signing and omit redundant SHA256SUMS.txt (GitHub provides native digests)
   assert.match(workflowSrc, /CSC_LINK/);
   assert.match(workflowSrc, /azure\/trusted-signing-action/);
   assert.match(workflowSrc, /signpath\/github-action-submit-signing-request/);
-  assert.match(workflowSrc, /SHA256SUMS\.txt/);
+  assert.doesNotMatch(workflowSrc, /SHA256SUMS\.txt/);
 });

@@ -435,7 +435,7 @@ export const SettingsPage: React.FC = () => {
               {updateInfo?.hasUpdate && !isReady && (
                 <button
                   type="button"
-                  onClick={downloadUpdate}
+                  onClick={() => downloadUpdate(true)}
                   disabled={isDownloading}
                   className="px-4 py-2 rounded-full btn-ember text-white text-xs font-extrabold active:scale-95 disabled:opacity-50 cursor-pointer"
                 >
@@ -619,7 +619,7 @@ export const SettingsPage: React.FC = () => {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {status && (
                         <span className="text-[10px] text-zinc-400 font-mono tabular-nums">
-                          {status.latencyMs < 9000
+                          {status.isAvailable && status.latencyMs < 99999
                             ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
                             : t.settings.error}
                         </span>
@@ -724,7 +724,7 @@ export const SettingsPage: React.FC = () => {
                         <div className="flex items-center gap-2 flex-shrink-0">
                           {status && (
                             <span className="text-[10px] text-zinc-400 font-mono tabular-nums">
-                              {status.latencyMs < 9000
+                              {status.isAvailable && status.latencyMs < 99999
                                 ? `${status.latencyMs}ms${status.needsVerification ? ' (' + (t.settings.protection || 'защита') + ')' : ''}`
                                 : t.settings.error}
                             </span>

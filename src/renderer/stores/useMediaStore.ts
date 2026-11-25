@@ -19,8 +19,20 @@ export type AppPage =
   | 'settings'
   | 'details';
 
+export interface NavHistoryEntry {
+  page: AppPage;
+  mediaId?: string | null;
+  mediaDetails?: MediaDetails | null;
+  searchQuery?: string;
+  scrollTop?: number;
+}
+
 interface MediaState {
   currentPage: AppPage;
+  lastContentPage: Exclude<AppPage, 'details'>;
+  navHistory: NavHistoryEntry[];
+  navIndex: number;
+  pendingScrollTop: number | null;
   selectedMediaId: string | null;
   selectedMediaDetails: MediaDetails | null;
   searchQuery: string;
@@ -31,6 +43,10 @@ interface MediaState {
   collectionModalItem: MediaItem | null;
 
   setPage: (page: AppPage) => void;
+  goBack: () => boolean;
+  goForward: () => boolean;
+  saveCurrentScroll: (scrollTop: number) => void;
+  clearPendingScroll: () => void;
   openDetails: (mediaId: string, preloaded?: Partial<MediaItem | MediaDetails>) => void;
   openBrowser: (queryOrUrl?: string) => void;
   setSelectedMediaDetails: (details: MediaDetails | null) => void;
@@ -46,6 +62,10 @@ interface MediaState {
 
 export const useMediaStore = create<MediaState>((set, get) => ({
   currentPage: 'home',
+  lastContentPage: 'home',
+  navHistory: [{ page: 'home', scrollTop: 0 }],
+  navIndex: 0,
+  pendingScrollTop: null,
   selectedMediaId: null,
   selectedMediaDetails: null,
   searchQuery: '',
@@ -55,20 +75,101 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   watchHistory: [],
   collectionModalItem: null,
 
-  setPage: (page) => set({ currentPage: page }),
+  saveCurrentScroll: (scrollTop) => {
+    const { navHistory, navIndex } = get();
+    if (!navHistory[navIndex]) return;
+    const updated = navHistory.slice();
+    updated[navIndex] = { ...updated[navIndex], scrollTop };
+    set({ navHistory: updated });
+  },
+
+  clearPendingScroll: () => set({ pendingScrollTop: null }),
+
+  setPage: (page) => {
+    const state = get();
+    if (state.currentPage === page && page !== 'search') return;
+    const mainEl = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('[data-main-scroll]') : null;
+    const history = state.navHistory.slice(0, state.navIndex + 1);
+    if (history[state.navIndex] && mainEl) {
+      history[state.navIndex] = { ...history[state.navIndex], scrollTop: mainEl.scrollTop };
+    }
+    const entry: NavHistoryEntry = {
+      page,
+      searchQuery: page === 'search' ? state.searchQuery : undefined,
+      scrollTop: 0,
+    };
+    const nextHistory = [...history, entry].slice(-50);
+    set({
+      currentPage: page,
+      lastContentPage: page === 'details' ? state.lastContentPage : page,
+      navHistory: nextHistory,
+      navIndex: nextHistory.length - 1,
+      pendingScrollTop: 0,
+    });
+  },
+
+  goBack: () => {
+    const state = get();
+    if (state.navIndex <= 0) return false;
+    const mainEl = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('[data-main-scroll]') : null;
+    const history = state.navHistory.slice();
+    if (history[state.navIndex] && mainEl) {
+      history[state.navIndex] = { ...history[state.navIndex], scrollTop: mainEl.scrollTop };
+    }
+    const nextIndex = state.navIndex - 1;
+    const target = history[nextIndex];
+    set({
+      navHistory: history,
+      navIndex: nextIndex,
+      currentPage: target.page,
+      lastContentPage: target.page === 'details' ? state.lastContentPage : target.page,
+      selectedMediaId: target.page === 'details' ? (target.mediaId ?? state.selectedMediaId) : state.selectedMediaId,
+      selectedMediaDetails:
+        target.page === 'details' ? (target.mediaDetails ?? state.selectedMediaDetails) : state.selectedMediaDetails,
+      searchQuery: target.page === 'search' && target.searchQuery !== undefined ? target.searchQuery : state.searchQuery,
+      pendingScrollTop: target.scrollTop ?? 0,
+    });
+    return true;
+  },
+
+  goForward: () => {
+    const state = get();
+    if (state.navIndex >= state.navHistory.length - 1) return false;
+    const mainEl = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('[data-main-scroll]') : null;
+    const history = state.navHistory.slice();
+    if (history[state.navIndex] && mainEl) {
+      history[state.navIndex] = { ...history[state.navIndex], scrollTop: mainEl.scrollTop };
+    }
+    const nextIndex = state.navIndex + 1;
+    const target = history[nextIndex];
+    set({
+      navHistory: history,
+      navIndex: nextIndex,
+      currentPage: target.page,
+      lastContentPage: target.page === 'details' ? state.lastContentPage : target.page,
+      selectedMediaId: target.page === 'details' ? (target.mediaId ?? state.selectedMediaId) : state.selectedMediaId,
+      selectedMediaDetails:
+        target.page === 'details' ? (target.mediaDetails ?? state.selectedMediaDetails) : state.selectedMediaDetails,
+      searchQuery: target.page === 'search' && target.searchQuery !== undefined ? target.searchQuery : state.searchQuery,
+      pendingScrollTop: target.scrollTop ?? 0,
+    });
+    return true;
+  },
 
   openBrowser: (queryOrUrl) => {
     const raw = (queryOrUrl || '').trim();
     if (!raw) {
-      set({ currentPage: 'browser' });
+      get().setPage('browser');
       return;
     }
     if (/^https?:\/\//i.test(raw)) {
-      set({ browserUrl: raw, currentPage: 'browser' });
+      set({ browserUrl: raw });
+      get().setPage('browser');
       return;
     }
     const targetUrl = `https://www.google.com/search?q=${encodeURIComponent(`${raw} смотреть онлайн бесплатно в хорошем качестве HD`)}`;
-    set({ browserQuery: raw, browserUrl: targetUrl, currentPage: 'browser' });
+    set({ browserQuery: raw, browserUrl: targetUrl });
+    get().setPage('browser');
   },
 
   openDetails: (mediaId, preloaded) => {
@@ -98,10 +199,27 @@ export const useMediaStore = create<MediaState>((set, get) => ({
       };
     }
 
+    const state = get();
+    const mainEl = typeof document !== 'undefined' ? document.querySelector<HTMLElement>('[data-main-scroll]') : null;
+    const history = state.navHistory.slice(0, state.navIndex + 1);
+    if (history[state.navIndex] && mainEl) {
+      history[state.navIndex] = { ...history[state.navIndex], scrollTop: mainEl.scrollTop };
+    }
+    const entry: NavHistoryEntry = {
+      page: 'details',
+      mediaId,
+      mediaDetails: preloadedDetails,
+      scrollTop: 0,
+    };
+    const nextHistory = [...history, entry].slice(-50);
+
     set({
       selectedMediaId: mediaId,
       selectedMediaDetails: preloadedDetails,
       currentPage: 'details',
+      navHistory: nextHistory,
+      navIndex: nextHistory.length - 1,
+      pendingScrollTop: 0,
     });
   },
 

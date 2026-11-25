@@ -172,7 +172,7 @@ export const VideoPlayer: React.FC = () => {
   const [buffered, setBuffered] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls, setShowControls] = useState(true);
+  const [showControls, setShowControls] = useState(false);
   const [activeMenu, setActiveMenu] = useState<'none' | 'quality' | 'speed' | 'subtitles' | 'translator' | 'episodes'>('none');
   const [episodeMenuSeasonId, setEpisodeMenuSeasonId] = useState<number | undefined>(seasonId);
   const [episodeMenuChunkIdx, setEpisodeMenuChunkIdx] = useState<number>(0);
@@ -323,6 +323,8 @@ export const VideoPlayer: React.FC = () => {
       }
       const actual = await window.api.setAlwaysOnTop(next);
       setIsPinned(actual);
+      setActiveMenu('none');
+      setShowScaleMenu(false);
       showToast(actual ? t.player.pinned : t.player.unpinned);
     }
   };
@@ -555,27 +557,44 @@ export const VideoPlayer: React.FC = () => {
     };
   }, [activeSubtitleTrack?.url, subStyle.delay]);
 
+  const lastPointerPosRef = useRef<{ x: number; y: number } | null>(null);
+
   const resetHideTimer = () => {
     if (isUiLocked) return;
     setShowControls(true);
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     hideTimerRef.current = setTimeout(() => {
-      if (isPlaying && activeMenu === 'none') {
+      if (isPlaying && activeMenu === 'none' && !showScaleMenu) {
         setShowControls(false);
       }
-    }, 3500);
+    }, 3000);
+  };
+
+  const handlePlayerMouseMove = (e: React.MouseEvent) => {
+    if (isUiLocked) return;
+    const prev = lastPointerPosRef.current;
+    if (prev && prev.x === e.clientX && prev.y === e.clientY) return;
+    lastPointerPosRef.current = { x: e.clientX, y: e.clientY };
+    resetHideTimer();
+  };
+
+  const handlePlayerMouseLeave = () => {
+    lastPointerPosRef.current = null;
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    if (activeMenu === 'none' && !showScaleMenu) {
+      setShowControls(false);
+    }
   };
 
   useEffect(() => {
-    const handleMouseMove = () => {
-      if (!isUiLocked) resetHideTimer();
-    };
-    window.addEventListener('mousemove', handleMouseMove);
+    if (isOpen) {
+      setShowControls(false);
+      lastPointerPosRef.current = null;
+    }
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
       if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     };
-  }, [isPlaying, activeMenu, isUiLocked]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -1193,6 +1212,9 @@ export const VideoPlayer: React.FC = () => {
   return (
     <div
       ref={containerRef}
+      data-pinned={isPinned ? 'true' : undefined}
+      onMouseMove={handlePlayerMouseMove}
+      onMouseLeave={handlePlayerMouseLeave}
       className={`cinema-player-surface cinema-player-stage fixed inset-0 z-50 bg-black flex items-center justify-center select-none overflow-hidden ${
         isUiLocked ? 'cursor-none' : ''
       }`}
@@ -1897,7 +1919,7 @@ export const VideoPlayer: React.FC = () => {
                   onClick={() => setActiveMenu(activeMenu === 'translator' ? 'none' : 'translator')}
                   aria-label={activeTranslator ? activeTranslator.name : t.player.audio}
                   title={activeTranslator ? activeTranslator.name : t.player.audio}
-                  className={`player-pill-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border cursor-pointer ${
+                  className={`player-translator-btn player-pill-btn flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-bold border cursor-pointer ${
                     activeMenu === 'translator'
                       ? 'btn-ember border-white/25 text-white'
                       : 'bg-white/[0.08] border-white/15 text-zinc-200 hover:text-white hover:bg-white/[0.15]'

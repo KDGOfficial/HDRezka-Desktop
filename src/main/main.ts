@@ -1,9 +1,18 @@
 import { app, BrowserWindow, net, session, webContents, webFrameMain } from 'electron';
 import { createMainWindow, getMainWindow } from './window';
-import { registerIpcHandlers } from './ipc';
+import { registerIpcHandlers, runPendingUpdateOnExit } from './ipc';
 import { AppDatabase } from './database';
 import { ProviderManager } from '../core/providers/manager';
-import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, IPC_CHANNELS, isBadMirrorUrl, BROWSER_USER_AGENT, isAdUrl, isCrossOriginPopupAd } from '../shared/constants';
+import {
+  DEFAULT_MIRRORS,
+  OPEN_MIRROR_SEEDS,
+  IPC_CHANNELS,
+  isBadMirrorUrl,
+  BROWSER_USER_AGENT,
+  isAdUrl,
+  isCrossOriginPopupAd,
+  shouldStripExternalScriptCache,
+} from '../shared/constants';
 import { buildShortcutFromEvent } from '../shared/utils';
 
 const SUBFRAME_ADBLOCK_SCRIPT = `
@@ -240,16 +249,46 @@ if (!gotTheLock) {
     // 2. Register all IPC handlers
     registerIpcHandlers();
 
+    // Block malvertising/scam scripts & prevent external JS from being written to Chromium Cache_Data (fixes AV false-positives like JS:Trojan.Cryxos)
+    const hardenSession = (targetSession: Electron.Session, respectBrowserToggle: boolean) => {
+      targetSession.webRequest.onBeforeRequest((details, callback) => {
+        if ((!respectBrowserToggle || browserAdBlockEnabled) && isAdUrl(details.url)) {
+          if (respectBrowserToggle) browserAdBlockedCount += 1;
+          return callback({ cancel: true });
+        }
+        return callback({});
+      });
+      targetSession.webRequest.onHeadersReceived((details, callback) => {
+        const headers = details.responseHeaders || {};
+        const ctKey = Object.keys(headers).find((k) => k.toLowerCase() === 'content-type');
+        const contentType = ctKey ? (Array.isArray(headers[ctKey]) ? headers[ctKey][0] : String(headers[ctKey])) : '';
+        if (shouldStripExternalScriptCache(details.url, details.resourceType, contentType)) {
+          const cleaned: Record<string, string[]> = {};
+          for (const [k, v] of Object.entries(headers)) {
+            const lower = k.toLowerCase();
+            if (lower === 'cache-control' || lower === 'etag' || lower === 'expires' || lower === 'last-modified' || lower === 'pragma') {
+              continue;
+            }
+            cleaned[k] = v;
+          }
+          cleaned['Cache-Control'] = ['no-store, no-cache, must-revalidate, max-age=0'];
+          cleaned['Pragma'] = ['no-cache'];
+          return callback({ responseHeaders: cleaned });
+        }
+        return callback({ responseHeaders: details.responseHeaders });
+      });
+    };
+
+    if (session?.defaultSession) {
+      hardenSession(session.defaultSession, false);
+      session.defaultSession.clearCache().catch(() => {});
+    }
+
     // Setup AdBlock network interceptor for built-in cinema browser webview partition
     const browserSession = session.fromPartition('persist:cinema-browser');
     browserSession.setUserAgent(BROWSER_USER_AGENT);
-    browserSession.webRequest.onBeforeRequest((details, callback) => {
-      if (browserAdBlockEnabled && isAdUrl(details.url)) {
-        browserAdBlockedCount += 1;
-        return callback({ cancel: true });
-      }
-      return callback({});
-    });
+    hardenSession(browserSession, true);
+    browserSession.clearCache().catch(() => {});
 
     // Configure built-in cinema browser webview: match desktop UA, block ad popups & redirects, forward cinema hotkeys
     app.on('web-contents-created', (_, contents) => {
@@ -318,6 +357,10 @@ if (!gotTheLock) {
         createMainWindow();
       }
     });
+  });
+
+  app.on('will-quit', () => {
+    runPendingUpdateOnExit();
   });
 
   app.on('window-all-closed', () => {

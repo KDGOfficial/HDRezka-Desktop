@@ -246,7 +246,7 @@ export const DetailsPage: React.FC = () => {
   return (
     <div className="w-full pb-20 text-left select-none animate-fadeIn">
       {/* Full-Bleed Theater Backdrop Stage */}
-      <section className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 overflow-hidden border-b border-white/[0.06]">
+      <section className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-6 overflow-hidden border-b border-white/[0.06]">
         {backdropSrc && !backdropFailed && (
           <img
             src={backdropSrc}
@@ -269,15 +269,15 @@ export const DetailsPage: React.FC = () => {
         <div className="absolute inset-0 bg-gradient-to-t from-[#0B070A] via-[#0B070A]/78 to-[#070507]/35 pointer-events-none" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#0B070A] via-[#0B070A]/65 to-transparent pointer-events-none" />
 
-        <div className="relative z-10 px-7 lg:px-12 py-10 flex flex-col md:flex-row gap-8 lg:gap-10 items-start">
+        <div className="relative z-10 px-7 lg:px-10 py-6 lg:py-7 flex flex-col md:flex-row gap-6 lg:gap-8 items-start md:items-stretch">
           {/* Poster Card with Ember Rim */}
           <button
             type="button"
             onClick={() => handleWatch()}
             aria-label={`${t.details.watch} ${details.title}`}
-            className="w-52 md:w-64 flex-shrink-0 group relative cursor-pointer rounded-[22px] p-[2px] bg-gradient-to-br from-white/25 via-brand-ember/55 to-brand-crimson/55 shadow-[0_24px_60px_rgba(0,0,0,0.9)]"
+            className="w-48 md:w-56 flex-shrink-0 group relative cursor-pointer rounded-[20px] p-[2px] bg-gradient-to-br from-white/25 via-brand-ember/55 to-brand-crimson/55 shadow-[0_24px_60px_rgba(0,0,0,0.9)] self-start"
           >
-            <div className="relative rounded-[20px] overflow-hidden bg-dark-surface aspect-[2/3]">
+            <div className="relative rounded-[18px] overflow-hidden bg-dark-surface aspect-[2/3]">
               {!posterFailed && posterSrc ? (
                 <img
                   src={posterSrc}
@@ -313,84 +313,111 @@ export const DetailsPage: React.FC = () => {
             </div>
           </button>
 
-          {/* Editorial Title & Actions */}
-          <div className="flex-1 min-w-0 pt-1">
-            <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight mb-1.5 drop-shadow">
-              {displayTitle || details.title}
-            </h1>
-            {(details.origTitle && details.origTitle !== displayTitle) ? (
-              <p className="text-sm md:text-base text-zinc-400 font-medium mb-5">
-                {details.origTitle}
-              </p>
-            ) : (details.title && details.title !== displayTitle) ? (
-              <p className="text-sm md:text-base text-zinc-400 font-medium mb-5">
-                {details.title}
-              </p>
-            ) : null}
+          {/* Editorial Title, Structured Info & Bottom-Aligned Actions (aligned with poster height) */}
+          <div className="flex-1 min-w-0 flex flex-col justify-between gap-4">
+            <div className="space-y-3">
+              {/* Title + Subtitle (tight spacing) */}
+              <div>
+                <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight leading-tight drop-shadow">
+                  {displayTitle || details.title}
+                </h1>
+                {(details.origTitle && details.origTitle !== displayTitle) ? (
+                  <p className="text-sm text-zinc-400 font-medium mt-0.5">
+                    {details.origTitle}
+                  </p>
+                ) : (details.title && details.title !== displayTitle) ? (
+                  <p className="text-sm text-zinc-400 font-medium mt-0.5">
+                    {details.title}
+                  </p>
+                ) : null}
+              </div>
 
-            {/* Ratings & Metadata Pill Cluster */}
-            <div className="flex items-center flex-wrap gap-2 mb-5">
-              {details.ratingRezka && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full btn-ember text-xs font-display font-black tabular-nums">
-                  <span>HDRezka</span>
-                  <span>{details.ratingRezka.toFixed(1)}</span>
-                </span>
+              {/* Visually Distinct Metadata Groups: Score Tiles | Clean Typographic Facts | Age Stamp */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                {/* Group 1: Rating Score Tiles */}
+                {(details.ratingRezka || details.ratingImdb || details.ratingKp) && (
+                  <div className="flex items-center gap-1.5">
+                    {details.ratingRezka && (
+                      <div className="inline-flex items-baseline gap-1.5 px-2.5 py-1 rounded-xl btn-ember tabular-nums">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-white/85">HDRezka</span>
+                        <span className="text-sm font-display font-black text-white leading-none">{details.ratingRezka.toFixed(1)}</span>
+                      </div>
+                    )}
+                    {details.ratingImdb && (
+                      <div className="inline-flex items-baseline gap-1 px-2.5 py-1 rounded-xl bg-[#FFB830]/12 border border-[#FFB830]/35 tabular-nums">
+                        <Star className="w-3 h-3 fill-brand-gold text-brand-gold self-center" aria-hidden="true" />
+                        <span className="text-[10px] font-bold uppercase text-brand-gold/85">IMDb</span>
+                        <span className="text-sm font-display font-black text-brand-gold leading-none">{details.ratingImdb.toFixed(1)}</span>
+                      </div>
+                    )}
+                    {details.ratingKp && (
+                      <div className="inline-flex items-baseline gap-1 px-2.5 py-1 rounded-xl bg-brand-orange/12 border border-brand-orange/35 tabular-nums">
+                        <span className="text-[10px] font-bold uppercase text-brand-orange/85">{t.details.kpRating}</span>
+                        <span className="text-sm font-display font-black text-brand-orange leading-none">{details.ratingKp.toFixed(1)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Group 2: Editorial Facts Strip (plain typography + dots, no pill fatigue) */}
+                {(details.year || details.country || details.duration || resolvedAgeRating) && (
+                  <div className="flex items-center flex-wrap gap-x-2 gap-y-1 text-xs text-zinc-300 font-medium">
+                    {details.year && <span className="font-bold text-white tabular-nums">{details.year}</span>}
+                    {details.year && details.country && <span className="text-zinc-600">•</span>}
+                    {details.country && <span>{details.country}</span>}
+                    {(details.year || details.country) && details.duration && <span className="text-zinc-600">•</span>}
+                    {details.duration && (
+                      <span className="inline-flex items-center gap-1 text-zinc-300">
+                        <Clock className="w-3 h-3 text-brand-orange/90" aria-hidden="true" />
+                        <span>{details.duration}</span>
+                      </span>
+                    )}
+                    {resolvedAgeRating && (
+                      <span
+                        className={`ml-1 px-1.5 py-0.5 rounded-md text-[10px] font-display font-black tabular-nums ${getAgeRatingBadgeClass(
+                          resolvedAgeRating
+                        )}`}
+                        title={`${t.details.ageRating}: ${resolvedAgeRating}`}
+                      >
+                        {resolvedAgeRating}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Group 3: Subtle Genre Tags */}
+              {details.genres && details.genres.length > 0 && (
+                <div className="flex items-center flex-wrap gap-1.5">
+                  {details.genres.map((g, idx) => (
+                    <span
+                      key={idx}
+                      className="px-2.5 py-0.5 rounded-lg bg-white/[0.04] border border-white/[0.09] text-[11px] font-semibold text-zinc-300"
+                    >
+                      {g}
+                    </span>
+                  ))}
+                </div>
               )}
-              {details.ratingImdb && (
-                <span className="logo-pill inline-flex items-center gap-1 px-3 py-1 rounded-full text-brand-gold text-xs font-extrabold tabular-nums">
-                  <Star className="w-3.5 h-3.5 fill-brand-gold" aria-hidden="true" />
-                  <span>IMDb {details.ratingImdb.toFixed(1)}</span>
-                </span>
+
+              {/* Concise Synopsis Preview & Director (fills space cleanly between metadata and actions) */}
+              {details.description && (
+                <p className="text-xs sm:text-[13px] text-zinc-300/90 leading-relaxed line-clamp-3 max-w-3xl">
+                  {details.description}
+                </p>
               )}
-              {details.ratingKp && (
-                <span className="logo-pill inline-flex items-center px-3 py-1 rounded-full text-brand-orange text-xs font-extrabold tabular-nums">
-                  <span>{t.details.kpRating} {details.ratingKp.toFixed(1)}</span>
-                </span>
-              )}
-              {details.year && (
-                <span className="logo-pill px-3 py-1 rounded-full text-zinc-200 text-xs font-bold tabular-nums">
-                  {details.year}
-                </span>
-              )}
-              {details.country && (
-                <span className="logo-pill px-3 py-1 rounded-full text-zinc-300 text-xs font-semibold">
-                  {details.country}
-                </span>
-              )}
-              {details.duration && (
-                <span className="logo-pill px-3 py-1 rounded-full text-zinc-300 text-xs font-semibold inline-flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-brand-orange" aria-hidden="true" />
-                  <span>{details.duration}</span>
-                </span>
-              )}
-              {resolvedAgeRating && (
-                <span
-                  className={`px-2.5 py-1 rounded-full text-[11px] font-display font-black tabular-nums ${getAgeRatingBadgeClass(
-                    resolvedAgeRating
-                  )}`}
-                  title={`${t.details.ageRating}: ${resolvedAgeRating}`}
-                >
-                  {resolvedAgeRating}
-                </span>
+              {details.directors && details.directors.length > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-zinc-400">
+                  <User className="w-3.5 h-3.5 text-brand-orange/80 flex-shrink-0" aria-hidden="true" />
+                  <span className="text-zinc-500 font-semibold">{t.details.director}:</span>
+                  <span className="text-zinc-200 font-medium truncate">{details.directors.join(', ')}</span>
+                </div>
               )}
             </div>
 
-            {/* Genres */}
-            {details.genres && details.genres.length > 0 && (
-              <div className="flex items-center flex-wrap gap-1.5 mb-7">
-                {details.genres.map((g, idx) => (
-                  <span
-                    key={idx}
-                    className="px-3 py-1 rounded-full bg-white/[0.05] border border-white/[0.08] text-[11px] font-semibold text-zinc-300"
-                  >
-                    {g}
-                  </span>
-                ))}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex items-center flex-wrap gap-3 mb-5">
+            {/* Bottom Block: Action Buttons aligned flush with bottom of poster */}
+            <div className="space-y-3 pt-2">
+            <div className="flex items-center flex-wrap gap-2.5">
               <button
                 type="button"
                 onClick={() => handleWatch()}
@@ -503,6 +530,7 @@ export const DetailsPage: React.FC = () => {
                 </button>
               </div>
             )}
+            </div>
           </div>
         </div>
       </section>

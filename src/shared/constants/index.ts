@@ -1,7 +1,7 @@
 import { UserSettings, HotkeysConfig, SubtitleStyle } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.75';
+export const APP_VERSION = '0.0.76';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -53,13 +53,43 @@ export const ANIME_MIRROR_SEEDS = [
 ];
 
 const AD_HOST_RE =
-  /(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.|imasdk\.googleapis\.com|securepubads\.g\.doubleclick\.net|adtrafficquality\.google|adnxs\.com|adfox\.ru|an\.yandex\.ru|bs\.yandex\.ru|awaps\.yandex\.ru|mc\.yandex\.ru|metrika\.yandex\.|direct\.yandex\.|mgid\.com|mgid\.ru|marketgid\.com|lentainform\.com|exoclick\.com|exosrv\.com|exdynsrv\.com|realsrv\.com|tsyndicate\.com|propellerads\.com|popads\.net|popcash\.net|clickadu\.com|clickadilla\.com|adsterra\.com|hilltopads\.net|juicyads\.com|trafficjunky\.net|trafficfactory\.biz|trafmag\.com|traffichunt\.com|traforet\.com|traffcore\.com|uniontraff\.com|adriver\.ru|adskeeper\.co\.uk|adskeeper\.com|admixer\.net|adrtx\.net|adhigh\.net|adtelligent\.com|adsrvr\.org|aniview\.com|bidswitch\.net|bidgear\.com|lkqd\.net|vidoomy\.com|a-ads\.com|outbrain\.com|taboola\.com|criteo\.com|rtbhouse\.com|betweendigital\.com|videoroll\.net|vidroll\.ru|viqeo\.tv|mixmarket\.biz|market-place\.su|directadvert\.ru|recreativ\.ru|smi2\.ru|teasernet\.com|tizerlady\.net|pay-click\.ru|mclick\.ru|bodyclick\.net|gnezdo\.ru|advmaker\.net|octoclick\.net|kadam\.net|adspyglass\.com|admaven\.com|ad-maven\.com|monetag\.com|richads\.com|evadav\.com|pushhouse\.net|pushame\.com|pushprofit\.ru|rollerads\.com|galaksion\.com|acint\.net|nativeroll\.tv|videonow\.ru|buzzoola\.com|pladform\.ru|rutarget\.ru|target\.my\.com|ad\.mail\.ru|r\.mail\.ru|top\.mail\.ru|top-fwz1\.mail\.ru|yadro\.ru|tns-counter\.ru|relap\.io|teads\.tv|pubmatic\.com|rubiconproject\.com|openx\.net|casalemedia\.com|smartadserver\.com|connatix\.com|springserve\.com|spotxchange\.com|onclkds\.com|popunder\.net|clickunder\.ru|zeroredirect\.com|bidvertiser\.com|revcontent\.com|mellowads\.com|luxup\.ru|scorecardresearch\.com|quantserve\.com|clarity\.ms|hotjar\.com|1xbet|1x-bet|1win|1xslots|mostbet|most-bet|pinup|pin-up|vulcan|vulkan|azino|melbet|mel-bet|fonbet|fon-bet|vavada|joycasino|parimatch|betwinner|betboom|olimpbet|leonbets|pokerdom|ggbet|winline|betcity|ligastavok|liga-stavok|marathonbet|zenitbet|tennisi|catcasino|freshcasino|solcasino|jetcasino|dripcasino|starda|r7casino|dragonmoney|linebet|megapari|betandyou|888starz|spinbetter|bc\.game|stake\.com)/i;
+  /(?:^|\.)(?:doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google\.|imasdk\.googleapis\.com|securepubads\.g\.doubleclick\.net|adtrafficquality\.google|adnxs\.com|adfox\.ru|an\.yandex\.ru|bs\.yandex\.ru|awaps\.yandex\.ru|mc\.yandex\.ru|metrika\.yandex\.|direct\.yandex\.|mgid\.com|mgid\.ru|marketgid\.com|lentainform\.com|exoclick\.com|exosrv\.com|exdynsrv\.com|realsrv\.com|tsyndicate\.com|propellerads\.com|popads\.net|popcash\.net|clickadu\.com|clickadilla\.com|adsterra\.com|hilltopads\.net|juicyads\.com|trafficjunky\.net|trafficfactory\.biz|trafmag\.com|traffichunt\.com|traforet\.com|traffcore\.com|uniontraff\.com|adriver\.ru|adskeeper\.co\.uk|adskeeper\.com|admixer\.net|adrtx\.net|adhigh\.net|adtelligent\.com|adsrvr\.org|aniview\.com|bidswitch\.net|bidgear\.com|lkqd\.net|vidoomy\.com|a-ads\.com|outbrain\.com|taboola\.com|criteo\.com|rtbhouse\.com|betweendigital\.com|videoroll\.net|vidroll\.ru|viqeo\.tv|mixmarket\.biz|market-place\.su|directadvert\.ru|recreativ\.ru|smi2\.ru|teasernet\.com|tizerlady\.net|pay-click\.ru|mclick\.ru|bodyclick\.net|gnezdo\.ru|advmaker\.net|octoclick\.net|kadam\.net|adspyglass\.com|admaven\.com|ad-maven\.com|monetag\.com|richads\.com|evadav\.com|pushhouse\.net|pushame\.com|pushprofit\.ru|rollerads\.com|galaksion\.com|acint\.net|nativeroll\.tv|videonow\.ru|buzzoola\.com|pladform\.ru|rutarget\.ru|target\.my\.com|ad\.mail\.ru|r\.mail\.ru|top\.mail\.ru|top-fwz1\.mail\.ru|yadro\.ru|tns-counter\.ru|relap\.io|teads\.tv|pubmatic\.com|rubiconproject\.com|openx\.net|casalemedia\.com|smartadserver\.com|connatix\.com|springserve\.com|spotxchange\.com|onclkds\.com|popunder\.net|clickunder\.ru|zeroredirect\.com|bidvertiser\.com|revcontent\.com|mellowads\.com|luxup\.ru|scorecardresearch\.com|quantserve\.com|clarity\.ms|hotjar\.com|acscdn\.com|dtscout\.com|amung\.us|histats\.com|clkmon\.com|reimageplus\.com|webpushs\.com|gravitec\.net|notix\.io|1xbet|1x-bet|1win|1xslots|mostbet|most-bet|pinup|pin-up|vulcan|vulkan|azino|melbet|mel-bet|fonbet|fon-bet|vavada|joycasino|parimatch|betwinner|betboom|olimpbet|leonbets|pokerdom|ggbet|winline|betcity|ligastavok|liga-stavok|marathonbet|zenitbet|tennisi|catcasino|freshcasino|solcasino|jetcasino|dripcasino|starda|r7casino|dragonmoney|linebet|megapari|betandyou|888starz|spinbetter|bc\.game|stake\.com)/i;
 
 const AD_VIDEO_PATH_RE =
   /(?:\/(?:vast|vpaid|vmap|preroll|midroll|reklama|ad_video|adv_video|ad-video|advideo|video_ad|commercials?|outstream|instream|ads|adv)\/(?:[^?#]*)|[?&](?:vast|vpaid|vmap|ad_tag|ad_url|preroll|midroll|adv)=)/i;
 
 const AD_PATH_RE =
-  /(?:\/(?:vast|vpaid|vmap|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|branding\/|reklama|doubleclick|pcode\/adfox|pagead\/|ads\/|adv\/)|\/(?:pop|popunder|clickunder|vast|vmap)\.(?:js|xml|json)(?:$|\?)|[?&](?:vast|vpaid|vmap|ad_tag|ad_url|preroll|popunder|clickunder)=)/i;
+  /(?:\/(?:vast|vpaid|vmap|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|branding\/|reklama|doubleclick|pcode\/adfox|pagead\/|ads\/|adv\/|cryxos|push-sdk)|\/(?:pop|popunder|clickunder|vast|vmap)\.(?:js|xml|json)(?:$|\?)|[?&](?:vast|vpaid|vmap|ad_tag|ad_url|preroll|popunder|clickunder)=)/i;
+
+/**
+ * External remote JS/HTML from streaming mirrors can carry obfuscated popunder/scam scripts
+ * (e.g. JS:Trojan.Cryxos) that trigger antivirus alerts if Chromium writes them to Cache_Data.
+ */
+export function shouldStripExternalScriptCache(
+  url: string,
+  resourceType?: string,
+  contentType?: string
+): boolean {
+  if (!url || (!url.startsWith('http://') && !url.startsWith('https://'))) return false;
+  if (url.startsWith('http://localhost') || url.startsWith('http://127.0.0.1')) return false;
+  const rt = (resourceType || '').toLowerCase();
+  if (rt === 'script' || rt === 'subframe' || rt === 'mainframe') return true;
+  const ct = (contentType || '').toLowerCase();
+  if (ct.includes('javascript') || ct.includes('ecmascript') || ct.includes('text/html')) return true;
+  if (/\.(?:m?js|cjs)(?:$|\?)/i.test(url)) return true;
+  // Also prevent third-party XHR/fetch payloads (e.g. text/plain or octet-stream scripts) from writing to Cache_Data
+  if (
+    (rt === 'xhr' || rt === 'other') &&
+    !ct.startsWith('image/') &&
+    !ct.startsWith('video/') &&
+    !ct.startsWith('audio/') &&
+    !ct.startsWith('font/') &&
+    !ct.includes('text/css')
+  ) {
+    return true;
+  }
+  return false;
+}
 
 const TRUSTED_MEDIA_PORTAL_RE =
   /(?:^|\.)(?:kinobase\.org|kinovod\.pro|hdstudio\.org|insertunit\.ws|delivembed\.cc|embf\.net|showvid\.ws|kinogo\.[a-z]+|aniliberty\.top|anilibria\.[a-z]+|libria\.fun|animetop\.info|animevost\.org|yummyanime\.[a-z]+|yummyani\.me|yani\.tv|smotret-anime\.[a-z]+|anime365\.ru|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
@@ -184,7 +214,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
     checkUpdatesOnStart: true,
     activeMirror: 'https://rezka.ac',
     mirrors: DEFAULT_MIRRORS,
-    requestTimeoutMs: 8000,
+    requestTimeoutMs: 25000,
   },
 };
 
@@ -257,10 +287,12 @@ export const IPC_CHANNELS = {
   CHECK_FOR_UPDATES: 'app:checkUpdates',
   DOWNLOAD_UPDATE: 'app:downloadUpdate',
   INSTALL_UPDATE: 'app:installUpdate',
+  SCHEDULE_UPDATE_ON_EXIT: 'app:scheduleUpdateOnExit',
   ON_UPDATE_PROGRESS: 'app:updateProgress',
   CLEAR_CACHE: 'app:clearCache',
   OPEN_EXTERNAL_URL: 'app:openExternal',
   CHECK_JUST_UPDATED: 'app:checkJustUpdated',
+  APP_NAVIGATE: 'app:navigate',
 
   // Browser AdBlock & Cinema Hotkeys
   BROWSER_SET_ADBLOCK: 'browser:setAdBlock',

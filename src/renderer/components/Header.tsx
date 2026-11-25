@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Search, Bell, Sparkles, X, Star, Settings, Globe, ArrowLeft, Film, Sun, Moon, Wand2 } from 'lucide-react';
+import { Search, Bell, Sparkles, X, Star, Settings, Globe, ArrowLeft, ArrowRight, Film, Sun, Moon, Wand2 } from 'lucide-react';
 import { useMediaStore } from '../stores/useMediaStore';
 import { usePlayerStore } from '../stores/usePlayerStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
@@ -9,7 +9,21 @@ import { DEFAULT_HOTKEYS } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
 
 export const Header: React.FC = () => {
-  const { currentPage, searchQuery, setSearchQuery, setPage, openDetails, openBrowser, watchHistory } = useMediaStore();
+  const {
+    currentPage,
+    navIndex,
+    navHistory,
+    goBack,
+    goForward,
+    searchQuery,
+    setSearchQuery,
+    setPage,
+    openDetails,
+    openBrowser,
+    watchHistory,
+  } = useMediaStore();
+  const canGoBack = navIndex > 0;
+  const canGoForward = navIndex < navHistory.length - 1;
   const { settings, updateSettings, updateInfo, setUpdateModalOpen } = useSettingsStore();
   const { t } = useTranslation();
 
@@ -156,17 +170,33 @@ export const Header: React.FC = () => {
 
   return (
     <header className="app-header h-16 w-full border-b border-white/[0.06] px-7 lg:px-9 flex items-center justify-between gap-4 relative z-40 bg-[#0B070A]/92 backdrop-blur-2xl flex-shrink-0">
-      {/* Left: Quick Back Button (when viewing Details) + Spotlight Search */}
+      {/* Left: Back / Forward Navigation (preserves scroll & filters) + Spotlight Search */}
       <div className="flex items-center gap-3 flex-1 min-w-0">
-        {currentPage === 'details' && (
-          <button
-            type="button"
-            onClick={() => setPage('home')}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-xs font-bold text-zinc-200 hover:text-white cursor-pointer flex-shrink-0"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 text-brand-orange" />
-            <span className="hidden sm:inline">{t.nav.home}</span>
-          </button>
+        {(canGoBack || canGoForward || currentPage === 'details') && (
+          <div className="inline-flex items-center gap-1 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => (canGoBack ? goBack() : setPage('home'))}
+              disabled={!canGoBack && currentPage !== 'details'}
+              aria-label={t.player.back}
+              title={`${t.player.back} (Mouse4)`}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] disabled:opacity-35 border border-white/[0.08] text-xs font-bold text-zinc-200 hover:text-white cursor-pointer disabled:cursor-not-allowed"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-brand-orange" />
+              {currentPage === 'details' && <span className="hidden sm:inline">{t.player.back}</span>}
+            </button>
+            {canGoForward && (
+              <button
+                type="button"
+                onClick={() => goForward()}
+                aria-label="Вперёд"
+                title="Вперёд (Mouse5)"
+                className="inline-flex items-center justify-center p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-200 hover:text-white cursor-pointer"
+              >
+                <ArrowRight className="w-3.5 h-3.5 text-brand-orange" />
+              </button>
+            )}
+          </div>
         )}
 
         {/* Spotlight Cinema Search */}

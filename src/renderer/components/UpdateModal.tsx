@@ -4,8 +4,16 @@ import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
 
 export const UpdateModal: React.FC = () => {
-  const { updateInfo, isUpdateModalOpen, setUpdateModalOpen, downloadUpdate, installUpdate, updateProgress } =
-    useSettingsStore();
+  const {
+    updateInfo,
+    isUpdateModalOpen,
+    setUpdateModalOpen,
+    downloadUpdate,
+    installUpdate,
+    scheduleUpdateOnExit,
+    updateScheduledOnExit,
+    updateProgress,
+  } = useSettingsStore();
   const { t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -171,7 +179,11 @@ export const UpdateModal: React.FC = () => {
           {isReady && !isInstalling && (
             <div className="p-4 rounded-2xl bg-emerald-950/30 border border-emerald-500/35 flex items-center gap-3 text-xs text-emerald-300">
               <CheckCircle2 className="w-5 h-5 flex-shrink-0 text-emerald-400" />
-              <span>Обновление успешно загружено и готово к установке.</span>
+              <span>
+                {updateScheduledOnExit
+                  ? t.updateModal.scheduledOnExitNote
+                  : t.updateModal.readyNote}
+              </span>
             </div>
           )}
 
@@ -224,18 +236,30 @@ export const UpdateModal: React.FC = () => {
                 <span>{t.updateModal.installing}</span>
               </div>
             ) : isReady ? (
-              <button
-                type="button"
-                onClick={installUpdate}
-                className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-xs shadow-glow active:scale-95 cursor-pointer"
-              >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{t.updateModal.installBtn}</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    scheduleUpdateOnExit(true);
+                    setUpdateModalOpen(false);
+                  }}
+                  className="px-4 py-2.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-white/[0.14] text-zinc-100 font-bold text-xs active:scale-95 cursor-pointer"
+                >
+                  {updateScheduledOnExit ? t.updateModal.scheduledOnExitBtn : t.updateModal.installOnExitBtn}
+                </button>
+                <button
+                  type="button"
+                  onClick={installUpdate}
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-gradient-to-r from-emerald-600 to-teal-500 hover:from-emerald-500 hover:to-teal-400 text-white font-extrabold text-xs shadow-glow active:scale-95 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{t.updateModal.installBtn}</span>
+                </button>
+              </>
             ) : (
               <button
                 type="button"
-                onClick={downloadUpdate}
+                onClick={() => downloadUpdate(true)}
                 disabled={isDownloading}
                 className="flex items-center gap-2 px-5 py-2.5 rounded-full btn-ember text-white font-extrabold text-xs active:scale-95 disabled:opacity-50 cursor-pointer"
               >

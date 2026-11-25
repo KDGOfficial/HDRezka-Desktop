@@ -138,7 +138,16 @@ export const api = {
   downloadUpdate: (assetUrl?: string): Promise<{ success: boolean; filePath?: string; openedInBrowser?: boolean; error?: string }> =>
     ipcRenderer.invoke(IPC_CHANNELS.DOWNLOAD_UPDATE, assetUrl),
   installUpdate: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.INSTALL_UPDATE),
+  scheduleUpdateOnExit: (enabled = true): Promise<boolean> =>
+    ipcRenderer.invoke(IPC_CHANNELS.SCHEDULE_UPDATE_ON_EXIT, enabled),
   checkJustUpdated: (): Promise<boolean> => ipcRenderer.invoke(IPC_CHANNELS.CHECK_JUST_UPDATED),
+  onAppNavigate: (callback: (direction: 'back' | 'forward') => void) => {
+    const handler = (_: any, direction: 'back' | 'forward') => callback(direction);
+    ipcRenderer.on(IPC_CHANNELS.APP_NAVIGATE, handler);
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.APP_NAVIGATE, handler);
+    };
+  },
   onUpdateProgress: (callback: (progress: import('../shared/types').UpdateProgress) => void) => {
     const handler = (_: any, progress: import('../shared/types').UpdateProgress) => callback(progress);
     ipcRenderer.on(IPC_CHANNELS.ON_UPDATE_PROGRESS, handler);

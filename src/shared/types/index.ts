@@ -264,6 +264,7 @@ export interface UpdateInfo {
   currentVersion: string;
   latestVersion: string;
   hasUpdate: boolean;
+  isPortable?: boolean;
   releaseNotes?: string;
   releaseDate?: string;
   downloadUrl?: string;

@@ -90,6 +90,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
       aria-label={displayTitle}
       className={`group relative flex flex-col cursor-pointer cinema-card select-none rounded-2xl ${sizeClasses}`}
     >
+      <div className="cinema-card-inner flex flex-col w-full">
       {/* 2:3 Cinema Poster Frame (always dark cinema glass over artwork in both themes) */}
       <div
         className="cinema-player-surface relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-dark-surface border border-white/[0.08] shadow-card group-hover:border-brand-ember/60 group-hover:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.88),0_0_26px_-6px_rgba(255,42,66,0.45)] transition-all duration-300"
@@ -247,6 +248,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
             </>
           )}
         </div>
+      </div>
       </div>
     </article>
   );

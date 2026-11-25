@@ -167,7 +167,7 @@ export const TitleBar: React.FC = () => {
           <span className="truncate max-w-[140px] font-mono text-[10px]">
             {isSearchingMirrors ? 'Поиск зеркал...' : cleanMirror}
           </span>
-          {!isSearchingMirrors && mirrorStatus && mirrorStatus.latencyMs < 9000 && (
+          {!isSearchingMirrors && mirrorStatus && mirrorStatus.isAvailable && mirrorStatus.latencyMs < 99999 && (
             <span className="text-zinc-500 font-mono text-[9px] tabular-nums">{mirrorStatus.latencyMs}ms</span>
           )}
         </button>

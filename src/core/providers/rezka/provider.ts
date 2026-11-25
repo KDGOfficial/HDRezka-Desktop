@@ -667,7 +667,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.75';
+  public version = '0.0.76';
 
   public static readonly ANILIBERTY_GENRE_IDS: Record<string, number> = {
     action: 14,
@@ -784,7 +784,7 @@ export class RezkaProvider implements IProvider {
     }
   > = new Map();
 
-  constructor(activeMirror = 'https://rezka.ag', mirrors = DEFAULT_MIRRORS, timeoutMs = 8000) {
+  constructor(activeMirror = 'https://rezka.ag', mirrors = DEFAULT_MIRRORS, timeoutMs = 25000) {
     this.mirrors = [...mirrors].filter((m) => !isBadMirrorUrl(m));
     if (!activeMirror || isBadMirrorUrl(activeMirror)) {
       activeMirror = this.mirrors[0] || 'https://rezka.ag';
@@ -965,7 +965,7 @@ export class RezkaProvider implements IProvider {
           return {
             url: cleanUrl,
             isAvailable: false,
-            latencyMs: 9999,
+            latencyMs: 99999,
             lastChecked: Date.now(),
             needsVerification: false,
           };
@@ -979,7 +979,7 @@ export class RezkaProvider implements IProvider {
             : this.getHeaders(cleanUrl);
           const rootRes = await appFetch(probe.url, {
             headers,
-            signal: AbortSignal.timeout(5000),
+            signal: AbortSignal.timeout(Math.max(this.timeoutMs, 20000)),
           });
           const latency = Date.now() - rootT0;
           const text = await rootRes.text();
@@ -1001,7 +1001,7 @@ export class RezkaProvider implements IProvider {
             return {
               url: cleanUrl,
               isAvailable: isAvail,
-              latencyMs: isAvail ? latency : 9999,
+              latencyMs: isAvail ? latency : 99999,
               lastChecked: Date.now(),
               needsVerification: isAvail && isBlocked && !hasApiPayload,
             };
@@ -1033,7 +1033,7 @@ export class RezkaProvider implements IProvider {
           return {
             url: cleanUrl,
             isAvailable: isAvail,
-            latencyMs: isAvail ? latency : 9999,
+            latencyMs: isAvail ? latency : 99999,
             lastChecked: Date.now(),
             needsVerification: isAvail && isBlocked,
           };
@@ -1041,7 +1041,7 @@ export class RezkaProvider implements IProvider {
           return {
             url: cleanUrl,
             isAvailable: false,
-            latencyMs: 9999,
+            latencyMs: 99999,
             lastChecked: Date.now(),
             needsVerification: false,
           };
@@ -1163,7 +1163,7 @@ export class RezkaProvider implements IProvider {
         try {
           const res = await appFetch(src, {
             headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) HDRezka-Desktop' },
-            signal: AbortSignal.timeout(4000),
+            signal: AbortSignal.timeout(10000),
           });
           if (res.ok) {
             const text = await res.text();
@@ -1189,7 +1189,7 @@ export class RezkaProvider implements IProvider {
         try {
           const res = await appFetch(url, {
             headers: this.getHeaders(url),
-            signal: AbortSignal.timeout(4500),
+            signal: AbortSignal.timeout(Math.max(this.timeoutMs, 15000)),
           });
           if (!res.ok) return;
           const text = await res.text();

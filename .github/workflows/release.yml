@@ -56,7 +56,6 @@ jobs:
       - name: Build Application & Windows Distribution
         run: npm run dist
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
 
@@ -122,14 +121,6 @@ jobs:
           Compress-Archive -Path "$stage/*" -DestinationPath "release/HDREZKA-NoSAC-$version.zip" -CompressionLevel Optimal -Force
           Remove-Item $stage -Recurse -Force
 
-      - name: Generate SHA-256 Checksums
-        shell: pwsh
-        run: |
-          Get-ChildItem -Path release -File | Where-Object { $_.Name -like "HDREZKA-*.exe" -or $_.Name -like "HDREZKA-*.zip" } | ForEach-Object {
-            $hash = (Get-FileHash -Algorithm SHA256 $_.FullName).Hash.ToLower()
-            "$hash  $($_.Name)"
-          } | Out-File -FilePath release/SHA256SUMS.txt -Encoding utf8
-
       - name: Publish GitHub Release with Executables
         uses: softprops/action-gh-release@v2
         with:
@@ -137,7 +128,6 @@ jobs:
             release/HDREZKA-Setup-*.exe
             release/HDREZKA-Portable-*.exe
             release/HDREZKA-NoSAC-*.zip
-            release/SHA256SUMS.txt
           draft: false
           prerelease: false
           generate_release_notes: true
