@@ -34,6 +34,7 @@ import { usePlayerStore } from '../stores/usePlayerStore';
 import { useMediaStore } from '../stores/useMediaStore';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { buildEpisodeChunks, SeasonScrollTrack } from './SeriesNavigationPanel';
+import { HorizontalSlider } from './HorizontalSlider';
 import { useTranslation } from '../i18n';
 import { useLocalizedTitle } from '../hooks/useLocalizedTitle';
 import {

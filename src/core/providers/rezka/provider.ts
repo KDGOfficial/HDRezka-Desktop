@@ -16,7 +16,7 @@ import {
   SubtitleTrack,
   MediaReview,
 } from '../../../shared/types';
-import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, HDREZKA_MIRRORS, GENRES, isBadMirrorUrl, isCamRipText, BROWSER_USER_AGENT } from '../../../shared/constants';
+import { DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, HDREZKA_MIRRORS, RETIRED_MIRRORS, REMOTE_MIRROR_LIST_URLS, GENRES, isBadMirrorUrl, isCamRipText, BROWSER_USER_AGENT } from '../../../shared/constants';
 import { extractItemGenreIds, normalizeGenreToId } from '../../../shared/recommendations';
 import { parseStreamData } from './decoder';
 import {
@@ -667,7 +667,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.78';
+  public version = '0.0.79';
 
   public static readonly ANILIBERTY_GENRE_IDS: Record<string, number> = {
     action: 14,
@@ -1134,21 +1134,22 @@ export class RezkaProvider implements IProvider {
   }
 
   private async findOnlineMirrorsUncached(): Promise<{ added: string[]; all: string[] }> {
-    const candidateUrls = new Set<string>([...OPEN_MIRROR_SEEDS, ...HDREZKA_MIRRORS]);
+    const candidateUrls = new Set<string>([...OPEN_MIRROR_SEEDS, ...HDREZKA_MIRRORS, ...RETIRED_MIRRORS]);
 
-    // Seed list of known mirror candidates (excluding dead/hangup domains)
-    const seeds = [
-      'https://rezka.ac',
-      'https://rezka.ai',
-      'https://kinogo.film',
-      'http://hdstudio.org',
-      'https://kinobase.org',
-      'https://kinovod.pro',
-      'https://www.kinobase.org',
-    ];
-    for (const s of seeds) {
-      if (!isBadMirrorUrl(s)) candidateUrls.add(s);
-    }
+    // Curated remote list from our repo: every entry is still verified below before use
+    await Promise.allSettled(
+      REMOTE_MIRROR_LIST_URLS.map(async (src) => {
+        const res = await appFetch(src, { signal: AbortSignal.timeout(10000) });
+        if (!res.ok) return;
+        const data = await res.json();
+        for (const m of Array.isArray(data?.mirrors) ? data.mirrors : []) {
+          try {
+            const u = new URL(String(m));
+            if (u.protocol === 'http:' || u.protocol === 'https:') candidateUrls.add(u.origin);
+          } catch {}
+        }
+      })
+    );
 
     // Online sources
     const sources = [
@@ -1192,6 +1193,9 @@ export class RezkaProvider implements IProvider {
             signal: AbortSignal.timeout(Math.max(this.timeoutMs, 15000)),
           });
           if (!res.ok) return;
+          // Follow domain moves: old mirror redirecting to a new domain yields the new origin
+          const final = new URL(res.url || url);
+          if (/\/check(?:[/?#]|$)/i.test(final.pathname) || isBadMirrorUrl(final.origin)) return;
           const text = await res.text();
           if (!text || this.isAntiBot(text) || text.includes('Вход на HDrezka')) return;
           const hasSite =
@@ -1205,7 +1209,7 @@ export class RezkaProvider implements IProvider {
             text.includes('shortStory') ||
             text.includes('kinogo');
           if (hasSite) {
-            verifiedNewMirrors.push(url);
+            verifiedNewMirrors.push(final.origin);
           }
         } catch {}
       })

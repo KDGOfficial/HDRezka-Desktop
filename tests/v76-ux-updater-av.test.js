@@ -100,7 +100,7 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
 });
 
 test('v0.0.78 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.0.78');
+  assert.equal(constants.APP_VERSION, '0.0.79');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');

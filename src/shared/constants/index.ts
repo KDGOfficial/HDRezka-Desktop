@@ -1,7 +1,7 @@
 import { UserSettings, HotkeysConfig, SubtitleStyle } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.78';
+export const APP_VERSION = '0.0.79';
 export const GITHUB_RELEASES_LATEST_URL = 'https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
@@ -35,9 +35,19 @@ export const OPEN_MIRROR_SEEDS = [
   'https://rezka.ai',
   'https://kinogo.film',
   'http://hdstudio.org',
+];
+
+/** Former open mirrors now behind captcha/dead: kept in the background pool and auto-restored once they answer cleanly. */
+export const RETIRED_MIRRORS = [
   'https://kinobase.org',
-  'https://kinovod.pro',
   'https://www.kinobase.org',
+  'https://kinovod.pro',
+];
+
+/** Remote curated mirror list (edit mirrors.json in the repo: all clients pick it up without a new release). jsDelivr is a fallback when raw.githubusercontent is blocked. */
+export const REMOTE_MIRROR_LIST_URLS = [
+  'https://raw.githubusercontent.com/KDGOfficial/HDRezka-Desktop/main/mirrors.json',
+  'https://cdn.jsdelivr.net/gh/KDGOfficial/HDRezka-Desktop@main/mirrors.json',
 ];
 
 export const ANIME_MIRROR_SEEDS = [
@@ -143,15 +153,7 @@ export const HDREZKA_MIRRORS = [
   'https://rezka-ua.org',
 ];
 
-export const DEFAULT_MIRRORS = [
-  'https://rezka.ac',
-  'https://rezka.ai',
-  'https://kinogo.film',
-  'http://hdstudio.org',
-  'https://kinobase.org',
-  'https://kinovod.pro',
-  'https://www.kinobase.org',
-];
+export const DEFAULT_MIRRORS = [...OPEN_MIRROR_SEEDS];
 
 export const DEFAULT_HOTKEYS: HotkeysConfig = {
   playPause: 'Space',

@@ -20,8 +20,37 @@ function loadTsModule(relPath, external = []) {
 const {
   OPEN_MIRROR_SEEDS,
   DEFAULT_MIRRORS,
+  RETIRED_MIRRORS,
   isCrossOriginPopupAd,
 } = loadTsModule('../src/shared/constants/index.ts');
+
+test('findOnlineMirrors pulls remote mirrors.json and follows domain redirects, skipping /check captcha', async () => {
+  const provider = new RezkaProvider('https://rezka.ac', ['https://rezka.ac']);
+  const origFetch = globalThis.fetch;
+  const page = (html, finalUrl) => {
+    const r = new Response(html + 'x'.repeat(300), { status: 200 });
+    Object.defineProperty(r, 'url', { value: finalUrl });
+    return r;
+  };
+  globalThis.fetch = async (input) => {
+    const u = String(input);
+    if (u.endsWith('mirrors.json')) return new Response(JSON.stringify({ mirrors: ['https://new-rezka.example/', 'https://old-kino.example'] }));
+    if (u.startsWith('https://new-rezka.example')) return page('<div class="b-content"></div>', 'https://new-rezka.example/');
+    if (u.startsWith('https://old-kino.example') || u.startsWith('https://moved-kino.example')) return page('<div class="shortStory">kinogo</div>', 'https://moved-kino.example/');
+    if (u.startsWith('https://rezka.ac')) return page('<div class="b-content"></div>', 'https://rezka.ac/');
+    if (u.includes('kinovod.pro')) return page('<title>Проверка</title>', 'https://kinovod.pro/check');
+    return new Response('', { status: 404 });
+  };
+  try {
+    const { all } = await provider.findOnlineMirrors();
+    assert.ok(all.includes('https://new-rezka.example'), `remote mirror missing: ${all}`);
+    assert.ok(all.includes('https://moved-kino.example'), `redirect target missing: ${all}`);
+    assert.ok(!all.includes('https://old-kino.example'));
+    assert.ok(!all.includes('https://kinovod.pro'));
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
 
 const {
   RezkaProvider,
@@ -31,11 +60,12 @@ const {
   pickBestMirrorMatch,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('OPEN_MIRROR_SEEDS and DEFAULT_MIRRORS include hdstudio.org and kinovod.pro as trusted open mirrors', () => {
+test('OPEN_MIRROR_SEEDS keep hdstudio.org; captcha-gated kinovod/kinobase move to RETIRED_MIRRORS pool', () => {
   assert.ok(OPEN_MIRROR_SEEDS.includes('http://hdstudio.org'));
-  assert.ok(OPEN_MIRROR_SEEDS.includes('https://kinovod.pro'));
+  assert.ok(!OPEN_MIRROR_SEEDS.includes('https://kinovod.pro'));
   assert.ok(DEFAULT_MIRRORS.includes('http://hdstudio.org'));
-  assert.ok(DEFAULT_MIRRORS.includes('https://kinovod.pro'));
+  assert.ok(!DEFAULT_MIRRORS.includes('https://kinobase.org'));
+  assert.ok(RETIRED_MIRRORS.includes('https://kinovod.pro'));
   assert.equal(isCrossOriginPopupAd('http://hdstudio.org/serial/ehjforija_1_2_3_season-4/23-1-0-333', 'https://kinobase.org/'), false);
   assert.equal(isCrossOriginPopupAd('https://kinovod.pro/serial/237552-eyforiya', 'https://kinobase.org/'), false);
 });
