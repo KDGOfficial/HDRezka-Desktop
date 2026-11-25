@@ -521,7 +521,7 @@ export function registerIpcHandlers(): void {
 
       win.webContents.on('did-navigate', async (e, url, statusCode) => {
         if (statusCode === 500) {
-          mirror = 'https://kinobase.org';
+          mirror = OPEN_MIRROR_SEEDS[0];
           await renderSuccessScreen();
           await injectVerifyBar();
           setTimeout(checkState, 300);

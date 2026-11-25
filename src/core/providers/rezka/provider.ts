@@ -667,7 +667,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.74';
+  public version = '0.0.75';
 
   public static readonly ANILIBERTY_GENRE_IDS: Record<string, number> = {
     action: 14,
@@ -761,6 +761,7 @@ export class RezkaProvider implements IProvider {
   private prefetchQueue: Array<{ key: string; urlOrId: string; meta?: Partial<MediaItem> }> = [];
   private activePrefetches = 0;
   private collapsPlayerCache: Map<string, { ts: number; data: CollapsParsedData | null }> = new Map();
+  private collapsEmbedUrlCache: Map<string, string> = new Map();
   private kinobasePlayerCache: Map<
     string,
     {
@@ -809,7 +810,10 @@ export class RezkaProvider implements IProvider {
       html.includes('Attention Required! | Cloudflare') ||
       html.includes('b-antibot') ||
       html.includes('within.website') ||
-      html.includes('Время сессии истекло')
+      html.includes('Время сессии истекло') ||
+      html.includes('#captcha_image') ||
+      html.includes('id="captcha_image"') ||
+      (html.includes('<title>Проверка</title>') && html.includes('g-recaptcha'))
     );
   }
 
@@ -1031,7 +1035,7 @@ export class RezkaProvider implements IProvider {
             isAvailable: isAvail,
             latencyMs: isAvail ? latency : 9999,
             lastChecked: Date.now(),
-            needsVerification: isAvail && isBlocked && !hasRezkaContent,
+            needsVerification: isAvail && isBlocked,
           };
         } catch {
           return {
@@ -1134,10 +1138,12 @@ export class RezkaProvider implements IProvider {
 
     // Seed list of known mirror candidates (excluding dead/hangup domains)
     const seeds = [
-      'https://kinobase.org',
-      'https://kinovod.pro',
+      'https://rezka.ac',
+      'https://rezka.ai',
       'https://kinogo.film',
       'http://hdstudio.org',
+      'https://kinobase.org',
+      'https://kinovod.pro',
       'https://www.kinobase.org',
     ];
     for (const s of seeds) {
@@ -1228,7 +1234,7 @@ export class RezkaProvider implements IProvider {
     if (!title) return null;
 
     const imgEl = el.find('.b-content__inline_item-cover img');
-    const poster = imgEl.attr('src') || '';
+    const poster = imgEl.attr('src') || imgEl.attr('data-src') || '';
 
     const catEl = el.find('.cat');
     let type: ContentType = 'films';
@@ -3917,7 +3923,7 @@ export class RezkaProvider implements IProvider {
         const res = await appFetch(embedUrl, {
           headers: {
             'User-Agent': BROWSER_USER_AGENT,
-            'Referer': 'http://hdstudio.org/',
+            'Referer': embedUrl.includes('embf.net') ? 'https://rezka.ac/' : 'http://hdstudio.org/',
             'Accept-Language': 'ru-RU,ru;q=0.9',
           },
           signal: AbortSignal.timeout(4500),
@@ -3962,7 +3968,7 @@ export class RezkaProvider implements IProvider {
 
       const streams = await this.fetchHlsMasterStreams(epData.hls, {
         'User-Agent': BROWSER_USER_AGENT,
-        'Referer': 'https://apiplayers.insertunit.ws/',
+        'Referer': kpIdOrEmbedUrl.includes('embf.net') ? 'https://api.embf.net/' : 'https://apiplayers.insertunit.ws/',
       });
       if (streams.length === 0) return null;
 
@@ -5625,9 +5631,25 @@ export class RezkaProvider implements IProvider {
         return getFallbackDetails(urlOrId, cachedMeta);
       }
       const origTitle = $('.b-post__origtitle').first().text().trim();
-    const poster = $('.b-sidecover img').first().attr('src') || '';
+    const poster =
+      $('.b-sidecover img').first().attr('src') ||
+      $('.b-sidecover img').first().attr('data-src') ||
+      '';
     const backdrop = $('.b-sidecover a').first().attr('href') || poster;
     const description = $('.b-post__description_text').first().text().trim();
+
+    const embfMatch = html.match(
+      /(?:https?:)?\/\/(?:api\.embf\.net|apiplayers\.insertunit\.ws|api\.delivembed\.cc)\/embed\/(?:movie|serial|kp)\/\d+[^"'\s<>]*/i
+    );
+    const rezkaEmbedUrl = embfMatch
+      ? embfMatch[0].startsWith('//')
+        ? `https:${embfMatch[0]}`
+        : embfMatch[0]
+      : undefined;
+    if (rezkaEmbedUrl) {
+      this.collapsEmbedUrlCache.set(id, rezkaEmbedUrl);
+      this.collapsEmbedUrlCache.set(targetUrl, rezkaEmbedUrl);
+    }
 
     // Parse info table
     let year = 0;
@@ -5750,8 +5772,19 @@ export class RezkaProvider implements IProvider {
       }
     }
 
+    // If the mirror embeds a Collaps player (e.g. rezka.ac / rezka.ai via api.embf.net), load real voiceovers & seasons from it.
+    let rezkaEmbedCollaps: CollapsParsedData | null = null;
+    if (rezkaEmbedUrl) {
+      try {
+        rezkaEmbedCollaps = await this.fetchCollapsPlayerData(rezkaEmbedUrl);
+        if (rezkaEmbedCollaps?.translators?.length && translators.length === 0) {
+          translators.push(...rezkaEmbedCollaps.translators);
+        }
+      } catch {}
+    }
+
     // A single guessed/default translator is not a real choice; discover the available options.
-    if (translators.length <= 1 && id) {
+    if (translators.length <= 1 && id && !rezkaEmbedCollaps?.translators?.length) {
       try {
         const probed = await this.probeTranslators(id, type === 'films', targetUrl);
         if (probed.length > 0) {
@@ -5812,11 +5845,15 @@ export class RezkaProvider implements IProvider {
       this.kpIdCache.set(id, rezkaKpId);
       this.kpIdCache.set(targetUrl, rezkaKpId);
     }
-    if (isSeriesLike) {
+    if (isSeriesLike || rezkaEmbedCollaps?.seasons?.length) {
       try {
         const [loadedRes, collapsRes] = await Promise.allSettled([
-          this.getSeriesEpisodes(id, currentTranslatorId || 56),
-          rezkaKpId ? this.fetchCollapsPlayerData(rezkaKpId) : Promise.resolve(null),
+          rezkaEmbedUrl ? Promise.resolve([] as Season[]) : this.getSeriesEpisodes(id, currentTranslatorId || 56),
+          rezkaEmbedCollaps
+            ? Promise.resolve(rezkaEmbedCollaps)
+            : rezkaKpId
+              ? this.fetchCollapsPlayerData(rezkaKpId)
+              : Promise.resolve(null),
         ]);
         const loaded = loadedRes.status === 'fulfilled' ? loadedRes.value : [];
         const collapsSeasons = collapsRes.status === 'fulfilled' ? collapsRes.value?.seasons : undefined;
@@ -6736,6 +6773,37 @@ export class RezkaProvider implements IProvider {
       effectiveYear >= currentYear &&
       (!cachedItem?.type || cachedItem.type === 'films')
     );
+
+    // Direct Collaps embed fast-path for open mirrors (rezka.ac / rezka.ai via api.embf.net)
+    const cachedUrlForEmbed = cachedItem?.url || this.mediaUrlCache.get(params.mediaId) || this.mediaUrlCache.get(normId);
+    let cachedCollapsEmbed =
+      this.collapsEmbedUrlCache.get(params.mediaId) ||
+      this.collapsEmbedUrlCache.get(normId) ||
+      (cachedUrlForEmbed ? this.collapsEmbedUrlCache.get(cachedUrlForEmbed) : undefined);
+    if (!cachedCollapsEmbed && cachedUrlForEmbed && /rezka\.(?:ac|ai)/i.test(cachedUrlForEmbed)) {
+      try {
+        const pageHtml = await this.fetchHtml(cachedUrlForEmbed, 1);
+        const em = pageHtml.match(
+          /(?:https?:)?\/\/(?:api\.embf\.net|apiplayers\.insertunit\.ws|api\.delivembed\.cc)\/embed\/(?:movie|serial|kp)\/\d+[^"'\s<>]*/i
+        );
+        if (em?.[0]) {
+          cachedCollapsEmbed = em[0].startsWith('//') ? `https:${em[0]}` : em[0];
+          this.collapsEmbedUrlCache.set(params.mediaId, cachedCollapsEmbed);
+          this.collapsEmbedUrlCache.set(cachedUrlForEmbed, cachedCollapsEmbed);
+        }
+      } catch {}
+    }
+    if (cachedCollapsEmbed) {
+      const embedStream = await this.getCollapsStream(cachedCollapsEmbed, {
+        season: params.season,
+        episode: params.episode,
+        translatorName: params.translatorName,
+        translatorId: params.translatorId,
+      });
+      if (embedStream && embedStream.streams.length > 0) {
+        return embedStream;
+      }
+    }
 
     if (
       this.isKinobase() ||

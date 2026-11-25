@@ -100,10 +100,16 @@ export function createMainWindow(): BrowserWindow {
     if (
       url.includes('insertunit.ws') ||
       url.includes('delivembed.cc') ||
+      url.includes('embf.net') ||
+      url.includes('showvid.ws') ||
       url.includes('interkh.com')
     ) {
-      details.requestHeaders['Referer'] = 'https://apiplayers.insertunit.ws/';
-      if (!isImage) details.requestHeaders['Origin'] = 'https://apiplayers.insertunit.ws';
+      const collapsOrigin =
+        url.includes('embf.net') || url.includes('showvid.ws')
+          ? 'https://api.embf.net'
+          : 'https://apiplayers.insertunit.ws';
+      details.requestHeaders['Referer'] = `${collapsOrigin}/`;
+      if (!isImage) details.requestHeaders['Origin'] = collapsOrigin;
       else delete details.requestHeaders['Origin'];
       details.requestHeaders['User-Agent'] = BROWSER_USER_AGENT;
       return callback({ requestHeaders: details.requestHeaders });

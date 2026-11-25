@@ -439,3 +439,85 @@ test('parseKinogoComments extracts viewer comments and classifies long critiques
   assert.equal(reviews[1].author, 'Киновед');
   assert.equal(reviews[1].type, 'critic');
 });
+
+test('checkMirrors & pruneProtectedMirrors detect Kinobase/Kinovod /check captcha and switch to open mirror', async () => {
+  const provider = new RezkaProvider('https://kinobase.org', [
+    'https://kinobase.org',
+    'https://kinovod.pro',
+    'https://rezka.ac',
+    'https://kinogo.film',
+  ]);
+
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('kinobase.org') || u.includes('kinovod.pro')) {
+      return new Response(
+        '<!doctype html><html><head><title>Проверка</title><style>#captcha_image{display:inline-block}</style></head><body><div class="g-recaptcha"></div>' +
+          'x'.repeat(400) +
+          '</body></html>',
+        { status: 200 }
+      );
+    }
+    if (u.includes('rezka.ac')) {
+      return new Response('<div class="b-content"><div class="b-content__inline_item">' + 'x'.repeat(400) + '</div></div>', { status: 200 });
+    }
+    return new Response('<div class="shortStory">kinogo ' + 'x'.repeat(400) + '</div>', { status: 200 });
+  };
+
+  try {
+    const statuses = await provider.checkMirrors();
+    const kb = statuses.find((s) => s.url === 'https://kinobase.org');
+    assert.equal(kb.needsVerification, true, 'Kinobase /check captcha must set needsVerification=true');
+    const best = await provider.pruneProtectedMirrors();
+    assert.equal(best, 'https://rezka.ac', 'Should promote open rezka.ac over captcha-gated kinobase.org');
+    assert.ok(!provider.getMirrors().includes('https://kinobase.org'), 'Captcha-gated kinobase.org must be pruned');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});
+
+test('rezka.ac getDetails & getStream parse api.embf.net Collaps player directly', async () => {
+  const provider = new RezkaProvider('https://rezka.ac', ['https://rezka.ac']);
+  const origFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('rezka.ac/films/28263-dzhozefina.html')) {
+      return new Response(
+        `<html><body>
+          <input id="post_id" value="28263">
+          <div class="b-post__title"><h1>Джозефина</h1></div>
+          <div class="b-sidecover"><img data-src="https://rezka.ai/uploads/poster.jpg"></div>
+          <div class="b-post__description_text">Описание фильма</div>
+          <iframe src="//api.embf.net/embed/movie/94175"></iframe>
+        </body></html>`,
+        { status: 200 }
+      );
+    }
+    if (u.includes('api.embf.net/embed/movie/94175')) {
+      return new Response(
+        `<script>makePlayer({source:{hls:"https://cdn.interkh.com/master.m3u8",audio:{"names":["Дубляж","Оригинал"]}}});</script>`,
+        { status: 200 }
+      );
+    }
+    if (u.includes('cdn.interkh.com/master.m3u8')) {
+      return new Response(
+        '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1920x1080\nhttps://cdn.interkh.com/1080.m3u8\n',
+        { status: 200 }
+      );
+    }
+    return new Response('', { status: 404 });
+  };
+
+  try {
+    const details = await provider.getDetails('https://rezka.ac/films/28263-dzhozefina.html');
+    assert.equal(details.title, 'Джозефина');
+    assert.equal(details.poster, 'https://rezka.ai/uploads/poster.jpg');
+    assert.ok(details.translators.some((t) => t.name === 'Дубляж'), 'Must extract Collaps translators');
+    const stream = await provider.getStream({ mediaId: '28263', translatorId: 1, translatorName: 'Дубляж' });
+    assert.ok(stream.streams.length > 0, 'Must return playable HLS streams from api.embf.net');
+    assert.equal(stream.streams[0].hls, 'https://cdn.interkh.com/1080.m3u8');
+  } finally {
+    globalThis.fetch = origFetch;
+  }
+});

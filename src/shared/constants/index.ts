@@ -1,7 +1,7 @@
 import { UserSettings, HotkeysConfig, SubtitleStyle } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.74';
+export const APP_VERSION = '0.0.75';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -30,10 +30,12 @@ export function isCamRipText(text?: string): boolean {
 }
 
 export const OPEN_MIRROR_SEEDS = [
-  'https://kinobase.org',
-  'https://kinovod.pro',
+  'https://rezka.ac',
+  'https://rezka.ai',
   'https://kinogo.film',
   'http://hdstudio.org',
+  'https://kinobase.org',
+  'https://kinovod.pro',
   'https://www.kinobase.org',
 ];
 
@@ -60,7 +62,7 @@ const AD_PATH_RE =
   /(?:\/(?:vast|vpaid|vmap|preroll|midroll|popunder|clickunder|adserver|adsystem|ad_banner|banners\/|teasers\/|branding\/|reklama|doubleclick|pcode\/adfox|pagead\/|ads\/|adv\/)|\/(?:pop|popunder|clickunder|vast|vmap)\.(?:js|xml|json)(?:$|\?)|[?&](?:vast|vpaid|vmap|ad_tag|ad_url|preroll|popunder|clickunder)=)/i;
 
 const TRUSTED_MEDIA_PORTAL_RE =
-  /(?:^|\.)(?:kinobase\.org|kinovod\.pro|hdstudio\.org|insertunit\.ws|delivembed\.cc|kinogo\.[a-z]+|aniliberty\.top|anilibria\.[a-z]+|libria\.fun|animetop\.info|animevost\.org|yummyanime\.[a-z]+|yummyani\.me|yani\.tv|smotret-anime\.[a-z]+|anime365\.ru|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
+  /(?:^|\.)(?:kinobase\.org|kinovod\.pro|hdstudio\.org|insertunit\.ws|delivembed\.cc|embf\.net|showvid\.ws|kinogo\.[a-z]+|aniliberty\.top|anilibria\.[a-z]+|libria\.fun|animetop\.info|animevost\.org|yummyanime\.[a-z]+|yummyani\.me|yani\.tv|smotret-anime\.[a-z]+|anime365\.ru|animego\.[a-z]+|uakino\.[a-z]+|rezka\.[a-z]+|hdrezka[^.]*\.[a-z]+|google\.[a-z]+|vkvideo\.ru|vk\.com|rutube\.ru|youtube\.com|youtu\.be|kinopoisk\.ru|imdb\.com)$/i;
 
 const GOOGLE_SEARCH_HOST_RE = /(?:^|\.)google\.[a-z]{2,}(?:\.[a-z]{2})?$/i;
 
@@ -111,10 +113,12 @@ export const HDREZKA_MIRRORS = [
 ];
 
 export const DEFAULT_MIRRORS = [
-  'https://kinobase.org',
-  'https://kinovod.pro',
+  'https://rezka.ac',
+  'https://rezka.ai',
   'https://kinogo.film',
   'http://hdstudio.org',
+  'https://kinobase.org',
+  'https://kinovod.pro',
   'https://www.kinobase.org',
 ];
 
@@ -178,7 +182,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   app: {
     autoLaunch: false,
     checkUpdatesOnStart: true,
-    activeMirror: 'https://kinobase.org',
+    activeMirror: 'https://rezka.ac',
     mirrors: DEFAULT_MIRRORS,
     requestTimeoutMs: 8000,
   },
