@@ -1,7 +1,8 @@
 import { UserSettings, HotkeysConfig, SubtitleStyle } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.0.77';
+export const APP_VERSION = '0.0.78';
+export const GITHUB_RELEASES_LATEST_URL = 'https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
 export const AUTHOR_TELEGRAM_URL = 'https://t.me/kdg_yt';
@@ -212,11 +213,32 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   app: {
     autoLaunch: false,
     checkUpdatesOnStart: true,
+    updateChannel: 'stable',
     activeMirror: 'https://rezka.ac',
     mirrors: DEFAULT_MIRRORS,
     requestTimeoutMs: 25000,
   },
 };
+
+export function compareVersions(a: string, b: string): number {
+  const parse = (v: string) => {
+    const clean = (v || '').trim().replace(/^v/i, '');
+    const [core, pre = ''] = clean.split('-', 2);
+    const nums = core.split('.').map((n) => parseInt(n, 10) || 0);
+    return { nums, pre };
+  };
+  const pa = parse(a);
+  const pb = parse(b);
+  const len = Math.max(pa.nums.length, pb.nums.length);
+  for (let i = 0; i < len; i++) {
+    const diff = (pa.nums[i] || 0) - (pb.nums[i] || 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  if (!pa.pre && !pb.pre) return 0;
+  if (!pa.pre) return 1; // stable > prerelease of same version
+  if (!pb.pre) return -1;
+  return pa.pre.localeCompare(pb.pre, undefined, { numeric: true });
+}
 
 export const IPC_CHANNELS = {
   // Window

@@ -1,10 +1,21 @@
 import React, { useEffect, useRef } from 'react';
-import { Sparkles, Download, CheckCircle2, AlertCircle, X, ExternalLink, RefreshCw } from 'lucide-react';
+import { Sparkles, Download, CheckCircle2, AlertCircle, X, ExternalLink, RefreshCw, BellOff } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useTranslation } from '../i18n';
+import { GITHUB_RELEASES_LATEST_URL } from '../../shared/constants';
+
+function parseReleaseNoteLines(notes?: string): string[] {
+  if (!notes) return [];
+  return notes
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^#+\s*/, '').replace(/^[-*•]\s*/, '').replace(/\*\*/g, '').trim())
+    .filter((line) => line.length > 0 && !/^https?:\/\/github\.com\/.*\/compare\//i.test(line));
+}
 
 export const UpdateModal: React.FC = () => {
   const {
+    settings,
+    updateSettings,
     updateInfo,
     isUpdateModalOpen,
     setUpdateModalOpen,
@@ -16,6 +27,7 @@ export const UpdateModal: React.FC = () => {
   } = useSettingsStore();
   const { t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const backdropPressRef = useRef(false);
 
   const visible = Boolean(isUpdateModalOpen && updateInfo && updateInfo.hasUpdate);
 
@@ -29,29 +41,19 @@ export const UpdateModal: React.FC = () => {
     }
   }, [visible]);
 
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog || 'closedBy' in HTMLDialogElement.prototype) return;
-    const isOutside = (e: PointerEvent) => {
-      const r = dialog.getBoundingClientRect();
-      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-    };
-    let pressedOutside = false;
-    const onDown = (e: PointerEvent) => {
-      pressedOutside = isOutside(e);
-    };
-    const onUp = (e: PointerEvent) => {
-      if (pressedOutside && isOutside(e)) dialog.close();
-    };
-    dialog.addEventListener('pointerdown', onDown);
-    dialog.addEventListener('pointerup', onUp);
-    return () => {
-      dialog.removeEventListener('pointerdown', onDown);
-      dialog.removeEventListener('pointerup', onUp);
-    };
-  }, [visible]);
-
   if (!visible || !updateInfo) return null;
+
+  const noteLines = parseReleaseNoteLines(updateInfo.releaseNotes);
+  const releaseHref = updateInfo.isPrerelease && updateInfo.downloadUrl
+    ? updateInfo.downloadUrl
+    : GITHUB_RELEASES_LATEST_URL;
+
+  const handleDontRemind = async () => {
+    await updateSettings({
+      app: { ...settings.app, checkUpdatesOnStart: false },
+    });
+    setUpdateModalOpen(false);
+  };
 
   const isInstalling = updateProgress?.status === 'installing';
   const isReady =
@@ -72,8 +74,16 @@ export const UpdateModal: React.FC = () => {
   return (
     <dialog
       ref={dialogRef}
-      {...({ closedby: 'any' } as any)}
       aria-labelledby="update-modal-title"
+      onMouseDown={(e) => {
+        backdropPressRef.current = e.target === dialogRef.current;
+      }}
+      onClick={(e) => {
+        if (backdropPressRef.current && e.target === dialogRef.current) {
+          dialogRef.current?.close();
+        }
+        backdropPressRef.current = false;
+      }}
       onClose={() => {
         if (dialogRef.current) dialogRef.current.returnValue = '';
         setUpdateModalOpen(false);
@@ -98,11 +108,16 @@ export const UpdateModal: React.FC = () => {
               <Sparkles className="w-6 h-6 text-[#FFE29A]" />
             </div>
             <div>
-              <h2 id="update-modal-title" className="font-display text-lg font-black text-white flex items-center gap-2">
+              <h2 id="update-modal-title" className="font-display text-lg font-black text-white flex items-center gap-2 flex-wrap">
                 <span>{t.updateModal.title}</span>
                 <span className="text-[11px] px-2.5 py-0.5 rounded-full btn-ember text-white font-extrabold uppercase tracking-wider">
                   v{updateInfo.latestVersion}
                 </span>
+                {updateInfo.isPrerelease && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-extrabold uppercase">
+                    DEV
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-zinc-400 mt-0.5">
                 {t.updateModal.current}: <span className="text-zinc-200 font-mono">v{updateInfo.currentVersion}</span>
@@ -122,17 +137,22 @@ export const UpdateModal: React.FC = () => {
 
         {/* Body */}
         <div className="p-6 space-y-4 max-h-[60vh] overflow-y-auto relative z-10 text-left">
-          <p className="text-xs text-zinc-300 leading-relaxed">{t.updateModal.desc}</p>
-
-          {updateInfo.releaseNotes && (
-            <div className="rounded-2xl bg-[#0B070A]/85 border border-white/[0.07] p-4 text-xs space-y-1.5">
+          {noteLines.length > 0 ? (
+            <div className="rounded-2xl bg-[#0B070A]/85 border border-white/[0.08] p-4 text-xs space-y-2">
               <div className="font-display font-extrabold text-zinc-200 text-[11px] uppercase tracking-wider">
                 {t.updateModal.notes}
               </div>
-              <div className="text-zinc-400 whitespace-pre-wrap leading-relaxed max-h-36 overflow-y-auto pr-2">
-                {updateInfo.releaseNotes}
-              </div>
+              <ul className="space-y-1.5 text-zinc-300 leading-relaxed max-h-44 overflow-y-auto pr-1">
+                {noteLines.map((line, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-brand-orange font-bold leading-relaxed">•</span>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
             </div>
+          ) : (
+            <p className="text-xs text-zinc-300 leading-relaxed">{t.updateModal.desc}</p>
           )}
 
           {isDownloading && (
@@ -206,20 +226,28 @@ export const UpdateModal: React.FC = () => {
         </div>
 
         {/* Footer */}
-        <div className="p-5 pt-3.5 border-t border-white/[0.08] flex items-center justify-between relative z-10 bg-black/30">
-          {updateInfo.downloadUrl ? (
-            <a
-              href={updateInfo.downloadUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white"
-            >
-              <span>GitHub</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-          ) : (
-            <div />
-          )}
+        <div className="p-5 pt-3.5 border-t border-white/[0.08] flex flex-col gap-3 relative z-10 bg-black/30">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-3">
+              <a
+                href={releaseHref}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-white"
+              >
+                <span>GitHub</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+
+              <button
+                type="button"
+                onClick={handleDontRemind}
+                className="flex items-center gap-1 text-[11px] font-semibold text-zinc-500 hover:text-zinc-200 cursor-pointer"
+              >
+                <BellOff className="w-3 h-3" />
+                <span>{t.updateModal.dontRemind}</span>
+              </button>
+            </div>
 
           <div className="flex items-center gap-2.5">
             <button
@@ -267,6 +295,7 @@ export const UpdateModal: React.FC = () => {
                 <span>{isDownloading ? t.updateModal.downloading : t.updateModal.downloadBtn}</span>
               </button>
             )}
+          </div>
           </div>
         </div>
       </div>

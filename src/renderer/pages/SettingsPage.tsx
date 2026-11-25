@@ -460,7 +460,7 @@ export const SettingsPage: React.FC = () => {
               ) : null}
 
               <a
-                href="https://github.com/KDGOfficial/HDRezka-Desktop/releases"
+                href="https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest"
                 target="_blank"
                 rel="noreferrer"
                 className="flex items-center gap-1 px-3.5 py-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-200 text-xs font-bold"
@@ -488,6 +488,39 @@ export const SettingsPage: React.FC = () => {
               </div>
             </div>
           )}
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-1">
+            <div>
+              <div className="text-xs text-zinc-200 font-semibold">{t.settings.updateChannel}</div>
+              <div className="text-[11px] text-zinc-500 mt-0.5">{t.settings.updateChannelDesc}</div>
+            </div>
+            <div className="flex items-center bg-[#0B070A] p-1 rounded-full border border-white/[0.08] self-start sm:self-auto">
+              {(
+                [
+                  { id: 'stable', label: t.settings.updateChannelStable },
+                  { id: 'dev', label: t.settings.updateChannelDev },
+                ] as const
+              ).map((ch) => {
+                const active = (settings.app.updateChannel || 'stable') === ch.id;
+                return (
+                  <button
+                    key={ch.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={async () => {
+                      await updateSettings({ app: { ...settings.app, updateChannel: ch.id } });
+                      checkForUpdates(false);
+                    }}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold cursor-pointer ${
+                      active ? 'btn-ember text-white' : 'text-zinc-400 hover:text-white'
+                    }`}
+                  >
+                    {ch.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
 
           <label className="flex items-center justify-between pt-1 cursor-pointer">
             <span className="text-xs text-zinc-300 font-semibold">{t.settings.autoCheckOnStart}</span>

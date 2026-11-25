@@ -121,6 +121,42 @@ jobs:
           Compress-Archive -Path "$stage/*" -DestinationPath "release/HDREZKA-NoSAC-$version.zip" -CompressionLevel Optimal -Force
           Remove-Item $stage -Recurse -Force
 
+      - name: Generate Human-Readable Release Notes & Channel Metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $isPrerelease = ($tag -match '-(dev|beta|alpha|rc)').ToString().ToLower()
+          "is_prerelease=$isPrerelease" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          node -e "
+            const fs = require('fs');
+            const src = fs.readFileSync('src/renderer/i18n/translations.ts', 'utf8');
+            const extract = (lang) => {
+              const langIdx = src.indexOf('  ' + lang + ': {');
+              const wnIdx = src.indexOf('whatsNew: {', langIdx);
+              const block = src.slice(wnIdx, src.indexOf('    },', wnIdx));
+              const items = [];
+              for (let i = 1; i <= 5; i++) {
+                const tm = block.match(new RegExp('f' + i + '_title:\\s*([\'\"])(.*?)\\1'));
+                const dm = block.match(new RegExp('f' + i + '_desc:\\s*([\'\"])(.*?)\\1'));
+                if (tm) items.push('- **' + tm[2] + '**' + (dm ? ' — ' + dm[2] : ''));
+              }
+              return items;
+            };
+            const ru = extract('ru');
+            const en = extract('en');
+            const out = [
+              '### Что нового',
+              ...ru,
+              '',
+              '### What\'s New',
+              ...en,
+              '',
+              '📥 **Скачать актуальную версию:** https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest',
+            ].join('\n');
+            fs.writeFileSync('release/release-notes.md', out, 'utf8');
+          "
+
       - name: Publish GitHub Release with Executables
         uses: softprops/action-gh-release@v2
         with:
@@ -128,8 +164,9 @@ jobs:
             release/HDREZKA-Setup-*.exe
             release/HDREZKA-Portable-*.exe
             release/HDREZKA-NoSAC-*.zip
+          body_path: release/release-notes.md
           draft: false
-          prerelease: false
-          generate_release_notes: true
+          prerelease: ${{ steps.release_meta.outputs.is_prerelease == 'true' }}
+          generate_release_notes: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

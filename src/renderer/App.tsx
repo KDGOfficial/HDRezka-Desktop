@@ -174,11 +174,11 @@ export const App: React.FC = () => {
       useSettingsStore.getState().findOnlineMirrors();
     }, 5 * 60 * 1000);
 
-    // Check for updates periodically every 30 minutes (download in background & install on exit)
+    // Check for updates periodically every 30 minutes only if user has update reminders enabled
     const interval = setInterval(() => {
-      useSettingsStore
-        .getState()
-        .checkForUpdates(false)
+      const st = useSettingsStore.getState();
+      if (!st.settings.app?.checkUpdatesOnStart) return;
+      st.checkForUpdates(false)
         .then((info) => {
           if (info?.hasUpdate && info.assetUrl) {
             useSettingsStore.getState().downloadUpdate(true);

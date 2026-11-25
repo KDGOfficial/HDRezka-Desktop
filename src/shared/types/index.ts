@@ -218,6 +218,8 @@ export interface UserInterestsProfile {
   updatedAt: number;
 }
 
+export type UpdateChannel = 'stable' | 'dev';
+
 export interface UserSettings {
   theme: 'dark' | 'light' | 'oled' | 'system';
   cardSize: 'small' | 'medium' | 'large';
@@ -246,6 +248,7 @@ export interface UserSettings {
   app: {
     autoLaunch: boolean;
     checkUpdatesOnStart: boolean;
+    updateChannel?: UpdateChannel;
     activeMirror: string;
     mirrors: string[];
     requestTimeoutMs: number;
@@ -265,6 +268,8 @@ export interface UpdateInfo {
   latestVersion: string;
   hasUpdate: boolean;
   isPortable?: boolean;
+  channel?: UpdateChannel;
+  isPrerelease?: boolean;
   releaseNotes?: string;
   releaseDate?: string;
   downloadUrl?: string;

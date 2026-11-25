@@ -4,7 +4,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { spawn } from 'child_process';
-import { IPC_CHANNELS, APP_VERSION, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, ANIME_MIRROR_SEEDS, HDREZKA_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
+import { IPC_CHANNELS, APP_VERSION, GITHUB_RELEASES_LATEST_URL, compareVersions, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, ANIME_MIRROR_SEEDS, HDREZKA_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
 import { getMainWindow, restoreDefaultWindowBounds } from '../window';
 import { setBrowserAdBlockEnabled, getBrowserAdBlockStats } from '../main';
 import { ProviderManager } from '../../core/providers/manager';
@@ -16,6 +16,16 @@ import { CatalogFilter, WatchHistoryEntry, FavoriteItem, CollectionItem, UserSet
 
 export function isPortableRuntime(): boolean {
   return Boolean(process.env.PORTABLE_EXECUTABLE_FILE && process.env.PORTABLE_EXECUTABLE_FILE.trim());
+}
+
+export function selectReleaseForChannel(releases: any[], channel: 'stable' | 'dev'): any | null {
+  if (!Array.isArray(releases) || releases.length === 0) return null;
+  const nonDrafts = releases.filter((r) => r && !r.draft && typeof r.tag_name === 'string');
+  if (nonDrafts.length === 0) return null;
+  if (channel === 'dev') {
+    return nonDrafts[0] || null;
+  }
+  return nonDrafts.find((r) => !r.prerelease) || null;
 }
 
 export function selectUpdateAsset(assets: any[], isPortable: boolean): any | null {
@@ -890,28 +900,40 @@ export function registerIpcHandlers(): void {
 
   ipcMain.handle(IPC_CHANNELS.CHECK_FOR_UPDATES, async (): Promise<UpdateInfo> => {
     const currentVersion = app.getVersion() || APP_VERSION;
+    const channel = db.getSettings().app?.updateChannel === 'dev' ? 'dev' : 'stable';
     try {
-      const res = await fetch('https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest', {
+      const endpoint =
+        channel === 'dev'
+          ? 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases?per_page=10'
+          : 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest';
+      const res = await fetch(endpoint, {
         headers: { 'User-Agent': 'HDRezka-Desktop' },
         signal: AbortSignal.timeout(5000),
       });
       if (res.ok) {
-        const release = await res.json();
-        const latestTag = release.tag_name ? release.tag_name.replace(/^v/, '') : currentVersion;
+        const payload = await res.json();
+        const release = Array.isArray(payload) ? selectReleaseForChannel(payload, channel) : payload;
+        if (!release) {
+          return { currentVersion, latestVersion: currentVersion, hasUpdate: false, channel };
+        }
+        const latestTag = release.tag_name ? release.tag_name.replace(/^v/i, '') : currentVersion;
         const assets: any[] = Array.isArray(release.assets) ? release.assets : [];
         const portable = isPortableRuntime();
         const selectedAsset = selectUpdateAsset(assets, portable);
 
-        const hasUpdate = latestTag.localeCompare(currentVersion, undefined, { numeric: true }) > 0;
+        const hasUpdate = compareVersions(latestTag, currentVersion) > 0;
+        const isPrerelease = Boolean(release.prerelease);
 
         return {
           currentVersion,
           latestVersion: latestTag,
           hasUpdate,
           isPortable: portable,
+          channel,
+          isPrerelease,
           releaseNotes: release.body || '',
           releaseDate: release.published_at,
-          downloadUrl: release.html_url,
+          downloadUrl: isPrerelease ? (release.html_url || GITHUB_RELEASES_LATEST_URL) : GITHUB_RELEASES_LATEST_URL,
           assetName: selectedAsset?.name,
           assetUrl: selectedAsset?.browser_download_url,
           assetSize: selectedAsset?.size,
@@ -925,6 +947,7 @@ export function registerIpcHandlers(): void {
       currentVersion,
       latestVersion: currentVersion,
       hasUpdate: false,
+      channel,
     };
   });
 
@@ -937,17 +960,23 @@ export function registerIpcHandlers(): void {
 
       let targetUrl = assetUrl;
       const portable = isPortableRuntime();
+      const channel = db.getSettings().app?.updateChannel === 'dev' ? 'dev' : 'stable';
       let targetFileName = portable ? 'HDREZKA-Portable-update.exe' : 'HDREZKA-Setup-update.exe';
 
       if (!targetUrl) {
         try {
-          const res = await fetch('https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest', {
+          const endpoint =
+            channel === 'dev'
+              ? 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases?per_page=10'
+              : 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest';
+          const res = await fetch(endpoint, {
             headers: { 'User-Agent': 'HDRezka-Desktop' },
             signal: AbortSignal.timeout(5000),
           });
           if (res.ok) {
-            const release = await res.json();
-            const assets: any[] = Array.isArray(release.assets) ? release.assets : [];
+            const payload = await res.json();
+            const release = Array.isArray(payload) ? selectReleaseForChannel(payload, channel) : payload;
+            const assets: any[] = Array.isArray(release?.assets) ? release.assets : [];
             const selectedAsset = selectUpdateAsset(assets, portable);
             if (selectedAsset?.browser_download_url) {
               targetUrl = selectedAsset.browser_download_url;

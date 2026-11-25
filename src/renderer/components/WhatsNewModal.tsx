@@ -12,6 +12,7 @@ interface WhatsNewModalProps {
 export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose }) => {
   const { t } = useTranslation();
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const backdropPressRef = useRef(false);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -21,28 +22,6 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
     } else if (dialog.open) {
       dialog.close();
     }
-  }, [isOpen]);
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog || 'closedBy' in HTMLDialogElement.prototype) return;
-    const isOutside = (e: PointerEvent) => {
-      const r = dialog.getBoundingClientRect();
-      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
-    };
-    let pressedOutside = false;
-    const onDown = (e: PointerEvent) => {
-      pressedOutside = isOutside(e);
-    };
-    const onUp = (e: PointerEvent) => {
-      if (pressedOutside && isOutside(e)) dialog.close();
-    };
-    dialog.addEventListener('pointerdown', onDown);
-    dialog.addEventListener('pointerup', onUp);
-    return () => {
-      dialog.removeEventListener('pointerdown', onDown);
-      dialog.removeEventListener('pointerup', onUp);
-    };
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -84,8 +63,16 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
   return (
     <dialog
       ref={dialogRef}
-      {...({ closedby: 'any' } as any)}
       aria-labelledby="whats-new-title"
+      onMouseDown={(e) => {
+        backdropPressRef.current = e.target === dialogRef.current;
+      }}
+      onClick={(e) => {
+        if (backdropPressRef.current && e.target === dialogRef.current) {
+          dialogRef.current?.close();
+        }
+        backdropPressRef.current = false;
+      }}
       onClose={() => {
         if (dialogRef.current) dialogRef.current.returnValue = '';
         onClose();

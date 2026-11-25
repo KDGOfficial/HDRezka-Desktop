@@ -83,24 +83,24 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   new Function('exports', 'require', 'module', res.outputFiles[0].text)(mod.exports, fakeRequire, mod);
 
   const assets = [
-    { name: 'HDREZKA-NoSAC-0.0.77.zip', browser_download_url: 'https://example/nosac.zip' },
-    { name: 'HDREZKA-Portable-0.0.77.exe', browser_download_url: 'https://example/portable.exe' },
-    { name: 'HDREZKA-Setup-0.0.77.exe', browser_download_url: 'https://example/setup.exe' },
+    { name: 'HDREZKA-NoSAC-0.0.78.zip', browser_download_url: 'https://example/nosac.zip' },
+    { name: 'HDREZKA-Portable-0.0.78.exe', browser_download_url: 'https://example/portable.exe' },
+    { name: 'HDREZKA-Setup-0.0.78.exe', browser_download_url: 'https://example/setup.exe' },
   ];
 
-  assert.equal(mod.exports.selectUpdateAsset(assets, true)?.name, 'HDREZKA-Portable-0.0.77.exe');
-  assert.equal(mod.exports.selectUpdateAsset(assets, false)?.name, 'HDREZKA-Setup-0.0.77.exe');
+  assert.equal(mod.exports.selectUpdateAsset(assets, true)?.name, 'HDREZKA-Portable-0.0.78.exe');
+  assert.equal(mod.exports.selectUpdateAsset(assets, false)?.name, 'HDREZKA-Setup-0.0.78.exe');
   // Portable runtime MUST NEVER fall back to Setup .exe (would overwrite Portable with NSIS Setup)
   assert.equal(
-    mod.exports.selectUpdateAsset([{ name: 'HDREZKA-Setup-0.0.77.exe', browser_download_url: 'https://example/setup.exe' }], true),
+    mod.exports.selectUpdateAsset([{ name: 'HDREZKA-Setup-0.0.78.exe', browser_download_url: 'https://example/setup.exe' }], true),
     null
   );
-  assert.equal(mod.exports.selectUpdateAsset([{ name: 'HDREZKA-NoSAC-0.0.77.zip' }], false), null);
+  assert.equal(mod.exports.selectUpdateAsset([{ name: 'HDREZKA-NoSAC-0.0.78.zip' }], false), null);
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.0.77 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.0.77');
+test('v0.0.78 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.0.78');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -225,4 +225,71 @@ test('RezkaProvider resolves relative /uploads/posts posters and data:image lazy
   assert.equal(items[0].poster, 'https://rezka.ai/uploads/posts/2026-10/101-zver.jpg');
   assert.equal(items[0].url, 'https://rezka.ai/films/thriller/101-zver.html');
   assert.equal(items[1].poster, 'https://rezka.ac/uploads/posts/2026-11/102-test.jpg');
+});
+
+test('v0.0.78 compareVersions, stable/dev channel selection, backdrop dismiss, dontRemind & releases/latest', () => {
+  const { compareVersions, GITHUB_RELEASES_LATEST_URL } = constants;
+  assert.equal(GITHUB_RELEASES_LATEST_URL, 'https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest');
+
+  // Semver + prerelease ordering
+  assert.ok(compareVersions('0.0.78', '0.0.77') > 0);
+  assert.ok(compareVersions('0.0.78', '0.0.78-dev.1') > 0);
+  assert.ok(compareVersions('0.0.78-dev.2', '0.0.78-dev.1') > 0);
+  assert.ok(compareVersions('0.0.78-dev.1', '0.0.77') > 0);
+  assert.equal(compareVersions('0.0.78', 'v0.0.78'), 0);
+
+  // Channel release selection
+  const res = esbuild.buildSync({
+    entryPoints: [path.resolve(__dirname, '../src/main/ipc/index.ts')],
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    write: false,
+    external: ['electron', 'sql.js', 'cheerio'],
+  });
+  const fakeRequire = (id) =>
+    id === 'electron'
+      ? {
+          ipcMain: { handle: () => {} },
+          app: {
+            name: 'hdrezka-desktop',
+            setAppUserModelId: () => {},
+            disableHardwareAcceleration: () => {},
+            commandLine: { appendSwitch: () => {} },
+            requestSingleInstanceLock: () => false,
+            quit: () => {},
+            on: () => {},
+          },
+          BrowserWindow: class {},
+          shell: {},
+          session: {},
+          net: {},
+          webContents: {},
+          webFrameMain: {},
+        }
+      : require(id);
+  const mod = { exports: {} };
+  new Function('exports', 'require', 'module', res.outputFiles[0].text)(mod.exports, fakeRequire, mod);
+
+  const releases = [
+    { tag_name: 'v0.0.79-dev.1', draft: false, prerelease: true },
+    { tag_name: 'v0.0.78', draft: false, prerelease: false },
+  ];
+  assert.equal(mod.exports.selectReleaseForChannel(releases, 'stable')?.tag_name, 'v0.0.78');
+  assert.equal(mod.exports.selectReleaseForChannel(releases, 'dev')?.tag_name, 'v0.0.79-dev.1');
+
+  // All 4 modals use reliable backdrop onMouseDown/onClick dismiss without closedBy early return
+  for (const modal of ['UpdateModal.tsx', 'WhatsNewModal.tsx', 'CollectionModal.tsx', 'InterestsModal.tsx']) {
+    const src = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components', modal), 'utf8');
+    assert.doesNotMatch(src, /'closedBy' in HTMLDialogElement/);
+    assert.match(src, /backdropPressRef\.current = e\.target === dialogRef\.current/);
+  }
+
+  // UpdateModal has dontRemind + structured notes; release.yml generates human-readable notes & prerelease flag
+  const updateModalSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/UpdateModal.tsx'), 'utf8');
+  assert.match(updateModalSrc, /handleDontRemind/);
+  assert.match(updateModalSrc, /GITHUB_RELEASES_LATEST_URL/);
+  const workflowSrc = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/release.yml'), 'utf8');
+  assert.match(workflowSrc, /body_path:\s*release\/release-notes\.md/);
+  assert.match(workflowSrc, /is_prerelease/);
 });
