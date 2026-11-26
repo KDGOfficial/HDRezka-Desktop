@@ -22,8 +22,8 @@ const { fixKeyboardLayout, getT9Correction, sortMediaItems, formatCompactNumber 
 const { isAdUrl, APP_VERSION, ANIME_MIRROR_SEEDS } = loadTsModule('../src/shared/constants/index.ts');
 const { RezkaProvider } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('Version constants and anime mirror seeds are configured for 0.1.0', () => {
-  assert.equal(APP_VERSION, '0.1.0');
+test('Version constants and anime mirror seeds are configured for 0.1.1', () => {
+  assert.equal(APP_VERSION, '0.1.1');
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('yani.tv')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('animego')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('uakino')));
@@ -269,5 +269,9 @@ test('"9/10 рекомендуют" Orbit palette theme is wired across types, b
   assert.match(appTsx, /dataset\.palette = 'orbit'/);
   assert.match(settingsTsx, /id:\s*'orbit',\s*label:\s*'9\/10 рекомендуют'/);
   assert.match(css, /html\[data-palette="orbit"\]\s*\{/);
+  assert.match(css, /html\[data-palette="orbit"\]\s+\.app-titlebar\s*\{[^}]*border-bottom:\s*2px solid #F5A623/);
+  assert.match(css, /html\[data-palette="orbit"\]\s+\.cinema-rail\s*\{[^}]*#E31C79/);
+  assert.match(css, /--gradient-ember:\s*linear-gradient\(135deg,\s*#164DA8\s+0%,\s*#1F6CE0\s+56%,\s*#36B6E5\s+100%\)/);
   assert.match(css, /html\[data-palette="orbit"\]\s+\.cinema-canvas\s*\{/);
+  assert.ok(fs.existsSync(path.resolve(__dirname, '../docs/theme-9-of-10.md')));
 });
