@@ -304,13 +304,11 @@ export const SettingsPage: React.FC = () => {
       </div>
 
       <div className="space-y-7">
-        {/* Section: Theme (Light / Dark / System / 9/10 рекомендуют) */}
+        {/* Section: Theme (Light / Dark / System) */}
         <section className="p-6 rounded-3xl cinema-panel flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-2xl bg-brand-crimson/15 border border-brand-ember/30 flex items-center justify-center text-brand-orange">
-              {settings.theme === 'orbit' ? (
-                <Sparkles className="w-5 h-5" />
-              ) : settings.theme === 'light' ? (
+              {settings.theme === 'light' ? (
                 <Sun className="w-5 h-5" />
               ) : settings.theme === 'system' ? (
                 <Monitor className="w-5 h-5" />
@@ -320,17 +318,16 @@ export const SettingsPage: React.FC = () => {
             </div>
             <div>
               <h2 className="font-display text-sm font-black text-white">Тема оформления</h2>
-              <p className="text-xs text-zinc-400 mt-0.5">Светлая, тёмная, системная или палитра «9/10 рекомендуют»</p>
+              <p className="text-xs text-zinc-400 mt-0.5">Светлая, тёмная или как в системе</p>
             </div>
           </div>
 
-          <div className="theme-input-bg flex flex-wrap items-center bg-[#0B070A] p-1 rounded-full border border-white/[0.08]">
+          <div className="theme-input-bg flex items-center bg-[#0B070A] p-1 rounded-full border border-white/[0.08]">
             {(
               [
                 { id: 'dark', label: 'Тёмная', icon: Moon },
                 { id: 'light', label: 'Светлая', icon: Sun },
                 { id: 'system', label: 'Системная', icon: Monitor },
-                { id: 'orbit', label: '9/10 рекомендуют', icon: Sparkles },
               ] as const
             ).map((opt) => {
               const Icon = opt.icon;

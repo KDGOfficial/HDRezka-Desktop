@@ -412,8 +412,8 @@ export const translations = {
       f3_desc: 'Исправления ошибок больше не показывают верхний баннер и пульсирующий бейдж в шапке — установить их можно вручную в любой удобный момент.',
       f4_title: 'Надёжное обнаружение обновлений (обход лимита GitHub API)',
       f4_desc: 'При ошибке лимита 403 автообновление переключается на ленту releases.atom и прямой редирект GitHub.',
-      f5_title: 'Защита кэша от ложных срабатываний антивируса',
-      f5_desc: 'Запросы парсера используют cache: "no-store", а фильтр сессий инициализируется строго до старта поиска зеркал.',
+      f5_title: 'Убрана экспериментальная тема «9/10 рекомендуют»',
+      f5_desc: 'Экспериментальная палитра временно отключена до доработки дизайна — доступны классические тёмная, светлая и системная темы.',
     },
   },
   uk: {
@@ -827,8 +827,8 @@ export const translations = {
       f3_desc: 'Невеликі виправлення більше не показують верхній банер і пульсуючий бейдж у шапці — їх можна встановити вручну у зручний момент.',
       f4_title: 'Надійне виявлення оновлень (обхід ліміту GitHub API)',
       f4_desc: 'При помилці ліміту 403 автооновлення перемикається на стрічку releases.atom і прямий редірект GitHub.',
-      f5_title: 'Захист кешу від хибних спрацювань антивірусу',
-      f5_desc: 'Запити парсера використовують cache: "no-store", а фільтр сесій ініціалізується суворо до старту пошуку дзеркал.',
+      f5_title: 'Прибрано експериментальну тему «9/10 рекомендуют»',
+      f5_desc: 'Експериментальну палітру тимчасово вимкнено до доопрацювання дизайну — доступні класичні темна, світла та системна теми.',
     },
   },
   en: {
@@ -1242,8 +1242,8 @@ export const translations = {
       f3_desc: 'Patch updates no longer show the top banner or pulsing header badge — install them manually whenever convenient.',
       f4_title: 'Reliable update detection (GitHub API rate-limit fallback)',
       f4_desc: 'When api.github.com returns HTTP 403 rate limit exceeded, the updater falls back to GitHub releases.atom and direct redirects.',
-      f5_title: 'Antivirus cache hardening & online mirror restore',
-      f5_desc: 'Mirror requests use cache: "no-store" and session filtering initializes strictly before mirror discovery.',
+      f5_title: 'Removed experimental "9/10 рекомендуют" theme',
+      f5_desc: 'The experimental palette was temporarily removed for redesign — classic Dark, Light, and System themes remain active.',
     },
   },
 } as const;

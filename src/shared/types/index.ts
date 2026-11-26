@@ -222,7 +222,7 @@ export type UpdateChannel = 'stable' | 'dev';
 export type UpdateTier = 'major' | 'minor' | 'patch';
 
 export interface UserSettings {
-  theme: 'dark' | 'light' | 'oled' | 'system' | 'orbit';
+  theme: 'dark' | 'light' | 'oled' | 'system';
   cardSize: 'small' | 'medium' | 'large';
   homeSections: {
     hero: boolean;

@@ -22,8 +22,8 @@ const { fixKeyboardLayout, getT9Correction, sortMediaItems, formatCompactNumber 
 const { isAdUrl, APP_VERSION, ANIME_MIRROR_SEEDS } = loadTsModule('../src/shared/constants/index.ts');
 const { RezkaProvider } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('Version constants and anime mirror seeds are configured for 0.2.0', () => {
-  assert.equal(APP_VERSION, '0.2.0');
+test('Version constants and anime mirror seeds are configured for 0.2.1', () => {
+  assert.equal(APP_VERSION, '0.2.1');
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('yani.tv')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('animego')));
   assert.ok(ANIME_MIRROR_SEEDS.some((u) => u.includes('uakino')));
@@ -253,25 +253,4 @@ test('Light Mode CSS guards preserve .cinema-player-surface isolation and contra
   assert.doesNotMatch(mediaCardTsx, /cinema-player-surface\s+!bg-transparent/);
   // BrowserPage webview stage must stay dark via cinema-player-surface in Light Mode
   assert.match(browserTsx, /cinema-player-surface w-full flex-1 flex items-center justify-center bg-\[#070507\]/);
-});
-
-test('"9/10 рекомендуют" Orbit palette theme is wired across types, boot script, App, SettingsPage, and globals.css', () => {
-  const typesTs = fs.readFileSync(path.resolve(__dirname, '../src/shared/types/index.ts'), 'utf8');
-  const indexHtml = fs.readFileSync(path.resolve(__dirname, '../src/renderer/index.html'), 'utf8');
-  const appTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/App.tsx'), 'utf8');
-  const settingsTsx = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/SettingsPage.tsx'), 'utf8');
-  const css = fs.readFileSync(path.resolve(__dirname, '../src/renderer/styles/globals.css'), 'utf8');
-
-  assert.match(typesTs, /theme:\s*'dark'\s*\|\s*'light'\s*\|\s*'oled'\s*\|\s*'system'\s*\|\s*'orbit'/);
-  assert.match(indexHtml, /saved === 'orbit'/);
-  assert.match(indexHtml, /dataset\.palette = 'orbit'/);
-  assert.match(appTsx, /settings\.theme === 'orbit'/);
-  assert.match(appTsx, /dataset\.palette = 'orbit'/);
-  assert.match(settingsTsx, /id:\s*'orbit',\s*label:\s*'9\/10 рекомендуют'/);
-  assert.match(css, /html\[data-palette="orbit"\]\s*\{/);
-  assert.match(css, /html\[data-palette="orbit"\]\s+\.app-titlebar\s*\{[^}]*border-bottom:\s*2px solid #F5A623/);
-  assert.match(css, /html\[data-palette="orbit"\]\s+\.cinema-rail\s*\{[^}]*#E31C79/);
-  assert.match(css, /--gradient-ember:\s*linear-gradient\(135deg,\s*#164DA8\s+0%,\s*#1F6CE0\s+56%,\s*#36B6E5\s+100%\)/);
-  assert.match(css, /html\[data-palette="orbit"\]\s+\.cinema-canvas\s*\{/);
-  assert.ok(fs.existsSync(path.resolve(__dirname, '../docs/theme-9-of-10.md')));
 });
