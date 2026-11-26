@@ -86,7 +86,7 @@ async function appFetch(input: string | URL | Request, init?: RequestInit & { sk
       }
 
       const credentialsMode = (init?.skipCookies || forceSkipCookies) ? 'omit' : 'include';
-      return await electron.net.fetch(input as any, { ...init, headers, credentials: credentialsMode });
+      return await electron.net.fetch(input as any, { ...init, headers, credentials: credentialsMode, cache: 'no-store' });
     }
     return await globalThis.fetch(input, init);
   };
@@ -667,7 +667,7 @@ export function parseCollapsEmbedHtml(html: string): CollapsParsedData | null {
 export class RezkaProvider implements IProvider {
   public id = 'hdrezka';
   public name = 'HDRezka Provider';
-  public version = '0.0.79';
+  public version = '0.0.80';
 
   public static readonly ANILIBERTY_GENRE_IDS: Record<string, number> = {
     action: 14,

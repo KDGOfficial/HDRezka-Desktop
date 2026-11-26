@@ -99,8 +99,8 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.0.78 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.0.79');
+test('v0.0.80 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.0.80');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -148,11 +148,19 @@ test('v0.0.78 UX, mirror latency, navigation, PiP, hover-controls, AV hardening,
   assert.match(storeSrc, /goBack:/);
   assert.match(storeSrc, /goForward:/);
 
-  // 13. Antivirus cache hardening on both sessions + clearCache on defaultSession
+  // 13. Antivirus cache hardening on both sessions + clearCache on defaultSession + no-store on net.fetch
+  const providerSrc = fs.readFileSync(path.resolve(__dirname, '../src/core/providers/rezka/provider.ts'), 'utf8');
   assert.match(mainSrc, /shouldStripExternalScriptCache/);
   assert.match(mainSrc, /hardenSession\(session\.defaultSession/);
   assert.match(mainSrc, /session\.defaultSession\.clearCache\(\)/);
   assert.match(mainSrc, /hardenSession\(browserSession/);
+  assert.match(providerSrc, /electron\.net\.fetch\([\s\S]*cache:\s*'no-store'/);
+  assert.match(mainSrc, /globalThis\.fetch\s*=[\s\S]*cache:\s*init\?\.cache\s*\?\?\s*'no-store'/);
+  const hardenIdx = mainSrc.indexOf('hardenSession(session.defaultSession');
+  const findMirrorsIdx = mainSrc.indexOf('.findOnlineMirrors()');
+  assert.ok(hardenIdx > 0 && findMirrorsIdx > 0 && hardenIdx < findMirrorsIdx,
+    'hardenSession must be registered before provider.findOnlineMirrors() runs'
+  );
 });
 
 test('Portable PowerShell self-replacement handles spaces, Cyrillic, and single quotes cleanly', () => {
