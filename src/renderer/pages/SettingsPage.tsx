@@ -538,6 +538,22 @@ export const SettingsPage: React.FC = () => {
               className="w-4 h-4 accent-[#FF4D1A] cursor-pointer"
             />
           </label>
+
+          <label className="flex items-center justify-between pt-1 cursor-pointer">
+            <span className="text-xs text-zinc-300 font-semibold">{t.settings.autoInstallMinor}</span>
+            <input
+              type="checkbox"
+              checked={settings.app.autoInstallMinorUpdates !== false}
+              onChange={(e) =>
+                updateSettings({
+                  app: { ...settings.app, autoInstallMinorUpdates: e.target.checked },
+                })
+              }
+              className="w-4 h-4 accent-[#FF4D1A] cursor-pointer"
+            />
+          </label>
+
+          <p className="text-[11px] text-zinc-500 leading-relaxed pt-1">{t.settings.updatePolicyHint}</p>
         </section>
 
         {/* Section: Mirrors & Network */}

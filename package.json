@@ -1,6 +1,6 @@
 {
   "name": "hdrezka-desktop",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "HDREZKA Desktop — Unofficial Windows Client",
   "main": "dist/main/main.js",
   "author": "HDRezka Desktop Team",

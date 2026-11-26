@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { UserSettings, MirrorStatus, UpdateInfo, UpdateProgress, ContentType, UserInterestsProfile } from '../../shared/types';
-import { DEFAULT_USER_SETTINGS, ANIME_MIRROR_SEEDS } from '../../shared/constants';
+import { DEFAULT_USER_SETTINGS, ANIME_MIRROR_SEEDS, getUpdateTier } from '../../shared/constants';
 import {
   InteractionKind,
   createEmptyInterestsProfile,
@@ -22,6 +22,7 @@ interface SettingsState {
   updateProgress: UpdateProgress | null;
   isUpdateModalOpen: boolean;
   updateScheduledOnExit: boolean;
+  dismissedMajorVersion: string | null;
 
   // Adaptive Interests Modal
   isInterestsModalOpen: boolean;
@@ -42,6 +43,7 @@ interface SettingsState {
   removeCustomMirror: (mirror: string) => Promise<void>;
 
   checkForUpdates: (notifyIfAvailable?: boolean) => Promise<UpdateInfo | null>;
+  runAutoUpdateCheck: () => Promise<void>;
   downloadUpdate: (scheduleOnExitAfter?: boolean) => Promise<void>;
   installUpdate: () => Promise<void>;
   scheduleUpdateOnExit: (enabled?: boolean) => Promise<boolean>;
@@ -71,6 +73,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateProgress: null,
   isUpdateModalOpen: false,
   updateScheduledOnExit: false,
+  dismissedMajorVersion: null,
   isInterestsModalOpen: false,
 
   loadSettings: async () => {
@@ -79,16 +82,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const s = await window.api.getSettings();
         set({ settings: s, settingsLoaded: true });
 
-        // Check updates silently on start; download in background & install on exit instead of interrupting startup
+        // Check updates silently on start using SemVer-tiered policy
         if (s.app?.checkUpdatesOnStart) {
-          get()
-            .checkForUpdates(false)
-            .then((info) => {
-              if (info?.hasUpdate && info.assetUrl) {
-                get().downloadUpdate(true);
-              }
-            })
-            .catch(() => {});
+          get().runAutoUpdateCheck().catch(() => {});
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
@@ -270,6 +266,24 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
+  runAutoUpdateCheck: async () => {
+    const appSettings = get().settings.app;
+    if (!appSettings?.checkUpdatesOnStart) return;
+    const info = await get().checkForUpdates(false);
+    if (!info?.hasUpdate) return;
+    const tier = info.updateTier ?? getUpdateTier(info.currentVersion, info.latestVersion);
+    if (tier === 'major') {
+      if (get().dismissedMajorVersion !== info.latestVersion) {
+        set({ isUpdateModalOpen: true });
+      }
+    } else if (tier === 'minor') {
+      if (appSettings.autoInstallMinorUpdates !== false && info.assetUrl) {
+        get().downloadUpdate(true);
+      }
+    }
+    // Patch updates never interrupt: they wait quietly in Settings -> Updates
+  },
+
   downloadUpdate: async (scheduleOnExitAfter = false) => {
     if (!window.api) return;
     const { updateInfo, updateProgress } = get();
@@ -403,6 +417,14 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   setUpdateModalOpen: (open: boolean) => {
+    if (!open) {
+      const info = get().updateInfo;
+      const tier = info ? (info.updateTier ?? getUpdateTier(info.currentVersion, info.latestVersion)) : null;
+      if (info?.hasUpdate && tier === 'major') {
+        set({ isUpdateModalOpen: false, dismissedMajorVersion: info.latestVersion });
+        return;
+      }
+    }
     set({ isUpdateModalOpen: open });
   },
 }));

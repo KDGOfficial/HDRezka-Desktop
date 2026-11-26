@@ -219,6 +219,7 @@ export interface UserInterestsProfile {
 }
 
 export type UpdateChannel = 'stable' | 'dev';
+export type UpdateTier = 'major' | 'minor' | 'patch';
 
 export interface UserSettings {
   theme: 'dark' | 'light' | 'oled' | 'system' | 'orbit';
@@ -248,6 +249,7 @@ export interface UserSettings {
   app: {
     autoLaunch: boolean;
     checkUpdatesOnStart: boolean;
+    autoInstallMinorUpdates?: boolean;
     updateChannel?: UpdateChannel;
     activeMirror: string;
     mirrors: string[];
@@ -267,6 +269,7 @@ export interface UpdateInfo {
   currentVersion: string;
   latestVersion: string;
   hasUpdate: boolean;
+  updateTier?: UpdateTier;
   isPortable?: boolean;
   channel?: UpdateChannel;
   isPrerelease?: boolean;

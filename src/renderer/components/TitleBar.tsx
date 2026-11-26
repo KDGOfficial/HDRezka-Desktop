@@ -173,7 +173,7 @@ export const TitleBar: React.FC = () => {
         </button>
 
         {/* Update available mini-pill */}
-        {updateInfo?.hasUpdate && (
+        {updateInfo?.hasUpdate && updateInfo.updateTier !== 'patch' && (
           <button
             type="button"
             onClick={() => setUpdateModalOpen(true)}

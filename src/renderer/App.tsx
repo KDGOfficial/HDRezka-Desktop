@@ -188,13 +188,7 @@ export const App: React.FC = () => {
     const interval = setInterval(() => {
       const st = useSettingsStore.getState();
       if (!st.settings.app?.checkUpdatesOnStart) return;
-      st.checkForUpdates(false)
-        .then((info) => {
-          if (info?.hasUpdate && info.assetUrl) {
-            useSettingsStore.getState().downloadUpdate(true);
-          }
-        })
-        .catch(() => {});
+      st.runAutoUpdateCheck().catch(() => {});
     }, 30 * 60 * 1000);
     return () => {
       clearInterval(mirrorInterval);
@@ -243,7 +237,7 @@ export const App: React.FC = () => {
       <TitleBar />
 
       {/* Global Update Notification Strip */}
-      {updateInfo?.hasUpdate && !isUpdateModalOpen && (
+      {updateInfo?.hasUpdate && updateInfo.updateTier !== 'patch' && !isUpdateModalOpen && (
         <div className="btn-ember px-6 py-2 flex items-center justify-between text-xs font-semibold z-30 select-none border-b border-white/15">
           <div className="flex items-center gap-2.5 min-w-0">
             <Sparkles className="w-4 h-4 text-[#FFE29A] animate-pulse flex-shrink-0" aria-hidden="true" />

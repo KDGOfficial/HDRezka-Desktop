@@ -1,7 +1,7 @@
-import { UserSettings, HotkeysConfig, SubtitleStyle } from '../types';
+import { UserSettings, HotkeysConfig, SubtitleStyle, UpdateTier } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.1.2';
+export const APP_VERSION = '0.2.0';
 export const GITHUB_RELEASES_LATEST_URL = 'https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';
@@ -215,6 +215,7 @@ export const DEFAULT_USER_SETTINGS: UserSettings = {
   app: {
     autoLaunch: false,
     checkUpdatesOnStart: true,
+    autoInstallMinorUpdates: true,
     updateChannel: 'stable',
     activeMirror: 'https://rezka.ac',
     mirrors: DEFAULT_MIRRORS,
@@ -240,6 +241,21 @@ export function compareVersions(a: string, b: string): number {
   if (!pa.pre) return 1; // stable > prerelease of same version
   if (!pb.pre) return -1;
   return pa.pre.localeCompare(pb.pre, undefined, { numeric: true });
+}
+
+export function getUpdateTier(currentVersion: string, latestVersion: string): UpdateTier | null {
+  if (compareVersions(latestVersion, currentVersion) <= 0) return null;
+  const parseCore = (v: string) => {
+    const clean = (v || '').trim().replace(/^v/i, '');
+    const [core] = clean.split('-', 2);
+    const parts = core.split('.').map((n) => parseInt(n, 10) || 0);
+    return [parts[0] || 0, parts[1] || 0, parts[2] || 0];
+  };
+  const cur = parseCore(currentVersion);
+  const lat = parseCore(latestVersion);
+  if (lat[0] > cur[0]) return 'major';
+  if (lat[1] > cur[1]) return 'minor';
+  return 'patch';
 }
 
 export const IPC_CHANNELS = {

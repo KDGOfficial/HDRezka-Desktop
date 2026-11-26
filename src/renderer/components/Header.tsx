@@ -346,7 +346,7 @@ export const Header: React.FC = () => {
         >
           {resolvedIsLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
         </button>
-        {updateInfo?.hasUpdate ? (
+        {updateInfo?.hasUpdate && updateInfo.updateTier !== 'patch' ? (
           <button
             type="button"
             onClick={() => setUpdateModalOpen(true)}

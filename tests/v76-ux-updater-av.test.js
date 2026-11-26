@@ -99,8 +99,8 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.1.2 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.1.2');
+test('v0.2.0 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.2.0');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -324,4 +324,31 @@ test('v0.0.78 compareVersions, stable/dev channel selection, backdrop dismiss, d
   const workflowSrc = fs.readFileSync(path.resolve(__dirname, '../.github/workflows/release.yml'), 'utf8');
   assert.match(workflowSrc, /body_path:\s*release\/release-notes\.md/);
   assert.match(workflowSrc, /is_prerelease/);
+});
+
+test('getUpdateTier classifies major/minor/patch/prerelease/equal/downgrade and UI wires tiered policy', () => {
+  const { getUpdateTier, DEFAULT_USER_SETTINGS } = constants;
+  assert.equal(DEFAULT_USER_SETTINGS.app.autoInstallMinorUpdates, true);
+
+  assert.equal(getUpdateTier('0.2.0', '1.0.0'), 'major');
+  assert.equal(getUpdateTier('1.2.3', '2.0.0'), 'major');
+  assert.equal(getUpdateTier('0.2.0', '0.3.0'), 'minor');
+  assert.equal(getUpdateTier('0.2.0', '0.3.0-dev.1'), 'minor');
+  assert.equal(getUpdateTier('0.2.0', '0.2.1'), 'patch');
+  assert.equal(getUpdateTier('0.2.0-dev.1', '0.2.0'), 'patch');
+  assert.equal(getUpdateTier('0.2.0', '0.2.0'), null);
+  assert.equal(getUpdateTier('0.2.0', '0.1.9'), null);
+
+  const appSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/App.tsx'), 'utf8');
+  const headerSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/Header.tsx'), 'utf8');
+  const titleBarSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/TitleBar.tsx'), 'utf8');
+  const settingsPageSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/SettingsPage.tsx'), 'utf8');
+  const settingsStoreSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/stores/useSettingsStore.ts'), 'utf8');
+
+  assert.match(appSrc, /updateTier\s*!==\s*'patch'/);
+  assert.match(headerSrc, /updateTier\s*!==\s*'patch'/);
+  assert.match(titleBarSrc, /updateTier\s*!==\s*'patch'/);
+  assert.match(settingsPageSrc, /autoInstallMinorUpdates/);
+  assert.match(settingsStoreSrc, /runAutoUpdateCheck/);
+  assert.match(settingsStoreSrc, /dismissedMajorVersion/);
 });

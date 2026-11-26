@@ -4,7 +4,7 @@ import path from 'path';
 import https from 'https';
 import http from 'http';
 import { spawn } from 'child_process';
-import { IPC_CHANNELS, APP_VERSION, GITHUB_RELEASES_LATEST_URL, compareVersions, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, ANIME_MIRROR_SEEDS, HDREZKA_MIRRORS, RETIRED_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
+import { IPC_CHANNELS, APP_VERSION, GITHUB_RELEASES_LATEST_URL, compareVersions, getUpdateTier, DEFAULT_MIRRORS, OPEN_MIRROR_SEEDS, ANIME_MIRROR_SEEDS, HDREZKA_MIRRORS, RETIRED_MIRRORS, isBadMirrorUrl, BROWSER_USER_AGENT } from '../../shared/constants';
 import { getMainWindow, restoreDefaultWindowBounds } from '../window';
 import { setBrowserAdBlockEnabled, getBrowserAdBlockStats } from '../main';
 import { ProviderManager } from '../../core/providers/manager';
@@ -1073,10 +1073,12 @@ export function registerIpcHandlers(): void {
       }
 
       const hasUpdate = compareVersions(resolved.tag, currentVersion) > 0;
+      const updateTier = hasUpdate ? getUpdateTier(currentVersion, resolved.tag) || undefined : undefined;
       return {
         currentVersion,
         latestVersion: resolved.tag,
         hasUpdate,
+        updateTier,
         isPortable: portable,
         channel,
         isPrerelease: resolved.isPrerelease,
