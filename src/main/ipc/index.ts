@@ -44,6 +44,170 @@ export function selectUpdateAsset(assets: any[], isPortable: boolean): any | nul
   );
 }
 
+function decodeAtomContentToText(rawHtml: string): string {
+  if (!rawHtml) return '';
+  const xmlDecoded = rawHtml
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+  const plain = xmlDecoded
+    .replace(/<h[1-6][^>]*>/gi, '\n### ')
+    .replace(/<\/h[1-6]>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<\/li>/gi, '\n')
+    .replace(/<\/p>|<br\s*\/?>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  return plain
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+export function parseGitHubReleasesAtom(xml: string): any[] {
+  if (!xml || typeof xml !== 'string') return [];
+  const entries: any[] = [];
+  const entryRegex = /<entry>([\s\S]*?)<\/entry>/g;
+  let match: RegExpExecArray | null;
+  while ((match = entryRegex.exec(xml)) !== null) {
+    const block = match[1];
+    const linkMatch = block.match(/<link[^>]+href="([^"]+)"/i);
+    const htmlUrl = linkMatch ? linkMatch[1].trim() : '';
+    const tagFromUrl = htmlUrl.match(/\/releases\/tag\/([^/?#"]+)/i)?.[1];
+    const titleTag = block.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1]?.trim();
+    const rawTag = tagFromUrl || titleTag || '';
+    if (!rawTag) continue;
+    const tagName = rawTag.startsWith('v') || rawTag.startsWith('V') ? rawTag : `v${rawTag}`;
+    const publishedAt = block.match(/<updated>([^<]+)<\/updated>/i)?.[1]?.trim();
+    const rawContent = block.match(/<content[^>]*>([\s\S]*?)<\/content>/i)?.[1] || '';
+    entries.push({
+      tag_name: tagName,
+      draft: false,
+      prerelease: /(?:^|-)(?:dev|beta|alpha|rc)\b/i.test(tagName),
+      published_at: publishedAt,
+      html_url: htmlUrl || `https://github.com/KDGOfficial/HDRezka-Desktop/releases/tag/${encodeURIComponent(tagName)}`,
+      body: decodeAtomContentToText(rawContent),
+      assets: [],
+    });
+  }
+  return entries;
+}
+
+interface ResolvedRelease {
+  tag: string;
+  isPrerelease: boolean;
+  releaseNotes: string;
+  releaseDate?: string;
+  htmlUrl: string;
+  assetName?: string;
+  assetUrl?: string;
+  assetSize?: number;
+}
+
+async function resolveLatestRelease(channel: 'stable' | 'dev', portable: boolean): Promise<ResolvedRelease | null> {
+  const headers = { 'User-Agent': 'HDRezka-Desktop' };
+  let release: any = null;
+
+  // 1. Primary: GitHub REST API (gives exact asset list + size)
+  try {
+    const endpoint =
+      channel === 'dev'
+        ? 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases?per_page=10'
+        : 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest';
+    const res = await fetch(endpoint, { headers, signal: AbortSignal.timeout(5000) });
+    if (res.ok) {
+      const payload = await res.json();
+      release = Array.isArray(payload) ? selectReleaseForChannel(payload, channel) : payload;
+    } else {
+      console.warn(`[AutoUpdate] GitHub API returned ${res.status}; falling back to Atom/redirect`);
+    }
+  } catch (e) {
+    console.warn('[AutoUpdate] GitHub API failed; falling back to Atom/redirect:', e);
+  }
+
+  // 2. Fallback 1: GitHub Releases Atom feed (exempt from REST API rate limits)
+  if (!release) {
+    try {
+      const atomRes = await fetch('https://github.com/KDGOfficial/HDRezka-Desktop/releases.atom', {
+        headers,
+        signal: AbortSignal.timeout(6000),
+      });
+      if (atomRes.ok) {
+        const parsed = parseGitHubReleasesAtom(await atomRes.text());
+        release = selectReleaseForChannel(parsed, channel);
+      }
+    } catch (e) {
+      console.warn('[AutoUpdate] Atom feed fallback failed:', e);
+    }
+  }
+
+  // 3. Fallback 2: /releases/latest 302 redirect Location header (stable only, zero rate limit)
+  if (!release && channel === 'stable') {
+    try {
+      const redirectRes = await fetch('https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest', {
+        redirect: 'manual',
+        headers,
+        signal: AbortSignal.timeout(5000),
+      });
+      const location = redirectRes.headers.get('location') || '';
+      const tagMatch = location.match(/\/releases\/tag\/([^/?#]+)/i);
+      if (tagMatch?.[1]) {
+        const rawTag = tagMatch[1].trim();
+        release = {
+          tag_name: rawTag,
+          prerelease: /(?:^|-)(?:dev|beta|alpha|rc)\b/i.test(rawTag),
+          html_url: location,
+          body: '',
+          assets: [],
+        };
+      }
+    } catch (e) {
+      console.warn('[AutoUpdate] Redirect fallback failed:', e);
+    }
+  }
+
+  if (!release?.tag_name) return null;
+
+  const cleanTag = String(release.tag_name).replace(/^v/i, '');
+  const assets: any[] = Array.isArray(release.assets) ? release.assets : [];
+  let selectedAsset = selectUpdateAsset(assets, portable);
+
+  // When falling back to Atom/redirect (no API asset list), verify the deterministic .exe URL via HEAD
+  if (!selectedAsset && assets.length === 0) {
+    const expectedName = portable ? `HDREZKA-Portable-${cleanTag}.exe` : `HDREZKA-Setup-${cleanTag}.exe`;
+    const expectedUrl = `https://github.com/KDGOfficial/HDRezka-Desktop/releases/download/v${cleanTag}/${expectedName}`;
+    try {
+      const headRes = await fetch(expectedUrl, { method: 'HEAD', headers, signal: AbortSignal.timeout(5000) });
+      if (headRes.ok) {
+        selectedAsset = {
+          name: expectedName,
+          browser_download_url: expectedUrl,
+          size: Number(headRes.headers.get('content-length')) || undefined,
+        };
+      }
+    } catch {
+      // Leave assetUrl undefined so Download safely opens GitHub Releases page
+    }
+  }
+
+  return {
+    tag: cleanTag,
+    isPrerelease: Boolean(release.prerelease),
+    releaseNotes: release.body || '',
+    releaseDate: release.published_at,
+    htmlUrl: release.html_url || GITHUB_RELEASES_LATEST_URL,
+    assetName: selectedAsset?.name,
+    assetUrl: selectedAsset?.browser_download_url,
+    assetSize: selectedAsset?.size,
+  };
+}
+
 let downloadedUpdatePath: string | null = null;
 let pendingUpdateOnExit = false;
 
@@ -902,43 +1066,27 @@ export function registerIpcHandlers(): void {
     const currentVersion = app.getVersion() || APP_VERSION;
     const channel = db.getSettings().app?.updateChannel === 'dev' ? 'dev' : 'stable';
     try {
-      const endpoint =
-        channel === 'dev'
-          ? 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases?per_page=10'
-          : 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest';
-      const res = await fetch(endpoint, {
-        headers: { 'User-Agent': 'HDRezka-Desktop' },
-        signal: AbortSignal.timeout(5000),
-      });
-      if (res.ok) {
-        const payload = await res.json();
-        const release = Array.isArray(payload) ? selectReleaseForChannel(payload, channel) : payload;
-        if (!release) {
-          return { currentVersion, latestVersion: currentVersion, hasUpdate: false, channel };
-        }
-        const latestTag = release.tag_name ? release.tag_name.replace(/^v/i, '') : currentVersion;
-        const assets: any[] = Array.isArray(release.assets) ? release.assets : [];
-        const portable = isPortableRuntime();
-        const selectedAsset = selectUpdateAsset(assets, portable);
-
-        const hasUpdate = compareVersions(latestTag, currentVersion) > 0;
-        const isPrerelease = Boolean(release.prerelease);
-
-        return {
-          currentVersion,
-          latestVersion: latestTag,
-          hasUpdate,
-          isPortable: portable,
-          channel,
-          isPrerelease,
-          releaseNotes: release.body || '',
-          releaseDate: release.published_at,
-          downloadUrl: isPrerelease ? (release.html_url || GITHUB_RELEASES_LATEST_URL) : GITHUB_RELEASES_LATEST_URL,
-          assetName: selectedAsset?.name,
-          assetUrl: selectedAsset?.browser_download_url,
-          assetSize: selectedAsset?.size,
-        };
+      const portable = isPortableRuntime();
+      const resolved = await resolveLatestRelease(channel, portable);
+      if (!resolved) {
+        return { currentVersion, latestVersion: currentVersion, hasUpdate: false, channel };
       }
+
+      const hasUpdate = compareVersions(resolved.tag, currentVersion) > 0;
+      return {
+        currentVersion,
+        latestVersion: resolved.tag,
+        hasUpdate,
+        isPortable: portable,
+        channel,
+        isPrerelease: resolved.isPrerelease,
+        releaseNotes: resolved.releaseNotes,
+        releaseDate: resolved.releaseDate,
+        downloadUrl: resolved.isPrerelease ? resolved.htmlUrl : GITHUB_RELEASES_LATEST_URL,
+        assetName: resolved.assetName,
+        assetUrl: resolved.assetUrl,
+        assetSize: resolved.assetSize,
+      };
     } catch (e) {
       console.warn('[AutoUpdate] Check failed:', e);
     }
@@ -965,23 +1113,10 @@ export function registerIpcHandlers(): void {
 
       if (!targetUrl) {
         try {
-          const endpoint =
-            channel === 'dev'
-              ? 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases?per_page=10'
-              : 'https://api.github.com/repos/KDGOfficial/HDRezka-Desktop/releases/latest';
-          const res = await fetch(endpoint, {
-            headers: { 'User-Agent': 'HDRezka-Desktop' },
-            signal: AbortSignal.timeout(5000),
-          });
-          if (res.ok) {
-            const payload = await res.json();
-            const release = Array.isArray(payload) ? selectReleaseForChannel(payload, channel) : payload;
-            const assets: any[] = Array.isArray(release?.assets) ? release.assets : [];
-            const selectedAsset = selectUpdateAsset(assets, portable);
-            if (selectedAsset?.browser_download_url) {
-              targetUrl = selectedAsset.browser_download_url;
-              targetFileName = selectedAsset.name || targetFileName;
-            }
+          const resolved = await resolveLatestRelease(channel, portable);
+          if (resolved?.assetUrl) {
+            targetUrl = resolved.assetUrl;
+            targetFileName = resolved.assetName || targetFileName;
           }
         } catch (err: any) {
           return { success: false, error: err?.message || 'Could not fetch release asset URL' };

@@ -99,8 +99,8 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.1.1 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.1.1');
+test('v0.1.2 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.1.2');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -285,6 +285,30 @@ test('v0.0.78 compareVersions, stable/dev channel selection, backdrop dismiss, d
   ];
   assert.equal(mod.exports.selectReleaseForChannel(releases, 'stable')?.tag_name, 'v0.0.78');
   assert.equal(mod.exports.selectReleaseForChannel(releases, 'dev')?.tag_name, 'v0.0.79-dev.1');
+
+  // Atom feed fallback parsing for stable & dev channels (when api.github.com returns 403 rate limit)
+  const sampleAtom = `<?xml version="1.0" encoding="UTF-8"?>
+  <feed xmlns="http://www.w3.org/2005/Atom">
+    <entry>
+      <updated>2026-11-26T19:00:00Z</updated>
+      <link rel="alternate" type="text/html" href="https://github.com/KDGOfficial/HDRezka-Desktop/releases/tag/v0.1.3-dev.1"/>
+      <title>v0.1.3-dev.1</title>
+      <content type="html">&lt;p&gt;Dev preview&lt;/p&gt;</content>
+    </entry>
+    <entry>
+      <updated>2026-11-26T18:56:26Z</updated>
+      <link rel="alternate" type="text/html" href="https://github.com/KDGOfficial/HDRezka-Desktop/releases/tag/v0.1.2"/>
+      <title>v0.1.2</title>
+      <content type="html">&lt;h3&gt;Что нового&lt;/h3&gt;&lt;ul&gt;&lt;li&gt;&lt;strong&gt;Фикс&lt;/strong&gt; — Обход лимита GitHub &amp;amp; редирект.&lt;/li&gt;&lt;/ul&gt;</content>
+    </entry>
+  </feed>`;
+  const parsedAtom = mod.exports.parseGitHubReleasesAtom(sampleAtom);
+  assert.equal(parsedAtom.length, 2);
+  assert.equal(parsedAtom[0].prerelease, true);
+  assert.equal(parsedAtom[1].prerelease, false);
+  assert.equal(mod.exports.selectReleaseForChannel(parsedAtom, 'stable')?.tag_name, 'v0.1.2');
+  assert.equal(mod.exports.selectReleaseForChannel(parsedAtom, 'dev')?.tag_name, 'v0.1.3-dev.1');
+  assert.match(parsedAtom[1].body, /Обход лимита GitHub & редирект/);
 
   // All 4 modals use reliable backdrop onMouseDown/onClick dismiss without closedBy early return
   for (const modal of ['UpdateModal.tsx', 'WhatsNewModal.tsx', 'CollectionModal.tsx', 'InterestsModal.tsx']) {
