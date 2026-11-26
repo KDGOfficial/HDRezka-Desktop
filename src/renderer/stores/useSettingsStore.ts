@@ -53,7 +53,7 @@ const recentSignalKeys = new Map<string, number>();
 function getInitialTheme(): UserSettings['theme'] {
   try {
     const saved = localStorage.getItem('color-scheme');
-    if (saved === 'light' || saved === 'dark') return saved;
+    if (saved === 'light' || saved === 'dark' || saved === 'orbit') return saved;
   } catch {}
   return DEFAULT_USER_SETTINGS.theme;
 }

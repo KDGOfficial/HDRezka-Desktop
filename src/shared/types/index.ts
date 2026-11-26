@@ -221,7 +221,7 @@ export interface UserInterestsProfile {
 export type UpdateChannel = 'stable' | 'dev';
 
 export interface UserSettings {
-  theme: 'dark' | 'light' | 'oled' | 'system';
+  theme: 'dark' | 'light' | 'oled' | 'system' | 'orbit';
   cardSize: 'small' | 'medium' | 'large';
   homeSections: {
     hero: boolean;

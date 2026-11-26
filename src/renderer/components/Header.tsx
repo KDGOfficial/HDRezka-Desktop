@@ -50,6 +50,7 @@ export const Header: React.FC = () => {
 
   const resolvedIsLight =
     settings.theme === 'light' ||
+    settings.theme === 'orbit' ||
     (settings.theme === 'system' &&
       typeof window !== 'undefined' &&
       window.matchMedia?.('(prefers-color-scheme: light)').matches);

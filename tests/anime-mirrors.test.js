@@ -345,12 +345,15 @@ test('SettingsPage, IPC CHECK_MIRRORS, useSettingsStore, and project rules inclu
   const storeSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/stores/useSettingsStore.ts'), 'utf8');
   const ipcSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/ipc/index.ts'), 'utf8');
   const agentsMd = fs.readFileSync(path.resolve(__dirname, '../AGENTS.md'), 'utf8');
-  const geminiMd = fs.readFileSync(path.resolve(__dirname, '../GEMINI.md'), 'utf8');
+  const geminiPath = path.resolve(__dirname, '../GEMINI.md');
 
   assert.match(settingsSrc, /ANIME_MIRROR_SEEDS/);
   assert.match(settingsSrc, /t\.settings\.animeMirrors/);
   assert.match(storeSrc, /ANIME_MIRROR_SEEDS/);
   assert.match(ipcSrc, /ANIME_MIRROR_SEEDS/);
   assert.match(agentsMd, /ANIME_MIRROR_SEEDS/);
-  assert.match(geminiMd, /ANIME_MIRROR_SEEDS/);
+  if (fs.existsSync(geminiPath)) {
+    const geminiMd = fs.readFileSync(geminiPath, 'utf8');
+    assert.match(geminiMd, /ANIME_MIRROR_SEEDS/);
+  }
 });

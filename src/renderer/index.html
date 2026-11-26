@@ -8,12 +8,20 @@
       try {
         var saved = localStorage.getItem('color-scheme');
         var meta = document.querySelector('meta[name="color-scheme"]');
-        if (meta) meta.content = saved === 'light' || saved === 'dark' ? saved : 'light dark';
-        var resolved = saved === 'light' || saved === 'dark'
-          ? saved
-          : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
-        document.documentElement.dataset.theme = resolved;
-        document.documentElement.classList.toggle('dark', resolved === 'dark');
+        if (saved === 'orbit') {
+          if (meta) meta.content = 'light';
+          document.documentElement.dataset.theme = 'light';
+          document.documentElement.dataset.palette = 'orbit';
+          document.documentElement.classList.toggle('dark', false);
+        } else {
+          delete document.documentElement.dataset.palette;
+          if (meta) meta.content = saved === 'light' || saved === 'dark' ? saved : 'light dark';
+          var resolved = saved === 'light' || saved === 'dark'
+            ? saved
+            : (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+          document.documentElement.dataset.theme = resolved;
+          document.documentElement.classList.toggle('dark', resolved === 'dark');
+        }
       } catch (e) {}
     </script>
     <title>HDREZKA Desktop</title>

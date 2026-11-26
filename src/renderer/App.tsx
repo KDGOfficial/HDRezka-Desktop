@@ -117,11 +117,21 @@ export const App: React.FC = () => {
     setInterestsModalOpen,
   ]);
 
-  // Apply light / dark / system color-scheme cleanly and listen for OS changes
+  // Apply light / dark / system / orbit color-scheme cleanly and listen for OS changes
   useEffect(() => {
     const applyTheme = () => {
-      const mode = settings.theme === 'light' ? 'light' : settings.theme === 'system' ? 'system' : 'dark';
       const meta = document.querySelector<HTMLMetaElement>('meta[name="color-scheme"]');
+      if (settings.theme === 'orbit') {
+        try { localStorage.setItem('color-scheme', 'orbit'); } catch {}
+        if (meta) meta.content = 'light';
+        document.documentElement.dataset.theme = 'light';
+        document.documentElement.dataset.palette = 'orbit';
+        document.documentElement.classList.toggle('dark', false);
+        return;
+      }
+
+      delete document.documentElement.dataset.palette;
+      const mode = settings.theme === 'light' ? 'light' : settings.theme === 'system' ? 'system' : 'dark';
       if (mode === 'system') {
         try { localStorage.removeItem('color-scheme'); } catch {}
         if (meta) meta.content = 'light dark';
