@@ -19,11 +19,11 @@ function loadTsModule(relPath) {
   return mod.exports;
 }
 
-test('v0.4.0 StartupSplash loading menu, instant boot placeholder, and animations are wired', () => {
+test('v0.4.1 StartupSplash loading menu, instant boot placeholder, and animations are wired', () => {
   const { APP_VERSION } = loadTsModule('src/shared/constants/index.ts');
   const { translations } = loadTsModule('src/renderer/i18n/translations.ts');
 
-  assert.equal(APP_VERSION, '0.4.0');
+  assert.equal(APP_VERSION, '0.4.1');
 
   for (const loc of ['ru', 'uk', 'en']) {
     const sp = translations[loc].splash;
@@ -88,4 +88,15 @@ test('v0.4.0 StartupSplash loading menu, instant boot placeholder, and animation
   assert.match(cardSrc, /posterLoaded/);
   assert.match(cardSrc, /cinema-card-sheen/);
   assert.match(heroSrc, /hero-poster-enter/);
+
+  // 5. Smooth directional Hero carousel transitions & zero-flash backdrop stack
+  assert.match(heroSrc, /slideDirection/);
+  assert.match(heroSrc, /prevIndex/);
+  assert.match(heroSrc, /hero-backdrop-layer/);
+  assert.match(heroSrc, /hero-slide-in-next/);
+  assert.match(heroSrc, /hero-slide-out-next/);
+  assert.match(heroSrc, /hero-poster-in-next/);
+  assert.match(cssSrc, /\.hero-backdrop-layer--active/);
+  assert.match(cssSrc, /@keyframes heroSlideInNext/);
+  assert.match(cssSrc, /@keyframes heroPosterInNext/);
 });
