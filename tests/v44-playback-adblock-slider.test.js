@@ -36,10 +36,10 @@ const {
   pickBetterQualityStream,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('v0.2.1 version synchronization and About Author configuration', () => {
+test('v0.2.2 version synchronization and About Author configuration', () => {
   const provider = new RezkaProvider();
-  assert.equal(APP_VERSION, '0.2.1');
-  assert.equal(provider.version, '0.2.1');
+  assert.equal(APP_VERSION, '0.2.2');
+  assert.equal(provider.version, '0.2.2');
   assert.equal(AUTHOR_YOUTUBE_URL, 'https://www.youtube.com/@KanalDobrogoGamera');
   assert.equal(AUTHOR_TELEGRAM_URL, 'https://t.me/kdg_yt');
   assert.equal(AUTHOR_GITHUB_URL, 'https://github.com/KDGOfficial');
@@ -299,7 +299,7 @@ test('VideoPlayer, usePlayerStore, HorizontalSlider & main.ts enforce lag-free V
   // Issue 6 & 4: opening a film defaults to 0:00, offers resumeOfferTime pill, forwards title/translatorName
   assert.match(playerStoreTs, /resumeOfferTime/);
   assert.match(playerStoreTs, /translatorName:\s*tr\?\.name/);
-  assert.match(videoPlayerTsx, /Продолжить с/);
+  assert.match(videoPlayerTsx, /t\.player\.resumeFrom/);
 
   // Issue 1: SeriesNavigationPanel & buildEpisodeChunks wired into DetailsPage & VideoPlayer, HorizontalSlider still intact
   assert.match(detailsTsx, /SeriesNavigationPanel/);

@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useTranslation } from '../i18n';
 
 interface HorizontalSliderProps {
   children: React.ReactNode;
@@ -19,6 +20,7 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
   compact = false,
   itemCount,
 }) => {
+  const { t } = useTranslation();
   const trackRef = useRef<HTMLDivElement>(null);
   const prevBtnRef = useRef<HTMLButtonElement>(null);
   const nextBtnRef = useRef<HTMLButtonElement>(null);
@@ -131,7 +133,7 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
             type="button"
             disabled={atStart}
             onClick={() => scrollByStep('prev')}
-            aria-label="Прокрутить влево"
+            aria-label={t.common.scrollLeft}
             className={`flex-shrink-0 rounded-full bg-white/[0.06] hover:bg-white/[0.15] disabled:opacity-30 disabled:cursor-not-allowed border border-white/[0.1] text-zinc-200 hover:text-white flex items-center justify-center cursor-pointer active:scale-95 ${
               compact ? 'w-7 h-7' : 'w-8 h-8'
             }`}
@@ -154,7 +156,7 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
             type="button"
             disabled={atEnd}
             onClick={() => scrollByStep('next')}
-            aria-label="Прокрутить вправо"
+            aria-label={t.common.scrollRight}
             className={`flex-shrink-0 rounded-full bg-white/[0.06] hover:bg-white/[0.15] disabled:opacity-30 disabled:cursor-not-allowed border border-white/[0.1] text-zinc-200 hover:text-white flex items-center justify-center cursor-pointer active:scale-95 ${
               compact ? 'w-7 h-7' : 'w-8 h-8'
             }`}
@@ -187,7 +189,7 @@ export const HorizontalSlider: React.FC<HorizontalSliderProps> = ({
               max={maxScroll}
               value={scrollLeft}
               onChange={handleRangeChange}
-              aria-label={`Прокрутка: ${ariaLabel}`}
+              aria-label={t.common.scrollLabel.replace('{label}', ariaLabel)}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
           </div>

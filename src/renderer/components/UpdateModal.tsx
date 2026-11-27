@@ -211,8 +211,7 @@ export const UpdateModal: React.FC = () => {
             <div className="p-4 rounded-2xl bg-amber-950/30 border border-amber-500/35 flex items-center gap-3 text-xs text-amber-200">
               <ExternalLink className="w-5 h-5 flex-shrink-0 text-amber-400" />
               <span>
-                {updateProgress?.error ||
-                  'Страница релиза открыта в браузере. Вы можете скачать установочный файл напрямую с GitHub.'}
+                {updateProgress?.error || t.updateModal.openedInBrowser}
               </span>
             </div>
           )}
@@ -220,7 +219,7 @@ export const UpdateModal: React.FC = () => {
           {isError && (
             <div className="p-4 rounded-2xl bg-rose-950/35 border border-rose-500/35 flex items-center gap-3 text-xs text-rose-300">
               <AlertCircle className="w-5 h-5 flex-shrink-0 text-rose-400" />
-              <span>{updateProgress?.error || 'Ошибка загрузки обновления.'}</span>
+              <span>{updateProgress?.error || t.updateModal.downloadError}</span>
             </div>
           )}
         </div>

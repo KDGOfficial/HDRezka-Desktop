@@ -18,10 +18,10 @@ test('v0.0.69 SeasonScrollTrack slider is wired in SeriesNavigationPanel, VideoP
   assert.match(navSrc, /<SeasonScrollTrack/);
 
   // Reused for episode range chunks in SeriesNavigationPanel and VideoPlayer episodes popup
-  assert.match(navSrc, /<SeasonScrollTrack[\s\S]*ariaLabel="Диапазоны серий"[\s\S]*sliderLabel="Перемотка серий"/);
+  assert.match(navSrc, /<SeasonScrollTrack[\s\S]*ariaLabel=\{t\.details\.episodeRanges\}[\s\S]*sliderLabel=\{t\.details\.scrollEpisodesSlider\}/);
   assert.match(playerSrc, /SeasonScrollTrack/);
-  assert.match(playerSrc, /<SeasonScrollTrack[\s\S]*ariaLabel="Выбор сезона"/);
-  assert.match(playerSrc, /<SeasonScrollTrack[\s\S]*ariaLabel="Диапазоны серий"[\s\S]*sliderLabel="Перемотка серий"/);
+  assert.match(playerSrc, /<SeasonScrollTrack[\s\S]*ariaLabel=\{t\.player\.selectSeason\}/);
+  assert.match(playerSrc, /<SeasonScrollTrack[\s\S]*ariaLabel=\{t\.details\.episodeRanges\}[\s\S]*sliderLabel=\{t\.details\.scrollEpisodesSlider\}/);
 
   // Brand-consistent range slider CSS with separate WebKit & Firefox pseudo-elements and fallback
   assert.match(cssSrc, /\.ember-range::-webkit-slider-runnable-track/);

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Minus, Square, Copy, X, Sparkles, Pin } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useMediaStore } from '../stores/useMediaStore';
+import { useTranslation } from '../i18n';
 import appLogo from '../assets/logo.png';
 
 export const TitleBar: React.FC = () => {
@@ -11,6 +12,7 @@ export const TitleBar: React.FC = () => {
   const { settings, mirrorsStatus, isFindingMirrors, isCheckingMirrors, updateInfo, setUpdateModalOpen } = useSettingsStore();
   const isSearchingMirrors = isFindingMirrors || isCheckingMirrors;
   const { setPage } = useMediaStore();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const checkWindowState = async () => {
@@ -118,7 +120,7 @@ export const TitleBar: React.FC = () => {
           type="button"
           onClick={() => setPage('home')}
           className="flex items-center gap-2 group cursor-pointer rounded-lg py-0.5 pr-1"
-          aria-label="HDREZKA Desktop Home"
+          aria-label={t.titleBar.homeLabel}
         >
           <span className="logo-ring rounded-full flex-shrink-0">
             <img
@@ -145,7 +147,7 @@ export const TitleBar: React.FC = () => {
         <button
           type="button"
           onClick={() => setPage('settings')}
-          title={isSearchingMirrors ? 'Поиск рабочих зеркал...' : 'Настройки зеркала'}
+          title={isSearchingMirrors ? t.titleBar.searchingMirrorsTooltip : t.home.mirrorSettings}
           className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/[0.04] hover:bg-white/[0.09] border border-white/[0.08] text-[10px] text-zinc-300 hover:text-white cursor-pointer"
         >
           {isSearchingMirrors ? (
@@ -165,7 +167,7 @@ export const TitleBar: React.FC = () => {
             />
           )}
           <span className="truncate max-w-[140px] font-mono text-[10px]">
-            {isSearchingMirrors ? 'Поиск зеркал...' : cleanMirror}
+            {isSearchingMirrors ? t.settings.findingOnlineMirrors : cleanMirror}
           </span>
           {!isSearchingMirrors && mirrorStatus && mirrorStatus.isAvailable && mirrorStatus.latencyMs < 99999 && (
             <span className="text-zinc-500 font-mono text-[9px] tabular-nums">{mirrorStatus.latencyMs}ms</span>
@@ -192,7 +194,7 @@ export const TitleBar: React.FC = () => {
             type="button"
             onClick={handleResetZoom}
             className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-white/10 hover:bg-white/20 text-zinc-200 mr-1 cursor-pointer"
-            title="Сбросить масштаб (Ctrl+0)"
+            title={t.titleBar.resetZoom}
           >
             {zoomFactor}%
           </button>
@@ -201,14 +203,14 @@ export const TitleBar: React.FC = () => {
         <button
           type="button"
           onClick={handleTogglePin}
-          aria-label={isPinned ? 'Открепить окно' : 'Закрепить поверх всех окон'}
+          aria-label={isPinned ? t.titleBar.unpin : t.titleBar.pin}
           aria-pressed={isPinned}
           className={`w-8 h-7 flex items-center justify-center rounded-lg cursor-pointer ${
             isPinned
               ? 'text-brand-orange bg-brand-crimson/20 border border-brand-ember/40'
               : 'text-zinc-400 hover:text-white hover:bg-white/[0.08]'
           }`}
-          title={isPinned ? 'Открепить окно (поверх всех)' : 'Закрепить поверх всех окон'}
+          title={isPinned ? t.titleBar.unpinTooltip : t.titleBar.pin}
         >
           <Pin className={`w-3.5 h-3.5 ${isPinned ? 'fill-brand-orange rotate-45' : ''}`} />
         </button>
@@ -216,27 +218,27 @@ export const TitleBar: React.FC = () => {
         <button
           type="button"
           onClick={handleMinimize}
-          aria-label="Свернуть"
+          aria-label={t.titleBar.minimize}
           className="w-8 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.08] cursor-pointer"
-          title="Свернуть"
+          title={t.titleBar.minimize}
         >
           <Minus className="w-3.5 h-3.5" />
         </button>
         <button
           type="button"
           onClick={handleMaximize}
-          aria-label={isMax ? 'Восстановить' : 'Развернуть'}
+          aria-label={isMax ? t.titleBar.restore : t.titleBar.maximize}
           className="w-8 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.08] cursor-pointer"
-          title={isMax ? 'Восстановить' : 'Развернуть'}
+          title={isMax ? t.titleBar.restore : t.titleBar.maximize}
         >
           {isMax ? <Copy className="w-3 h-3 rotate-180" /> : <Square className="w-3 h-3" />}
         </button>
         <button
           type="button"
           onClick={handleClose}
-          aria-label="Закрыть"
+          aria-label={t.titleBar.close}
           className="w-8 h-7 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-brand-crimson cursor-pointer"
-          title="Закрыть"
+          title={t.titleBar.close}
         >
           <X className="w-3.5 h-3.5" />
         </button>

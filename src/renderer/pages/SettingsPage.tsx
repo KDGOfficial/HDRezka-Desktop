@@ -317,17 +317,17 @@ export const SettingsPage: React.FC = () => {
               )}
             </div>
             <div>
-              <h2 className="font-display text-sm font-black text-white">Тема оформления</h2>
-              <p className="text-xs text-zinc-400 mt-0.5">Светлая, тёмная или как в системе</p>
+              <h2 className="font-display text-sm font-black text-white">{t.settings.theme}</h2>
+              <p className="text-xs text-zinc-400 mt-0.5">{t.settings.themeDesc}</p>
             </div>
           </div>
 
           <div className="theme-input-bg flex items-center bg-[#0B070A] p-1 rounded-full border border-white/[0.08]">
             {(
               [
-                { id: 'dark', label: 'Тёмная', icon: Moon },
-                { id: 'light', label: 'Светлая', icon: Sun },
-                { id: 'system', label: 'Системная', icon: Monitor },
+                { id: 'dark', label: t.settings.themeDark, icon: Moon },
+                { id: 'light', label: t.settings.themeLight, icon: Sun },
+                { id: 'system', label: t.settings.themeSystem, icon: Monitor },
               ] as const
             ).map((opt) => {
               const Icon = opt.icon;

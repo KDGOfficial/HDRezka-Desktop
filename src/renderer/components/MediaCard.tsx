@@ -241,7 +241,7 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
           {item.views && item.views > 0 && (
             <>
               {(item.year || item.country) && <span className="text-zinc-600">·</span>}
-              <span className="inline-flex items-center gap-0.5 tabular-nums flex-shrink-0" title={`${item.views.toLocaleString()} просмотров`}>
+              <span className="inline-flex items-center gap-0.5 tabular-nums flex-shrink-0" title={t.common.viewsCount.replace('{count}', item.views.toLocaleString())}>
                 <Eye className="w-3 h-3 opacity-75" aria-hidden="true" />
                 {formatCompactNumber(item.views)}
               </span>

@@ -133,7 +133,7 @@ export const SearchPage: React.FC = () => {
             {query && (
               <button
                 type="button"
-                aria-label="Очистить"
+                aria-label={t.common.clear}
                 onClick={() => {
                   setQuery('');
                   setResults([]);
@@ -156,7 +156,7 @@ export const SearchPage: React.FC = () => {
         {t9Hint && query.trim().toLowerCase() !== t9Hint.suggestion.toLowerCase() && (
           <div className="mt-2.5 flex items-center gap-2 px-4 py-2 rounded-2xl cinema-panel text-xs">
             <Wand2 className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" aria-hidden="true" />
-            <span className="text-zinc-400">T9: Возможно, вы имели в виду</span>
+            <span className="text-zinc-400">{t.search.t9DidYouMean}</span>
             <button
               type="button"
               onClick={() => {
@@ -215,17 +215,17 @@ export const SearchPage: React.FC = () => {
             </h1>
             <span className="text-xs text-zinc-400 font-mono">
               {t.search.foundCount}: {results.length}
-              {t9Applied ? ` · T9 исправлено с «${searchQuery}»` : ''}
+              {t9Applied ? t.search.t9CorrectedFrom.replace('{query}', searchQuery) : ''}
             </span>
           </div>
 
           {results.length > 0 && (
             <div className="flex items-center flex-wrap gap-1.5">
               {([
-                { id: 'relevance', label: 'По релевантности', icon: null },
-                { id: 'year', label: 'Год выпуска', icon: Calendar },
-                { id: 'rating', label: 'Оценки', icon: Star },
-                { id: 'views', label: 'Просмотры', icon: Eye },
+                { id: 'relevance', label: t.search.sortRelevance, icon: null },
+                { id: 'year', label: t.search.sortYear, icon: Calendar },
+                { id: 'rating', label: t.search.sortRating, icon: Star },
+                { id: 'views', label: t.search.sortViews, icon: Eye },
               ] as const).map((opt) => {
                 const Icon = opt.icon;
                 const active = sortBy === opt.id;
@@ -258,8 +258,8 @@ export const SearchPage: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setSortDir((d) => (d === 'desc' ? 'asc' : 'desc'))}
-                  title={sortDir === 'desc' ? 'По убыванию' : 'По возрастанию'}
-                  aria-label={sortDir === 'desc' ? 'По убыванию' : 'По возрастанию'}
+                  title={sortDir === 'desc' ? t.search.sortDesc : t.search.sortAsc}
+                  aria-label={sortDir === 'desc' ? t.search.sortDesc : t.search.sortAsc}
                   className="p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.1] text-brand-orange cursor-pointer"
                 >
                   {sortDir === 'desc' ? (
@@ -305,7 +305,7 @@ export const SearchPage: React.FC = () => {
                 className="mt-6 flex items-center gap-2 px-6 py-3 rounded-full btn-ember text-white text-xs font-display font-black uppercase tracking-wider active:scale-95 cursor-pointer"
               >
                 <Globe className="w-4 h-4" />
-                <span>Найти «{searchQuery}» в Google (кино-браузер)</span>
+                <span>{t.search.findInGoogleBrowser.replace('{query}', searchQuery)}</span>
               </button>
             </>
           )}
@@ -325,7 +325,7 @@ export const SearchPage: React.FC = () => {
 
           <div className="mt-9 p-5 rounded-3xl cinema-panel flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="text-xs text-zinc-300 font-medium">
-              Не нашли нужный фильм, сериал или озвучку в списке выше?
+              {t.search.notFoundBanner}
             </div>
             <button
               type="button"
@@ -333,7 +333,7 @@ export const SearchPage: React.FC = () => {
               className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-white/[0.06] hover:bg-brand-crimson/20 border border-white/[0.1] hover:border-brand-ember/50 text-xs font-bold text-white cursor-pointer flex-shrink-0"
             >
               <Globe className="w-3.5 h-3.5 text-brand-orange" />
-              <span>Найти в Google (встроенный браузер)</span>
+              <span>{t.search.findInGoogleEmbedded}</span>
             </button>
           </div>
         </>

@@ -81,7 +81,7 @@ export const CollectionsPage: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveCollection(null)}
-              aria-label="Назад к коллекциям"
+              aria-label={t.collections.backToCollections}
               className="p-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-300 hover:text-white cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" />

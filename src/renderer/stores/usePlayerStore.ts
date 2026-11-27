@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { StreamData, VideoQualityStream, SubtitleTrack, MediaDetails } from '../../shared/types';
 import { getResumableTime } from '../../shared/utils';
+import { getTranslation } from '../i18n';
 import { useSettingsStore } from './useSettingsStore';
 
 interface PlayerState {
@@ -120,7 +121,7 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
       if (seq !== playRequestSeq) return;
 
       if (!stream || ((!stream.streams || stream.streams.length === 0) && !stream.embedUrl)) {
-        throw new Error('Потоки для данного перевода временно недоступны.');
+        throw new Error(getTranslation().player.errorNoStreamsForDub);
       }
 
       // Embedded player fallback (e.g. YummyAnime YouTube / Kodik / Aksor / Alloha embeds)
@@ -163,13 +164,14 @@ export const usePlayerStore = create<PlayerState>((set, get) => ({
     } catch (err: any) {
       if (seq !== playRequestSeq) return;
       console.error('[usePlayerStore] Open error:', err);
-      let message = err?.message || 'Ошибка воспроизведения видео';
+      const t = getTranslation();
+      let message = err?.message || t.player.errorPlayback;
       // Clean up internal Electron IPC prefixes
       message = message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '');
       if (message.includes('сесси') || message.includes('бот') || message.includes('проверку')) {
-        message = 'HDRezka требует пройти проверку «Я не бот» или обновить сессию. Нажмите «Пройти проверку» ниже.';
+        message = t.player.errorAntiBot;
       } else if (message.includes('<!doctype') || message.includes('Unexpected token') || message.includes('is not valid JSON')) {
-        message = 'Видеопоток временно недоступен или ограничен правообладателем на серверах HDRezka. Попробуйте сменить зеркало в Настройках.';
+        message = t.player.errorGeoOrUnavailable;
       }
 
       let trailerUrl = get().streamData?.trailerUrl;

@@ -123,7 +123,7 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
             </select>
 
             <select
-              aria-label="Сортировка"
+              aria-label={t.catalog.sortLabel}
               value={selectedSort}
               onChange={(e) => {
                 setSelectedSort(e.target.value as any);

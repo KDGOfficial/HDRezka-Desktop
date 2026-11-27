@@ -427,7 +427,7 @@ export const DetailsPage: React.FC = () => {
                 <span>
                   {resumableTime > 0
                     ? isSeriesLike && lastWatch?.season && lastWatch?.episode
-                      ? `${t.history.resume} · С${lastWatch.season} Э${lastWatch.episode} (${formatDuration(resumableTime)})`
+                      ? `${t.history.resume} · ${t.details.seasonShort}${lastWatch.season} ${t.details.episodeShort}${lastWatch.episode} (${formatDuration(resumableTime)})`
                       : `${t.history.resume} (${formatDuration(resumableTime)})`
                     : t.details.watch}
                 </span>
@@ -492,10 +492,10 @@ export const DetailsPage: React.FC = () => {
                 type="button"
                 onClick={() => openBrowser(`${details.title}${details.year ? ` ${details.year}` : ''}`)}
                 className="flex items-center gap-2 px-5 py-3.5 rounded-full bg-white/[0.07] hover:bg-white/[0.13] border border-white/[0.12] text-zinc-200 hover:text-white text-xs font-bold active:scale-95 cursor-pointer"
-                title="Найти альтернативу в Google"
+                title={t.details.findAlternativeGoogle}
               >
                 <Globe className="w-4 h-4 text-brand-orange" aria-hidden="true" />
-                <span>Найти в сети</span>
+                <span>{t.details.findOnline}</span>
               </button>
             </div>
 
@@ -561,7 +561,7 @@ export const DetailsPage: React.FC = () => {
             <span>{t.details.aboutTitle}</span>
           </h2>
           <p className="text-xs md:text-sm text-zinc-300 leading-relaxed whitespace-pre-line">
-            {details.description || 'Описание временно недоступно.'}
+            {details.description || t.details.noDescription}
           </p>
         </section>
 
@@ -612,17 +612,17 @@ export const DetailsPage: React.FC = () => {
                 style={{ background: 'linear-gradient(180deg, #FF124F 0%, #FF7A00 100%)' }}
               />
               <MessageSquare className="w-4 h-4 text-brand-orange" aria-hidden="true" />
-              <span>Комментарии и рецензии критиков</span>
+              <span>{t.details.reviewsTitle}</span>
             </h2>
 
             <div className="flex items-center flex-wrap gap-1.5 bg-black/40 p-1 rounded-full border border-white/[0.08]">
               {([
-                { id: 'all', label: `Все (${details.reviews.length})` },
+                { id: 'all', label: `${t.details.reviewsAll} (${details.reviews.length})` },
                 ...(details.reviews.some((r) => r.source === 'Кинопоиск')
-                  ? [{ id: 'kinopoisk' as const, label: `Кинопоиск (${details.reviews.filter((r) => r.source === 'Кинопоиск').length})` }]
+                  ? [{ id: 'kinopoisk' as const, label: `${t.details.kpRating} (${details.reviews.filter((r) => r.source === 'Кинопоиск').length})` }]
                   : []),
-                { id: 'critic', label: `Критики (${details.reviews.filter((r) => r.type === 'critic').length})` },
-                { id: 'user', label: `Зрители (${details.reviews.filter((r) => r.type === 'user').length})` },
+                { id: 'critic', label: `${t.details.reviewsCritics} (${details.reviews.filter((r) => r.type === 'critic').length})` },
+                { id: 'user', label: `${t.details.reviewsUsers} (${details.reviews.filter((r) => r.type === 'user').length})` },
               ] as const).map((tab) => (
                 <button
                   key={tab.id}
@@ -675,7 +675,7 @@ export const DetailsPage: React.FC = () => {
                           }`}
                         >
                           {isCritic && <Award className="w-3 h-3" aria-hidden="true" />}
-                          {isCritic ? 'Критик' : 'Зритель'}
+                          {isCritic ? t.details.criticBadge : t.details.viewerBadge}
                         </span>
                         <span className="text-xs font-bold text-white">{rev.author}</span>
                         {rev.source && (

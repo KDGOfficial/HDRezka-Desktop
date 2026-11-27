@@ -169,8 +169,8 @@ export const Sidebar: React.FC = () => {
           <button
             type="button"
             onClick={toggleCollapsed}
-            aria-label="Свернуть боковую панель"
-            title="Свернуть панель"
+            aria-label={t.nav.collapseSidebar}
+            title={t.nav.collapseSidebarTooltip}
             className="p-1.5 rounded-xl text-zinc-500 hover:text-white hover:bg-white/[0.06] cursor-pointer flex-shrink-0"
           >
             <PanelLeftClose className="w-4 h-4" />
@@ -179,7 +179,7 @@ export const Sidebar: React.FC = () => {
       </div>
 
       {/* Navigation */}
-      <nav aria-label="Основная навигация" className="flex-1 overflow-y-auto pr-0.5 scrollbar-none">
+      <nav aria-label={t.nav.mainNavigation} className="flex-1 overflow-y-auto pr-0.5 scrollbar-none">
         {renderNavSection('main', t.nav.menu)}
         {renderNavSection('library', t.nav.library)}
         {renderNavSection('system', t.nav.system)}
@@ -215,8 +215,8 @@ export const Sidebar: React.FC = () => {
           <button
             type="button"
             onClick={toggleCollapsed}
-            aria-label="Развернуть боковую панель"
-            title="Развернуть панель"
+            aria-label={t.nav.expandSidebar}
+            title={t.nav.expandSidebarTooltip}
             className="w-full flex items-center justify-center p-2.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.09] text-zinc-400 hover:text-white cursor-pointer"
           >
             <PanelLeftOpen className="w-4 h-4" />

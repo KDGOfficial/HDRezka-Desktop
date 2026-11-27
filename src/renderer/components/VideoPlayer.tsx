@@ -384,9 +384,9 @@ export const VideoPlayer: React.FC = () => {
     ];
     const labels: Record<(typeof order)[number], string> = {
       contain: t.player.scaleOriginal,
-      '16:10': 'Масштаб: 16:10',
-      '21:9': 'Масштаб: 21:9 (Ultrawide)',
-      '4:3': 'Масштаб: 4:3',
+      '16:10': `${t.player.scalePrefix}: 16:10`,
+      '21:9': `${t.player.scalePrefix}: 21:9 (Ultrawide)`,
+      '4:3': `${t.player.scalePrefix}: 4:3`,
       cover: t.player.scaleCover,
       fill: t.player.scaleFill,
     };
@@ -615,11 +615,11 @@ export const VideoPlayer: React.FC = () => {
     const stallTimer = setTimeout(() => {
       usePlayerStore.setState({
         isLoading: false,
-        error: 'Подключение к видеопотоку превысило лимит ожидания. Попробуйте выбрать другое зеркало или озвучку.',
+        error: t.player.errorTimeout,
       });
     }, 25000);
     return () => clearTimeout(stallTimer);
-  }, [isLoading]);
+  }, [isLoading, t.player.errorTimeout]);
 
   // HLS & Video Stream initialization
   useEffect(() => {
@@ -648,10 +648,13 @@ export const VideoPlayer: React.FC = () => {
       announcedStreamRef.current = streamAnnounceKey;
       if (streamData.upgradedMirror && streamData.upgradedFromQuality) {
         showToast(
-          `Автопереключение на ${currentQualityRef.current} (${streamData.sourceName || 'зеркало HD'}) вместо ${streamData.upgradedFromQuality}`
+          t.player.autoSwitchedQuality
+            .replace('{quality}', currentQualityRef.current)
+            .replace('{source}', streamData.sourceName || t.player.hdMirror)
+            .replace('{from}', streamData.upgradedFromQuality)
         );
       } else if (streamData.isAlternative) {
-        showToast(`Источник: ${streamData.sourceName || 'альтернативный поток'}`);
+        showToast(t.player.sourceLabel.replace('{source}', streamData.sourceName || t.player.altStream));
       }
     }
 
@@ -845,7 +848,7 @@ export const VideoPlayer: React.FC = () => {
                 networkRetries += 1;
                 resumeStartPos = video.currentTime || startSec;
                 if (resumeStartPos > 0) introGuardDone = true;
-                showToast('Переключение на резервный CDN...');
+                showToast(t.player.switchingBackupCdn);
                 hls.loadSource(unblocked);
                 return;
               }
@@ -865,7 +868,7 @@ export const VideoPlayer: React.FC = () => {
                 networkRetries = 1;
                 resumeStartPos = video.currentTime || startSec;
                 if (resumeStartPos > 0) introGuardDone = true;
-                showToast('Переключение на резервный поток...');
+                showToast(t.player.switchingBackupStream);
                 hls.loadSource(altHls);
                 return;
               }
@@ -895,7 +898,7 @@ export const VideoPlayer: React.FC = () => {
             hlsRef.current = null;
             setIsBuffering(false);
             usePlayerStore.setState({
-              error: 'Не удалось загрузить видеопоток. Попробуйте выбрать другое качество или сменить активное зеркало в Настройках.',
+              error: t.player.errorLoadStream,
             });
             break;
           }
@@ -908,7 +911,7 @@ export const VideoPlayer: React.FC = () => {
               hlsRef.current = null;
               setIsBuffering(false);
               usePlayerStore.setState({
-                error: 'Ошибка декодирования видеопотока. Попробуйте выбрать другое качество или озвучку.',
+                error: t.player.errorDecode,
               });
             }
             break;
@@ -917,7 +920,7 @@ export const VideoPlayer: React.FC = () => {
             hlsRef.current = null;
             setIsBuffering(false);
             usePlayerStore.setState({
-              error: 'Не удалось загрузить видеопоток. Попробуйте выбрать другое качество или сменить активное зеркало в Настройках.',
+              error: t.player.errorLoadStream,
             });
             break;
         }
@@ -1107,11 +1110,11 @@ export const VideoPlayer: React.FC = () => {
         hls.loadLevel = targetIdx;
       }
       setQuality(qualityLabel);
-      showToast(`Качество: ${qualityLabel}`);
+      showToast(t.player.qualityToast.replace('{quality}', qualityLabel));
     } else {
       const resumePos = videoRef.current?.currentTime || 0;
       setQuality(qualityLabel, resumePos);
-      showToast(`Качество: ${qualityLabel}`);
+      showToast(t.player.qualityToast.replace('{quality}', qualityLabel));
     }
     setActiveMenu('none');
   };
@@ -1240,18 +1243,18 @@ export const VideoPlayer: React.FC = () => {
                   setCurrentTime(resumeOfferTime);
                 }
                 dismissResumeOffer();
-                showToast(`Продолжено с ${formatDuration(resumeOfferTime)}`);
+                showToast(t.player.resumedFrom.replace('{time}', formatDuration(resumeOfferTime)));
               }}
               className="flex items-center gap-2 text-xs font-extrabold text-white hover:text-brand-orange cursor-pointer truncate"
             >
               <Clock className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" aria-hidden="true" />
-              <span className="truncate">Продолжить с {formatDuration(resumeOfferTime)}</span>
+              <span className="truncate">{t.player.resumeFrom.replace('{time}', formatDuration(resumeOfferTime))}</span>
             </button>
           ) : (
             <>
               <span className="flex items-center gap-1.5 text-xs font-bold text-white truncate">
                 <Clock className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" aria-hidden="true" />
-                <span className="truncate">Продолжено с {formatDuration(resumeOfferTime)}</span>
+                <span className="truncate">{t.player.resumedFrom.replace('{time}', formatDuration(resumeOfferTime))}</span>
               </span>
               <button
                 type="button"
@@ -1262,18 +1265,18 @@ export const VideoPlayer: React.FC = () => {
                     setCurrentTime(0);
                   }
                   dismissResumeOffer();
-                  showToast('Воспроизведение с начала');
+                  showToast(t.player.playingFromStart);
                 }}
                 className="px-2.5 py-0.5 rounded-full bg-white/[0.12] hover:bg-white/[0.22] text-[11px] font-extrabold text-brand-orange cursor-pointer flex-shrink-0"
               >
-                Сначала
+                {t.player.fromStart}
               </button>
             </>
           )}
           <button
             type="button"
             onClick={dismissResumeOffer}
-            aria-label="Закрыть уведомление"
+            aria-label={t.common.closeNotification}
             className="p-1 rounded-full hover:bg-white/[0.15] text-zinc-400 hover:text-white cursor-pointer flex-shrink-0"
           >
             <X className="w-3.5 h-3.5" aria-hidden="true" />
@@ -1350,7 +1353,7 @@ export const VideoPlayer: React.FC = () => {
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                aria-label={isFullscreen ? 'Выйти из полноэкранного режима' : 'На весь экран'}
+                aria-label={isFullscreen ? t.player.exitFullscreen : t.player.enterFullscreen}
                 className="p-2 rounded-full bg-[#140E12] hover:bg-white/[0.16] border border-white/10 text-zinc-200 hover:text-white cursor-pointer"
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
@@ -1420,7 +1423,7 @@ export const VideoPlayer: React.FC = () => {
         onError={() => {
           setIsPlaying(false);
           usePlayerStore.setState({
-            error: 'Ошибка воспроизведения видеопотока. Попробуйте сменить качество видео или зеркало в Настройках.',
+            error: t.player.errorPlayback,
           });
         }}
         onEnded={() => {
@@ -1480,7 +1483,7 @@ export const VideoPlayer: React.FC = () => {
           <span className="text-zinc-500 text-xs mt-1.5">
             {isSearchingMirrors
               ? t.settings.findingOnlineMirrors
-              : 'Поиск доступного потока в сети...'}
+              : t.player.searchingStream}
           </span>
         </div>
       )}
@@ -1492,7 +1495,7 @@ export const VideoPlayer: React.FC = () => {
           <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-3xl bg-brand-crimson/15 border border-brand-ember/40 flex items-center justify-center text-brand-orange mb-3 sm:mb-4 shadow-glow-sm flex-shrink-0">
             <AlertCircle className="w-8 h-8 sm:w-9 sm:h-9" />
           </div>
-          <h3 className="font-display text-base sm:text-xl font-black text-white mb-1.5 sm:mb-2 text-center">Не удалось воспроизвести видео</h3>
+          <h3 className="font-display text-base sm:text-xl font-black text-white mb-1.5 sm:mb-2 text-center">{t.player.playbackFailed}</h3>
           <p className="text-xs sm:text-sm text-zinc-400 max-w-md text-center mb-4 sm:mb-6 leading-relaxed">{error}</p>
 
           {(streamData?.trailerUrl || usePlayerStore.getState().trailerUrl) && (
@@ -1508,18 +1511,18 @@ export const VideoPlayer: React.FC = () => {
                 className="flex items-center gap-2 px-6 py-3 rounded-full btn-ember text-white font-display font-black text-xs uppercase tracking-wider cursor-pointer active:scale-95"
               >
                 <Play className="w-4 h-4 fill-current" />
-                <span>Смотреть официальный трейлер онлайн</span>
+                <span>{t.player.watchOfficialTrailer}</span>
               </button>
             </div>
           )}
 
           {mediaDetails?.translators && mediaDetails.translators.length > 1 && (
-            <div className="w-full max-w-2xl mb-5 space-y-2" aria-label="Выбор озвучки">
+            <div className="w-full max-w-2xl mb-5 space-y-2" aria-label={t.player.selectVoiceover}>
               <span className="block w-full text-center text-xs font-bold text-zinc-400 uppercase tracking-wider">
-                Попробовать другую озвучку ({mediaDetails.translators.length})
+                {t.player.tryAnotherVoiceover.replace('{count}', String(mediaDetails.translators.length))}
               </span>
               <HorizontalSlider
-                ariaLabel="Выбор озвучки"
+                ariaLabel={t.player.selectVoiceover}
                 compact
                 itemCount={mediaDetails.translators.length}
                 trackClassName="flex items-center gap-2"
@@ -1546,13 +1549,23 @@ export const VideoPlayer: React.FC = () => {
           <div className="flex flex-wrap items-center justify-center gap-2.5">
             {typeof window.api?.verifyMirror === 'function' &&
               (() => {
+                const errLower = (error || '').toLowerCase();
                 const needsVerifyHighlight = Boolean(
-                  error &&
-                    (error.includes('не бот') ||
-                      error.includes('сесси') ||
-                      error.includes('проверку') ||
-                      error.includes('лимит ожидания') ||
-                      error.includes('недоступен'))
+                  errLower &&
+                    (errLower.includes('не бот') ||
+                      errLower.includes('not a bot') ||
+                      errLower.includes('сесси') ||
+                      errLower.includes('сесі') ||
+                      errLower.includes('session') ||
+                      errLower.includes('проверку') ||
+                      errLower.includes('перевірку') ||
+                      errLower.includes('verification') ||
+                      errLower.includes('лимит ожидания') ||
+                      errLower.includes('ліміт очікування') ||
+                      errLower.includes('timed out') ||
+                      errLower.includes('недоступен') ||
+                      errLower.includes('недоступний') ||
+                      errLower.includes('unavailable'))
                 );
                 return (
                   <button
@@ -1577,7 +1590,7 @@ export const VideoPlayer: React.FC = () => {
                     }`}
                   >
                     <ShieldCheck className={`w-4 h-4 ${isVerifying ? 'animate-spin' : ''}`} />
-                    <span>{isVerifying ? 'Идет проверка...' : 'Пройти проверку'}</span>
+                    <span>{isVerifying ? t.player.verifying : t.player.passVerification}</span>
                   </button>
                 );
               })()}
@@ -1587,12 +1600,12 @@ export const VideoPlayer: React.FC = () => {
               className="flex items-center gap-2 px-5 py-2.5 rounded-full btn-ember text-white text-xs font-extrabold cursor-pointer active:scale-95"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>Повторить</span>
+              <span>{t.player.retry}</span>
             </button>
             <button
               type="button"
               onClick={async () => {
-                showToast('Поиск рабочих зеркал в сети...');
+                showToast(t.player.searchingMirrorsToast);
                 await useSettingsStore.getState().findOnlineMirrors();
                 retryPlayback();
               }}
@@ -1603,7 +1616,7 @@ export const VideoPlayer: React.FC = () => {
               ) : (
                 <Globe className="w-4 h-4 text-brand-orange" />
               )}
-              <span>Зеркала в сети</span>
+              <span>{t.player.mirrorsOnline}</span>
             </button>
             <button
               type="button"
@@ -1611,14 +1624,14 @@ export const VideoPlayer: React.FC = () => {
               className="flex items-center gap-2 px-5 py-2.5 rounded-full bg-white/[0.08] text-white text-xs font-bold hover:bg-white/[0.16] border border-white/10 cursor-pointer"
             >
               <Settings className="w-4 h-4" />
-              <span>Настройки</span>
+              <span>{t.nav.settings}</span>
             </button>
             <button
               type="button"
               onClick={handleClose}
               className="px-5 py-2.5 rounded-full bg-white/[0.08] text-white text-xs font-bold hover:bg-white/[0.16] border border-white/10 cursor-pointer"
             >
-              Назад
+              {t.player.back}
             </button>
           </div>
           </div>
@@ -1747,7 +1760,7 @@ export const VideoPlayer: React.FC = () => {
           <button
             type="button"
             onClick={togglePlay}
-            aria-label="Воспроизвести"
+            aria-label={t.player.play}
             className="player-center-play self-center pointer-events-auto play-squircle text-white flex items-center justify-center cursor-pointer hover:scale-110 active:scale-95 transition-transform"
           >
             <Play className="fill-white ml-1" aria-hidden="true" />
@@ -1782,7 +1795,7 @@ export const VideoPlayer: React.FC = () => {
               max={duration || 100}
               value={currentTime}
               onChange={handleSeek}
-              aria-label="Перемотка видео"
+              aria-label={t.player.seekBar}
               className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
             />
           </div>
@@ -1794,8 +1807,8 @@ export const VideoPlayer: React.FC = () => {
               <button
                 type="button"
                 onClick={togglePlay}
-                aria-label={isPlaying ? 'Пауза' : 'Воспроизвести'}
-                title={`${isPlaying ? 'Пауза' : 'Воспроизвести'} (${formatShortcutLabel(hotkeys.playPause)})`}
+                aria-label={isPlaying ? t.player.pause : t.player.play}
+                title={`${isPlaying ? t.player.pause : t.player.play} (${formatShortcutLabel(hotkeys.playPause)})`}
                 className="player-ctrl-btn p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] text-white cursor-pointer flex-shrink-0"
               >
                 {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 fill-white" />}
@@ -1804,9 +1817,9 @@ export const VideoPlayer: React.FC = () => {
               <button
                 type="button"
                 onClick={() => seekDelta(-10)}
-                aria-label="10 секунд назад"
+                aria-label={t.player.seekBackward10}
                 className="player-skip-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer flex-shrink-0"
-                title={`10 сек. назад (${formatShortcutLabel(hotkeys.seekBackward)})`}
+                title={`${t.player.seekBackward10Short} (${formatShortcutLabel(hotkeys.seekBackward)})`}
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
@@ -1814,9 +1827,9 @@ export const VideoPlayer: React.FC = () => {
               <button
                 type="button"
                 onClick={() => seekDelta(10)}
-                aria-label="10 секунд вперед"
+                aria-label={t.player.seekForward10}
                 className="player-skip-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer flex-shrink-0"
-                title={`10 сек. вперед (${formatShortcutLabel(hotkeys.seekForward)})`}
+                title={`${t.player.seekForward10Short} (${formatShortcutLabel(hotkeys.seekForward)})`}
               >
                 <RotateCw className="w-4 h-4" />
               </button>
@@ -1825,9 +1838,9 @@ export const VideoPlayer: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleNextEpisode}
-                  aria-label="Следующая серия"
+                  aria-label={t.player.nextEpisode}
                   className="player-next-btn player-ctrl-btn p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer flex-shrink-0"
-                  title="Следующая серия"
+                  title={t.player.nextEpisode}
                 >
                   <SkipForward className="w-4 h-4" />
                 </button>
@@ -1837,14 +1850,14 @@ export const VideoPlayer: React.FC = () => {
               <div
                 className="flex items-center gap-2 group relative py-1 ml-0.5 flex-shrink-0"
                 onWheel={handleVolumeWheel}
-                title={`Громкость: ${effectivePercent}% (колесико мыши)`}
+                title={t.player.volumeTooltip.replace('{percent}', String(effectivePercent))}
               >
                 <button
                   type="button"
                   onClick={toggleMute}
                   className="player-ctrl-btn p-2 rounded-full hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
-                  title={`${isMuted || volume === 0 ? 'Включить звук' : 'Выключить звук'} (${formatShortcutLabel(hotkeys.mute)})`}
-                  aria-label="Тумблер звука"
+                  title={`${isMuted || volume === 0 ? t.player.unmuteAudio : t.player.muteAudio} (${formatShortcutLabel(hotkeys.mute)})`}
+                  aria-label={t.player.muteToggle}
                 >
                   {isMuted || volume === 0 ? (
                     <VolumeX className="w-5 h-5 text-brand-crimson" />
@@ -1873,7 +1886,7 @@ export const VideoPlayer: React.FC = () => {
                     value={effectiveVolume}
                     onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    aria-label="Регулировка громкости"
+                    aria-label={t.player.volumeControl}
                   />
                   <div
                     className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-md pointer-events-none transform -translate-x-1/2 transition-all duration-75"
@@ -1910,7 +1923,7 @@ export const VideoPlayer: React.FC = () => {
                   }`}
                 >
                   <Tv className="w-3.5 h-3.5 flex-shrink-0" />
-                  <span className="player-btn-label-md">Серии</span>
+                  <span className="player-btn-label-md">{t.player.episodes}</span>
                 </button>
               )}
 
@@ -1928,7 +1941,7 @@ export const VideoPlayer: React.FC = () => {
                 >
                   <Sliders className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" />
                   <span className="player-translator-label max-w-[145px] truncate">
-                    {activeTranslator ? activeTranslator.name : 'Озвучка'}
+                    {activeTranslator ? activeTranslator.name : t.player.audio}
                   </span>
                 </button>
               )}
@@ -1967,15 +1980,15 @@ export const VideoPlayer: React.FC = () => {
                 className="player-scale-btn px-3 py-1.5 rounded-full bg-white/[0.08] hover:bg-white/[0.15] text-xs font-bold text-zinc-200 hover:text-white border border-white/15 cursor-pointer whitespace-nowrap"
                 title={`${t.player.scale.replace(/\s*\([^)]*\)\s*$/, '')} (${formatShortcutLabel(hotkeys.cycleScale)})`}
               >
-                {videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? 'Кадр' : videoFit === 'fill' ? 'Растянуть' : videoFit}
+                {videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? t.player.fitCoverShort : videoFit === 'fill' ? t.player.fitFillShort : videoFit}
               </button>
 
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                aria-label="Полный экран"
+                aria-label={t.player.fullscreen}
                 className="player-ctrl-btn p-2 rounded-full hover:bg-white/[0.15] text-zinc-200 hover:text-white cursor-pointer"
-                title={`Полный экран (${formatShortcutLabel(hotkeys.fullscreen)})`}
+                title={`${t.player.fullscreen} (${formatShortcutLabel(hotkeys.fullscreen)})`}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
               </button>
@@ -1987,7 +2000,7 @@ export const VideoPlayer: React.FC = () => {
         {activeMenu === 'quality' && streamData?.streams && (
           <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[155px] space-y-1">
             <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
-              Качество
+              {t.player.quality}
             </div>
             {streamData.streams.map((s) => (
               <button
@@ -2011,7 +2024,7 @@ export const VideoPlayer: React.FC = () => {
         {activeMenu === 'speed' && (
           <div className="player-popup absolute bottom-24 right-6 cinema-glass rounded-2xl p-2 shadow-elevated pointer-events-auto min-w-[140px] space-y-1">
             <div className="text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-2.5 py-1">
-              Скорость
+              {t.player.speed}
             </div>
             {[0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((spd) => (
               <button
@@ -2028,7 +2041,7 @@ export const VideoPlayer: React.FC = () => {
                     : 'text-zinc-200 hover:bg-white/[0.1] hover:text-white'
                 }`}
               >
-                {spd}x {spd === 1.0 ? '(Обычная)' : ''}
+                {spd}x {spd === 1.0 ? `(${t.player.speedNormal})` : ''}
               </button>
             ))}
           </div>
@@ -2181,7 +2194,7 @@ export const VideoPlayer: React.FC = () => {
               onKeyDown={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between text-[10px] uppercase font-extrabold tracking-wider text-zinc-400 px-1">
-                <span>Выбор озвучки</span>
+                <span>{t.player.selectVoiceover}</span>
                 <span className="font-mono text-zinc-400 tabular-nums">{mediaDetails.translators.length}</span>
               </div>
               {mediaDetails.translators.length > 6 && (
@@ -2191,15 +2204,15 @@ export const VideoPlayer: React.FC = () => {
                     type="text"
                     value={translatorMenuQuery}
                     onChange={(e) => setTranslatorMenuQuery(e.target.value)}
-                    placeholder="Поиск озвучки..."
-                    aria-label="Поиск озвучки"
+                    placeholder={t.details.searchVoiceoverPlaceholder}
+                    aria-label={t.details.searchVoiceoverLabel}
                     className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white/[0.06] border border-white/[0.12] focus:border-brand-orange/60 text-xs text-white placeholder:text-zinc-500"
                   />
                   {translatorMenuQuery && (
                     <button
                       type="button"
                       onClick={() => setTranslatorMenuQuery('')}
-                      aria-label="Очистить поиск"
+                      aria-label={t.common.clearSearch}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -2234,7 +2247,7 @@ export const VideoPlayer: React.FC = () => {
                   );
                 })}
                 {filtered.length === 0 && (
-                  <div className="py-4 text-center text-xs text-zinc-500">Озвучка не найдена</div>
+                  <div className="py-4 text-center text-xs text-zinc-500">{t.details.voiceoverNotFound}</div>
                 )}
               </div>
             </div>
@@ -2265,10 +2278,10 @@ export const VideoPlayer: React.FC = () => {
             >
               <div className="flex items-center justify-between gap-2">
                 <div className="font-display text-xs font-black text-white truncate">
-                  {menuSeason.title || `Сезон ${menuSeason.id}`}
+                  {menuSeason.title || `${t.details.season} ${menuSeason.id}`}
                 </div>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  <span className="text-[10px] font-mono font-bold text-zinc-400 tabular-nums">{rawEps.length} сер.</span>
+                  <span className="text-[10px] font-mono font-bold text-zinc-400 tabular-nums">{rawEps.length} {t.details.episodeCountShort}</span>
                   {rawEps.length > 12 && (
                     <button
                       type="button"
@@ -2276,7 +2289,7 @@ export const VideoPlayer: React.FC = () => {
                         setEpisodeMenuReverse((v) => !v);
                         setEpisodeMenuChunkIdx(0);
                       }}
-                      title={episodeMenuReverse ? 'Сначала новые' : 'Сначала первые'}
+                      title={episodeMenuReverse ? t.details.sortNewestFirst : t.details.sortOldestFirst}
                       className={`p-1 rounded-lg border text-[10px] font-bold cursor-pointer ${
                         episodeMenuReverse
                           ? 'bg-brand-orange/20 border-brand-orange/50 text-brand-orange'
@@ -2291,7 +2304,7 @@ export const VideoPlayer: React.FC = () => {
 
               {mediaDetails.seasons.length > 1 && (
                 <SeasonScrollTrack
-                  ariaLabel="Выбор сезона"
+                  ariaLabel={t.player.selectSeason}
                   activeKey={menuSeason.id}
                   itemCount={mediaDetails.seasons.length}
                   compact
@@ -2316,7 +2329,7 @@ export const VideoPlayer: React.FC = () => {
                             : 'bg-white/[0.08] hover:bg-white/[0.16] text-zinc-300'
                         }`}
                       >
-                        {s.title || `Сезон ${s.id}`}
+                        {s.title || `${t.details.season} ${s.id}`}
                       </button>
                     );
                   })}
@@ -2339,15 +2352,15 @@ export const VideoPlayer: React.FC = () => {
                         setEpisodeMenuQuery('');
                       }
                     }}
-                    placeholder="№ серии (напр. 500)..."
-                    aria-label="Поиск серии"
+                    placeholder={t.player.searchEpisodePlaceholder}
+                    aria-label={t.player.searchEpisodeLabel}
                     className="w-full pl-8 pr-7 py-1.5 rounded-xl bg-white/[0.06] border border-white/[0.12] focus:border-brand-orange/60 text-xs text-white placeholder:text-zinc-500 tabular-nums"
                   />
                   {episodeMenuQuery && (
                     <button
                       type="button"
                       onClick={() => setEpisodeMenuQuery('')}
-                      aria-label="Очистить"
+                      aria-label={t.common.clear}
                       className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -2358,13 +2371,13 @@ export const VideoPlayer: React.FC = () => {
 
               {epChunks.length > 1 && !q && (
                 <SeasonScrollTrack
-                  ariaLabel="Диапазоны серий"
+                  ariaLabel={t.details.episodeRanges}
                   activeKey={safeChunkIdx}
                   itemCount={epChunks.length}
                   compact
-                  prevLabel="Прокрутить серии влево"
-                  nextLabel="Прокрутить серии вправо"
-                  sliderLabel="Перемотка серий"
+                  prevLabel={t.details.scrollEpisodesLeft}
+                  nextLabel={t.details.scrollEpisodesRight}
+                  sliderLabel={t.details.scrollEpisodesSlider}
                   trackClassName="gap-1 pb-1"
                 >
                   {epChunks.map((chunk) => {
@@ -2398,7 +2411,7 @@ export const VideoPlayer: React.FC = () => {
                       type="button"
                       aria-pressed={isCurrent}
                       onClick={() => handleSwitchEpisode(menuSeason.id, ep.episodeId)}
-                      title={ep.title || `Серия ${ep.episodeId}`}
+                      title={ep.title || `${t.details.episode} ${ep.episodeId}`}
                       className={`py-2 px-1 text-center rounded-xl text-xs font-bold tabular-nums cursor-pointer ${
                         isCurrent
                           ? 'btn-ember text-white'
@@ -2410,7 +2423,7 @@ export const VideoPlayer: React.FC = () => {
                   );
                 })}
                 {displayedEps.length === 0 && (
-                  <div className="col-span-5 py-4 text-center text-xs text-zinc-500">Серия не найдена</div>
+                  <div className="col-span-5 py-4 text-center text-xs text-zinc-500">{t.player.episodeNotFound}</div>
                 )}
               </div>
             </div>

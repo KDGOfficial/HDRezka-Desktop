@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { UserSettings, MirrorStatus, UpdateInfo, UpdateProgress, ContentType, UserInterestsProfile } from '../../shared/types';
 import { DEFAULT_USER_SETTINGS, ANIME_MIRROR_SEEDS, getUpdateTier } from '../../shared/constants';
+import { getTranslation } from '../i18n';
 import {
   InteractionKind,
   createEmptyInterestsProfile,
@@ -384,7 +385,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
             transferredBytes: 0,
             totalBytes: 0,
             status: 'error',
-            error: 'Не удалось запустить установщик обновления. Скачайте релиз вручную на GitHub.',
+            error: getTranslation().settings.updateInstallError,
           },
         });
       }

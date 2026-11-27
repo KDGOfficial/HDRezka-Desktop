@@ -189,8 +189,8 @@ export const Header: React.FC = () => {
               <button
                 type="button"
                 onClick={() => goForward()}
-                aria-label="Вперёд"
-                title="Вперёд (Mouse5)"
+                aria-label={t.header.forward}
+                title={t.header.forwardTooltip}
                 className="inline-flex items-center justify-center p-2 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-200 hover:text-white cursor-pointer"
               >
                 <ArrowRight className="w-3.5 h-3.5 text-brand-orange" />
@@ -217,7 +217,7 @@ export const Header: React.FC = () => {
             {localQuery ? (
               <button
                 type="button"
-                aria-label="Очистить поиск"
+                aria-label={t.common.clearSearch}
                 onClick={() => {
                   setLocalQuery('');
                   setSuggestions([]);
@@ -244,7 +244,7 @@ export const Header: React.FC = () => {
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Wand2 className="w-3.5 h-3.5 text-brand-orange flex-shrink-0" aria-hidden="true" />
                     <span className="text-zinc-400 truncate">
-                      {usedT9Query ? 'T9 автоисправление:' : 'T9 подсказка:'}
+                      {usedT9Query ? t.search.t9AutoFix : t.search.t9Hint}
                     </span>
                     <button
                       type="button"
@@ -295,7 +295,7 @@ export const Header: React.FC = () => {
                   ))
                 ) : (
                   <div className="px-4 py-4 text-center text-xs text-zinc-400">
-                    Ничего не найдено в каталоге зеркал для «{localQuery.trim()}»
+                    {t.header.noMirrorResults.replace('{query}', localQuery.trim())}
                   </div>
                 )}
               </div>
@@ -325,7 +325,7 @@ export const Header: React.FC = () => {
                   className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-2xl bg-white/[0.06] hover:bg-brand-crimson/20 border border-white/[0.09] hover:border-brand-ember/45 text-xs font-bold text-zinc-100 hover:text-white cursor-pointer"
                 >
                   <Globe className="w-3.5 h-3.5 text-brand-orange" />
-                  <span>Найти «{usedT9Query || localQuery.trim()}» в Google (кино-браузер)</span>
+                  <span>{t.search.findInGoogleBrowser.replace('{query}', usedT9Query || localQuery.trim())}</span>
                 </button>
               </div>
             </div>
@@ -339,8 +339,8 @@ export const Header: React.FC = () => {
         <button
           type="button"
           onClick={handleToggleTheme}
-          aria-label={resolvedIsLight ? 'Включить тёмную тему' : 'Включить светлую тему'}
-          title={resolvedIsLight ? 'Тёмная тема' : 'Светлая тема'}
+          aria-label={resolvedIsLight ? t.header.enableDarkTheme : t.header.enableLightTheme}
+          title={resolvedIsLight ? t.header.darkTheme : t.header.lightTheme}
           className="p-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-zinc-300 hover:text-brand-orange cursor-pointer"
         >
           {resolvedIsLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
@@ -382,7 +382,7 @@ export const Header: React.FC = () => {
           onClick={() => setPage('settings')}
           className="pl-2.5 border-l border-white/[0.08] cursor-pointer group rounded-full"
           title="HDREZKA Desktop"
-          aria-label="Профиль и настройки"
+          aria-label={t.header.profileAndSettings}
         >
           <span className="logo-ring rounded-full block transition-transform duration-300 group-hover:scale-105">
             <img

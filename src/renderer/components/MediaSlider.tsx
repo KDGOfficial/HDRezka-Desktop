@@ -64,7 +64,7 @@ export const MediaSlider: React.FC<MediaSliderProps> = ({
             type="button"
             onClick={() => scroll('left')}
             className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-300 hover:text-white cursor-pointer active:scale-95"
-            aria-label="Прокрутить влево"
+            aria-label={t.common.scrollLeft}
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
@@ -72,7 +72,7 @@ export const MediaSlider: React.FC<MediaSliderProps> = ({
             type="button"
             onClick={() => scroll('right')}
             className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] border border-white/[0.08] text-zinc-300 hover:text-white cursor-pointer active:scale-95"
-            aria-label="Прокрутить вправо"
+            aria-label={t.common.scrollRight}
           >
             <ChevronRight className="w-4 h-4" />
           </button>

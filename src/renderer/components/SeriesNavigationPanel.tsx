@@ -71,11 +71,15 @@ export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
   trackClassName = '',
   wrapperClassName = '',
   compact = false,
-  prevLabel = 'Прокрутить сезоны влево',
-  nextLabel = 'Прокрутить сезоны вправо',
-  sliderLabel = 'Перемотка сезонов',
+  prevLabel,
+  nextLabel,
+  sliderLabel,
   children,
 }) => {
+  const { t } = useTranslation();
+  const resolvedPrevLabel = prevLabel ?? t.details.scrollSeasonsLeft;
+  const resolvedNextLabel = nextLabel ?? t.details.scrollSeasonsRight;
+  const resolvedSliderLabel = sliderLabel ?? t.details.scrollSeasonsSlider;
   const trackRef = useRef<HTMLDivElement>(null);
   const prevBtnRef = useRef<HTMLButtonElement>(null);
   const nextBtnRef = useRef<HTMLButtonElement>(null);
@@ -191,7 +195,7 @@ export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
             type="button"
             disabled={!canScrollLeft}
             onClick={() => stepScroll(-1)}
-            aria-label={prevLabel}
+            aria-label={resolvedPrevLabel}
             className="w-6 h-6 min-w-[24px] min-h-[24px] rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-default cursor-pointer active:scale-95 flex-shrink-0"
           >
             <ChevronLeft className="w-3.5 h-3.5" aria-hidden="true" />
@@ -204,7 +208,7 @@ export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
             step={1}
             value={clampedLeft}
             onChange={handleRangeChange}
-            aria-label={sliderLabel}
+            aria-label={resolvedSliderLabel}
             aria-valuetext={`${progressPct}%`}
             style={
               {
@@ -221,7 +225,7 @@ export const SeasonScrollTrack: React.FC<SeasonScrollTrackProps> = ({
             type="button"
             disabled={!canScrollRight}
             onClick={() => stepScroll(1)}
-            aria-label={nextLabel}
+            aria-label={resolvedNextLabel}
             className="w-6 h-6 min-w-[24px] min-h-[24px] rounded-full flex items-center justify-center bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-default cursor-pointer active:scale-95 flex-shrink-0"
           >
             <ChevronRight className="w-3.5 h-3.5" aria-hidden="true" />
@@ -388,15 +392,15 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
                   type="text"
                   value={translatorQuery}
                   onChange={(e) => setTranslatorQuery(e.target.value)}
-                  placeholder="Поиск озвучки..."
-                  aria-label="Поиск озвучки"
+                  placeholder={t.details.searchVoiceoverPlaceholder}
+                  aria-label={t.details.searchVoiceoverLabel}
                   className="w-full pl-8 pr-8 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.1] focus:border-brand-orange/60 text-xs text-white placeholder:text-zinc-500"
                 />
                 {translatorQuery && (
                   <button
                     type="button"
                     onClick={() => setTranslatorQuery('')}
-                    aria-label="Очистить поиск озвучки"
+                    aria-label={t.details.clearVoiceoverSearch}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
                   >
                     <X className="w-3.5 h-3.5" />
@@ -428,7 +432,7 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
               );
             })}
             {filteredTranslators.length === 0 && (
-              <div className="text-xs text-zinc-500 py-2">Озвучка не найдена</div>
+              <div className="text-xs text-zinc-500 py-2">{t.details.voiceoverNotFound}</div>
             )}
           </div>
         </div>
@@ -450,18 +454,18 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
               </h2>
               <span className="px-2.5 py-0.5 rounded-full bg-white/[0.08] text-[11px] font-mono font-bold text-zinc-300 tabular-nums">
                 {seasons.length > 1
-                  ? `${seasons.length} сез. · ${totalEpisodesAllSeasons} сер.`
-                  : `${rawEpisodes.length} сер.`}
+                  ? `${seasons.length} ${t.details.seasonCountShort} · ${totalEpisodesAllSeasons} ${t.details.episodeCountShort}`
+                  : `${rawEpisodes.length} ${t.details.episodeCountShort}`}
               </span>
               {lastWatchedSeason && lastWatchedEpisode && (
                 <button
                   type="button"
                   onClick={() => onSelectEpisode(lastWatchedSeason, lastWatchedEpisode)}
                   className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-brand-orange/15 hover:bg-brand-orange/25 border border-brand-orange/40 text-brand-orange text-[11px] font-extrabold cursor-pointer tabular-nums"
-                  title="Продолжить с последней просмотренной серии"
+                  title={t.details.resumeLastEpisode}
                 >
                   <History className="w-3 h-3" aria-hidden="true" />
-                  <span>С{lastWatchedSeason} · Э{lastWatchedEpisode}</span>
+                  <span>{t.details.seasonShort}{lastWatchedSeason} · {t.details.episodeShort}{lastWatchedEpisode}</span>
                 </button>
               )}
             </div>
@@ -469,7 +473,7 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
             <div className="flex items-center flex-wrap gap-2">
               {seasons.length > 8 && (
                 <select
-                  aria-label="Быстрый выбор сезона"
+                  aria-label={t.details.quickSelectSeason}
                   value={selectedSeasonId}
                   onChange={(e) => onSeasonChange(Number(e.target.value))}
                   className="px-3 py-1.5 rounded-full bg-[#1D141A] border border-white/[0.12] text-xs font-bold text-zinc-200 cursor-pointer"
@@ -489,15 +493,15 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
                     type="text"
                     value={episodeQuery}
                     onChange={(e) => setEpisodeQuery(e.target.value)}
-                    placeholder="№ серии..."
-                    aria-label="Быстрый переход к серии"
+                    placeholder={t.details.episodeNumberPlaceholder}
+                    aria-label={t.details.quickJumpEpisode}
                     className="w-36 pl-8 pr-7 py-1.5 rounded-full bg-white/[0.05] border border-white/[0.1] focus:border-brand-orange/60 text-xs text-white placeholder:text-zinc-500 tabular-nums"
                   />
                   {episodeQuery && (
                     <button
                       type="button"
                       onClick={() => setEpisodeQuery('')}
-                      aria-label="Очистить фильтр серий"
+                      aria-label={t.details.clearEpisodeFilter}
                       className="absolute right-2.5 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
@@ -511,7 +515,7 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
                   type="button"
                   onClick={() => setReverseOrder((v) => !v)}
                   aria-pressed={reverseOrder}
-                  title={reverseOrder ? 'Сначала новые серии' : 'Сначала первые серии'}
+                  title={reverseOrder ? t.details.sortNewestFirst : t.details.sortOldestFirst}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border cursor-pointer tabular-nums ${
                     reverseOrder
                       ? 'bg-brand-orange/15 border-brand-orange/45 text-brand-orange'
@@ -519,7 +523,7 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
                   }`}
                 >
                   <ArrowUpDown className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>{reverseOrder ? 'Новые ↓' : '1 → N'}</span>
+                  <span>{reverseOrder ? t.details.sortNewestShort : '1 → N'}</span>
                 </button>
               )}
             </div>
@@ -575,12 +579,12 @@ export const SeriesNavigationPanel: React.FC<SeriesNavigationPanelProps> = ({
           {/* Episode Range Chunk Tabs with horizontal scroll slider & prev/next controls */}
           {chunks.length > 1 && !episodeQuery.trim() && (
             <SeasonScrollTrack
-              ariaLabel="Диапазоны серий"
+              ariaLabel={t.details.episodeRanges}
               activeKey={selectedChunkIdx}
               itemCount={chunks.length}
-              prevLabel="Прокрутить серии влево"
-              nextLabel="Прокрутить серии вправо"
-              sliderLabel="Перемотка серий"
+              prevLabel={t.details.scrollEpisodesLeft}
+              nextLabel={t.details.scrollEpisodesRight}
+              sliderLabel={t.details.scrollEpisodesSlider}
               onKeyDown={(e) =>
                 handleTabListKeyDown(
                   e,

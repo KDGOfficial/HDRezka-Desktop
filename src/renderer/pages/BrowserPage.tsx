@@ -193,7 +193,7 @@ export const BrowserPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [canGoBack, setCanGoBack] = useState<boolean>(false);
   const [canGoForward, setCanGoForward] = useState<boolean>(false);
-  const [pageTitle, setPageTitle] = useState<string>('Кино-браузер');
+  const [pageTitle, setPageTitle] = useState<string>('');
 
   // 1:1 Cinema Player states (matching VideoPlayer.tsx)
   const [cinemaMode, setCinemaMode] = useState<boolean>(false);
@@ -419,7 +419,7 @@ export const BrowserPage: React.FC = () => {
         }
       } catch {}
     }
-    showToast(next ? '🛡️ AdBlock включён' : 'AdBlock отключён');
+    showToast(next ? t.browser.adBlockOnToast : t.browser.adBlockOffToast);
   };
 
   const toggleUiLock = () => {
@@ -504,9 +504,9 @@ export const BrowserPage: React.FC = () => {
     const order: BrowserVideoFit[] = ['contain', '16:10', '21:9', '4:3', 'cover', 'fill'];
     const labels: Record<BrowserVideoFit, string> = {
       contain: t.player.scaleOriginal,
-      '16:10': 'Масштаб: 16:10',
-      '21:9': 'Масштаб: 21:9 (Ultrawide)',
-      '4:3': 'Масштаб: 4:3',
+      '16:10': `${t.player.scalePrefix}: 16:10`,
+      '21:9': `${t.player.scalePrefix}: 21:9 (Ultrawide)`,
+      '4:3': `${t.player.scalePrefix}: 4:3`,
       cover: t.player.scaleCover,
       fill: t.player.scaleFill,
     };
@@ -600,7 +600,7 @@ export const BrowserPage: React.FC = () => {
 
   const playable = isPlayableMediaPage(currentUrl);
   const fitBadgeLabel =
-    videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? 'Кадр' : videoFit === 'fill' ? 'Растянуть' : videoFit;
+    videoFit === 'contain' ? '16:9' : videoFit === 'cover' ? t.player.fitCoverShort : videoFit === 'fill' ? t.player.fitFillShort : videoFit;
 
   return (
     <div
@@ -630,9 +630,9 @@ export const BrowserPage: React.FC = () => {
                   type="button"
                   onClick={() => canGoBack && webviewRef.current?.goBack?.()}
                   disabled={!canGoBack}
-                  aria-label="Назад"
+                  aria-label={t.browser.back}
                   className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] disabled:opacity-35 text-zinc-200 hover:text-white cursor-pointer"
-                  title="Назад"
+                  title={t.browser.back}
                 >
                   <ArrowLeft className="w-4 h-4" />
                 </button>
@@ -640,27 +640,27 @@ export const BrowserPage: React.FC = () => {
                   type="button"
                   onClick={() => canGoForward && webviewRef.current?.goForward?.()}
                   disabled={!canGoForward}
-                  aria-label="Вперёд"
+                  aria-label={t.browser.forward}
                   className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] disabled:opacity-35 text-zinc-200 hover:text-white cursor-pointer"
-                  title="Вперёд"
+                  title={t.browser.forward}
                 >
                   <ArrowRight className="w-4 h-4" />
                 </button>
                 <button
                   type="button"
                   onClick={() => (loading ? webviewRef.current?.stop?.() : webviewRef.current?.reload?.())}
-                  aria-label={loading ? 'Остановить' : 'Обновить'}
+                  aria-label={loading ? t.browser.stop : t.browser.reload}
                   className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
-                  title={loading ? 'Остановить' : 'Обновить'}
+                  title={loading ? t.browser.stop : t.browser.reload}
                 >
                   {loading ? <X className="w-4 h-4 text-brand-crimson" /> : <RotateCw className="w-4 h-4" />}
                 </button>
                 <button
                   type="button"
                   onClick={() => navigateTo('https://kinobase.org/')}
-                  aria-label="Домой"
+                  aria-label={t.browser.home}
                   className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-200 hover:text-white cursor-pointer"
-                  title="Домой"
+                  title={t.browser.home}
                 >
                   <Home className="w-4 h-4" />
                 </button>
@@ -675,14 +675,14 @@ export const BrowserPage: React.FC = () => {
                     value={addressInput}
                     onChange={(e) => setAddressInput(e.target.value)}
                     onFocus={(e) => e.target.select()}
-                    aria-label="Адрес или поисковый запрос Google"
-                    placeholder="Введите название фильма (поиск Google) или URL сайта..."
+                    aria-label={t.browser.addressAriaLabel}
+                    placeholder={t.browser.addressPlaceholder}
                     className="bg-transparent border-none outline-none text-xs text-white w-full placeholder-zinc-500 font-medium"
                   />
                   {addressInput && (
                     <button
                       type="button"
-                      aria-label="Очистить адрес"
+                      aria-label={t.browser.clearAddress}
                       onClick={() => setAddressInput('')}
                       className="p-1 text-zinc-500 hover:text-white cursor-pointer"
                     >
@@ -694,7 +694,7 @@ export const BrowserPage: React.FC = () => {
                     className="ml-1.5 px-3.5 py-1 rounded-full btn-ember text-white text-[11px] font-extrabold flex items-center gap-1 cursor-pointer"
                   >
                     <Search className="w-3 h-3" />
-                    <span>Перейти</span>
+                    <span>{t.browser.go}</span>
                   </button>
                 </div>
               </form>
@@ -704,7 +704,7 @@ export const BrowserPage: React.FC = () => {
                 type="button"
                 onClick={toggleAdBlock}
                 aria-pressed={adBlockEnabled}
-                title={adBlockEnabled ? 'AdBlock активен (нажмите, чтобы отключить)' : 'Включить AdBlock'}
+                title={adBlockEnabled ? t.browser.adBlockOnTooltip : t.browser.adBlockOffTooltip}
                 className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold border cursor-pointer flex-shrink-0 ${
                   adBlockEnabled
                     ? 'bg-emerald-500/15 border-emerald-400/40 text-emerald-300 hover:bg-emerald-500/25'
@@ -724,19 +724,19 @@ export const BrowserPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCinemaMode(true)}
-                title="Режим киноплеера 1:1 (масштаб, закрепление, скрытие UI)"
+                title={t.browser.cinemaModeTooltip}
                 className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.14] border border-white/[0.1] text-xs font-bold text-zinc-100 hover:text-white cursor-pointer flex-shrink-0"
               >
                 <MonitorPlay className="w-3.5 h-3.5 text-brand-orange" />
-                <span className="hidden lg:inline">Киноплеер</span>
+                <span className="hidden lg:inline">{t.browser.cinemaModeLabel}</span>
               </button>
 
               {/* 1-Click Fullscreen Cinema Mode */}
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                aria-label="Открыть плеер на весь экран"
-                title={`Открыть на весь экран (${formatShortcutLabel(hotkeys.fullscreen)})`}
+                aria-label={t.browser.openFullscreenLabel}
+                title={`${t.browser.openFullscreenTooltip} (${formatShortcutLabel(hotkeys.fullscreen)})`}
                 className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-300 hover:text-white border border-white/[0.08] cursor-pointer flex-shrink-0"
               >
                 <Maximize className="w-4 h-4" />
@@ -749,16 +749,16 @@ export const BrowserPage: React.FC = () => {
                   className="flex items-center gap-1.5 px-4 py-2 rounded-full btn-ember text-white text-xs font-display font-black uppercase tracking-wider active:scale-95 flex-shrink-0 cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />
-                  <span>Открыть в плеере</span>
+                  <span>{t.browser.openInPlayer}</span>
                 </button>
               )}
 
               <button
                 type="button"
                 onClick={() => window.api?.openExternalUrl?.(currentUrl)}
-                aria-label="Открыть в системном браузере"
+                aria-label={t.browser.openInSystemBrowser}
                 className="p-2 rounded-full bg-white/[0.05] hover:bg-white/[0.12] text-zinc-300 hover:text-white border border-white/[0.08] cursor-pointer flex-shrink-0"
-                title="Открыть в системном браузере"
+                title={t.browser.openInSystemBrowser}
               >
                 <ExternalLink className="w-4 h-4" />
               </button>
@@ -769,7 +769,7 @@ export const BrowserPage: React.FC = () => {
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-bold text-zinc-500 flex items-center gap-1 mr-1 flex-shrink-0">
                   <Globe className="w-3.5 h-3.5 text-brand-orange" />
-                  <span>Источники:</span>
+                  <span>{t.browser.sourcesLabel}</span>
                 </span>
                 {PORTALS.map((portal) => {
                   const target = activeSearchTerm ? portal.search(activeSearchTerm) : portal.base;
@@ -791,7 +791,7 @@ export const BrowserPage: React.FC = () => {
                 })}
               </div>
               <span className="text-[11px] text-zinc-500 truncate max-w-[220px] hidden xl:inline">
-                {loading ? 'Загрузка страницы...' : pageTitle}
+                {loading ? t.browser.loadingPage : (pageTitle || t.nav.browser)}
               </span>
             </div>
           </div>
@@ -845,11 +845,11 @@ export const BrowserPage: React.FC = () => {
               </button>
               <div className="min-w-0">
                 <h2 className="player-title font-display text-base font-black text-white leading-tight truncate">
-                  {pageTitle || 'Кино-браузер'}
+                  {pageTitle || t.nav.browser}
                 </h2>
                 <div className="player-subtitle-meta flex items-center gap-2 text-xs text-zinc-300 mt-0.5">
                   <span className="text-emerald-400 font-semibold">
-                    {adBlockEnabled ? `AdBlock · ${blockedCount}` : 'AdBlock выкл.'}
+                    {adBlockEnabled ? `AdBlock · ${blockedCount}` : t.browser.adBlockOffStatus}
                   </span>
                 </div>
               </div>
@@ -937,9 +937,9 @@ export const BrowserPage: React.FC = () => {
               <button
                 type="button"
                 onClick={toggleFullscreen}
-                aria-label="Полный экран"
+                aria-label={t.player.fullscreen}
                 className="player-ctrl-btn p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-zinc-200 hover:text-white backdrop-blur-xl cursor-pointer"
-                title={`Полный экран (${formatShortcutLabel(hotkeys.fullscreen)})`}
+                title={`${t.player.fullscreen} (${formatShortcutLabel(hotkeys.fullscreen)})`}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
               </button>
@@ -951,8 +951,8 @@ export const BrowserPage: React.FC = () => {
             <button
               type="button"
               onClick={toggleUiLock}
-              aria-label={`Показать интерфейс (${formatShortcutLabel(hotkeys.toggleUi)})`}
-              title={`Показать интерфейс (${formatShortcutLabel(hotkeys.toggleUi)})`}
+              aria-label={`${t.player.showUi} (${formatShortcutLabel(hotkeys.toggleUi)})`}
+              title={`${t.player.showUi} (${formatShortcutLabel(hotkeys.toggleUi)})`}
               className="absolute top-3 right-3 z-50 p-2 rounded-full bg-black/50 hover:bg-black/85 text-white/40 hover:text-white border border-white/15 opacity-20 hover:opacity-100 transition-opacity cursor-pointer no-drag"
             >
               <Eye className="w-4 h-4" />

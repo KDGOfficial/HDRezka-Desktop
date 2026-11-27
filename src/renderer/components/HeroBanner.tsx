@@ -236,8 +236,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
 
           {/* Synopsis */}
           <p className="text-xs sm:text-sm text-zinc-300/95 line-clamp-3 mb-7 max-w-xl font-medium leading-relaxed drop-shadow">
-            {activeItem.info ||
-              'Смотрите в максимальном качестве Full HD и 4K без рекламы — с выбором лучших студий озвучки и мгновенным стартом.'}
+            {activeItem.info || t.home.defaultHeroDesc}
           </p>
 
           {/* Primary Cinema CTA Bar */}
