@@ -27,12 +27,24 @@ export interface NavHistoryEntry {
   scrollTop?: number;
 }
 
+function getInitialSidebarCollapsed(): boolean {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const saved = localStorage.getItem('hdrezka_rail_collapsed');
+      if (saved === '1') return true;
+      if (saved === '0') return false;
+    }
+  } catch {}
+  return typeof window !== 'undefined' && window.innerWidth < 960;
+}
+
 interface MediaState {
   currentPage: AppPage;
   lastContentPage: Exclude<AppPage, 'details'>;
   navHistory: NavHistoryEntry[];
   navIndex: number;
   pendingScrollTop: number | null;
+  sidebarCollapsed: boolean;
   selectedMediaId: string | null;
   selectedMediaDetails: MediaDetails | null;
   searchQuery: string;
@@ -47,6 +59,8 @@ interface MediaState {
   goForward: () => boolean;
   saveCurrentScroll: (scrollTop: number) => void;
   clearPendingScroll: () => void;
+  setSidebarCollapsed: (collapsed: boolean, persist?: boolean) => void;
+  toggleSidebar: () => void;
   openDetails: (mediaId: string, preloaded?: Partial<MediaItem | MediaDetails>) => void;
   openBrowser: (queryOrUrl?: string) => void;
   setSelectedMediaDetails: (details: MediaDetails | null) => void;
@@ -66,6 +80,7 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   navHistory: [{ page: 'home', scrollTop: 0 }],
   navIndex: 0,
   pendingScrollTop: null,
+  sidebarCollapsed: getInitialSidebarCollapsed(),
   selectedMediaId: null,
   selectedMediaDetails: null,
   searchQuery: '',
@@ -84,6 +99,22 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   },
 
   clearPendingScroll: () => set({ pendingScrollTop: null }),
+
+  setSidebarCollapsed: (collapsed, persist = false) => {
+    if (persist) {
+      try {
+        if (typeof localStorage !== 'undefined') {
+          localStorage.setItem('hdrezka_rail_collapsed', collapsed ? '1' : '0');
+        }
+      } catch {}
+    }
+    set({ sidebarCollapsed: collapsed });
+  },
+
+  toggleSidebar: () => {
+    const next = !get().sidebarCollapsed;
+    get().setSidebarCollapsed(next, true);
+  },
 
   setPage: (page) => {
     const state = get();

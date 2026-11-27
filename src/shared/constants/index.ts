@@ -1,7 +1,7 @@
 import { UserSettings, HotkeysConfig, SubtitleStyle, UpdateTier } from '../types';
 
 export const APP_NAME = 'HDREZKA Desktop';
-export const APP_VERSION = '0.2.4';
+export const APP_VERSION = '0.2.5';
 export const GITHUB_RELEASES_LATEST_URL = 'https://github.com/KDGOfficial/HDRezka-Desktop/releases/latest';
 export const TELEGRAM_CHANNEL_URL = 'https://t.me/HDRezkaPC';
 export const AUTHOR_YOUTUBE_URL = 'https://www.youtube.com/@KanalDobrogoGamera';

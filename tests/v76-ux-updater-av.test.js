@@ -99,8 +99,8 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.2.4 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.2.4');
+test('v0.2.5 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.2.5');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -364,4 +364,23 @@ test('VideoPlayer guards drag-region mouseleave flicker, fades OSD cleanly, and 
   assert.ok(resumeLineMatch, 'player-resume-pill element must exist in VideoPlayer.tsx');
   assert.match(resumeLineMatch[0], /\banimate-fadeIn\b/);
   assert.doesNotMatch(resumeLineMatch[0], /\banimate-fade-in\b/);
+});
+
+test('Sidebar toggle is anchored in top-left TitleBar slot with Ctrl+B and shared media store state', () => {
+  const titleBarSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/TitleBar.tsx'), 'utf8');
+  const sidebarSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/Sidebar.tsx'), 'utf8');
+  const mediaStoreSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/stores/useMediaStore.ts'), 'utf8');
+
+  assert.match(titleBarSrc, /sidebar-toggle-btn/);
+  assert.match(titleBarSrc, /toggleSidebar/);
+  assert.match(titleBarSrc, /aria-expanded=\{!sidebarCollapsed\}/);
+  assert.match(titleBarSrc, /PanelLeftOpen/);
+  assert.match(titleBarSrc, /PanelLeftClose/);
+  assert.match(titleBarSrc, /KeyB/);
+
+  assert.match(sidebarSrc, /sidebarCollapsed/);
+  assert.doesNotMatch(sidebarSrc, /PanelLeftClose|PanelLeftOpen/);
+
+  assert.match(mediaStoreSrc, /sidebarCollapsed:/);
+  assert.match(mediaStoreSrc, /toggleSidebar:/);
 });

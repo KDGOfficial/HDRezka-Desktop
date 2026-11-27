@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Minus, Square, Copy, X, Sparkles, Pin } from 'lucide-react';
+import { Minus, Square, Copy, X, Sparkles, Pin, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { useSettingsStore } from '../stores/useSettingsStore';
 import { useMediaStore } from '../stores/useMediaStore';
+import { usePlayerStore } from '../stores/usePlayerStore';
 import { useTranslation } from '../i18n';
 import appLogo from '../assets/logo.png';
 
@@ -11,7 +12,7 @@ export const TitleBar: React.FC = () => {
   const [zoomFactor, setZoomFactor] = useState(100);
   const { settings, mirrorsStatus, isFindingMirrors, isCheckingMirrors, updateInfo, setUpdateModalOpen } = useSettingsStore();
   const isSearchingMirrors = isFindingMirrors || isCheckingMirrors;
-  const { setPage } = useMediaStore();
+  const { setPage, sidebarCollapsed, toggleSidebar } = useMediaStore();
   const { t } = useTranslation();
 
   useEffect(() => {
@@ -52,6 +53,17 @@ export const TitleBar: React.FC = () => {
     };
     const handleKey = (e: KeyboardEvent) => {
       if (document.documentElement.dataset.recordingShortcut === 'true') return;
+      if (e.ctrlKey && !e.altKey && !e.shiftKey && e.code === 'KeyB' && !usePlayerStore.getState().isOpen) {
+        const activeEl = document.activeElement as HTMLElement | null;
+        const isEditing =
+          Boolean(activeEl) &&
+          (activeEl!.tagName === 'INPUT' || activeEl!.tagName === 'TEXTAREA' || activeEl!.isContentEditable);
+        if (!isEditing) {
+          e.preventDefault();
+          useMediaStore.getState().toggleSidebar();
+          return;
+        }
+      }
       if (!window.api?.getZoomFactor || !window.api?.setZoomFactor) return;
       if (e.ctrlKey && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
@@ -114,8 +126,19 @@ export const TitleBar: React.FC = () => {
         style={{ background: 'linear-gradient(90deg, transparent 5%, #FF124F 35%, #FF7A00 65%, transparent 95%)' }}
       />
 
-      {/* Left: Brand Signature matching logo.png */}
+      {/* Left: Stationary Sidebar Toggle & Brand Signature matching logo.png */}
       <div className="flex items-center gap-3 no-drag">
+        <button
+          type="button"
+          onClick={toggleSidebar}
+          aria-label={sidebarCollapsed ? t.nav.expandSidebar : t.nav.collapseSidebar}
+          aria-expanded={!sidebarCollapsed}
+          title={`${sidebarCollapsed ? t.nav.expandSidebarTooltip : t.nav.collapseSidebarTooltip} (Ctrl+B)`}
+          className="sidebar-toggle-btn p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-white/[0.08] active:scale-95 cursor-pointer flex-shrink-0"
+        >
+          {sidebarCollapsed ? <PanelLeftOpen className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
+        </button>
+
         <button
           type="button"
           onClick={() => setPage('home')}

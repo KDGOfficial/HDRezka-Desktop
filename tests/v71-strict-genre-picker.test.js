@@ -429,8 +429,8 @@ test('Anime item parsers populate genres for genre-aware filtering', () => {
   assert.deepEqual(yummy[0].genres, ['Детектив', 'Триллер']);
 });
 
-test('v0.2.4 translations, WhatToWatchPage guards, and Light Mode contrast are complete', () => {
-  assert.equal(constants.APP_VERSION, '0.2.4');
+test('v0.2.5 translations, WhatToWatchPage guards, and Light Mode contrast are complete', () => {
+  assert.equal(constants.APP_VERSION, '0.2.5');
   for (const loc of ['ru', 'uk', 'en']) {
     const w = translations[loc].whatToWatch;
     assert.ok(w.genresLabel);

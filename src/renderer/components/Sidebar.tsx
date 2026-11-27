@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import {
   Home,
   Compass,
@@ -12,8 +12,6 @@ import {
   Search,
   Settings,
   Globe,
-  PanelLeftClose,
-  PanelLeftOpen,
   Wand2,
   Flame,
 } from 'lucide-react';
@@ -49,31 +47,17 @@ const NAV_ITEMS: NavItem[] = [
 ];
 
 export const Sidebar: React.FC = () => {
-  const { currentPage, setPage } = useMediaStore();
+  const { currentPage, setPage, sidebarCollapsed: collapsed, setSidebarCollapsed } = useMediaStore();
   const { t, language, setLanguage } = useTranslation();
-  const [collapsed, setCollapsed] = useState<boolean>(() => {
-    const saved = localStorage.getItem('hdrezka_rail_collapsed');
-    if (saved === '1') return true;
-    if (saved === '0') return false;
-    return typeof window !== 'undefined' && window.innerWidth < 960;
-  });
 
   useEffect(() => {
     const onResize = () => {
       if (localStorage.getItem('hdrezka_rail_collapsed') !== null) return;
-      setCollapsed(window.innerWidth < 960);
+      setSidebarCollapsed(window.innerWidth < 960);
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  const toggleCollapsed = () => {
-    setCollapsed((prev) => {
-      const next = !prev;
-      localStorage.setItem('hdrezka_rail_collapsed', next ? '1' : '0');
-      return next;
-    });
-  };
+  }, [setSidebarCollapsed]);
 
   const languages: Array<{ code: Locale; label: string }> = [
     { code: 'ru', label: 'RU' },
@@ -130,7 +114,7 @@ export const Sidebar: React.FC = () => {
       } h-full cinema-rail flex flex-col justify-between py-4 select-none flex-shrink-0 transition-[width] duration-200`}
     >
       {/* Top Brand Emblem (Logo Circle + Neon Ring) */}
-      <div className={`pb-4 mb-3 border-b border-white/[0.06] flex items-center ${collapsed ? 'justify-center' : 'justify-between'}`}>
+      <div className={`pb-4 mb-3 border-b border-white/[0.06] flex items-center ${collapsed ? 'justify-center' : 'justify-start'}`}>
         <button
           type="button"
           onClick={() => setPage('home')}
@@ -164,18 +148,6 @@ export const Sidebar: React.FC = () => {
             </div>
           )}
         </button>
-
-        {!collapsed && (
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label={t.nav.collapseSidebar}
-            title={t.nav.collapseSidebarTooltip}
-            className="p-1.5 rounded-xl text-zinc-500 hover:text-white hover:bg-white/[0.06] cursor-pointer flex-shrink-0"
-          >
-            <PanelLeftClose className="w-4 h-4" />
-          </button>
-        )}
       </div>
 
       {/* Navigation */}
@@ -185,9 +157,9 @@ export const Sidebar: React.FC = () => {
         {renderNavSection('system', t.nav.system)}
       </nav>
 
-      {/* Footer: Language Switcher & Expand Toggle (Telegram moved discreetly to Settings → About) */}
-      <div className="pt-3 border-t border-white/[0.06] space-y-2.5">
-        {!collapsed ? (
+      {/* Footer: Language Switcher (Telegram moved discreetly to Settings → About) */}
+      {!collapsed && (
+        <div className="pt-3 border-t border-white/[0.06] space-y-2.5">
           <div className="flex items-center justify-between px-1">
             <span className="text-[11px] font-semibold text-zinc-400 flex items-center gap-1.5">
               <Globe className="w-3.5 h-3.5 text-zinc-500" />
@@ -211,18 +183,8 @@ export const Sidebar: React.FC = () => {
               ))}
             </div>
           </div>
-        ) : (
-          <button
-            type="button"
-            onClick={toggleCollapsed}
-            aria-label={t.nav.expandSidebar}
-            title={t.nav.expandSidebarTooltip}
-            className="w-full flex items-center justify-center p-2.5 rounded-2xl bg-white/[0.04] hover:bg-white/[0.09] text-zinc-400 hover:text-white cursor-pointer"
-          >
-            <PanelLeftOpen className="w-4 h-4" />
-          </button>
-        )}
-      </div>
+        </div>
+      )}
     </aside>
   );
 };
