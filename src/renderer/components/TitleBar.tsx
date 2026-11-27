@@ -10,7 +10,7 @@ export const TitleBar: React.FC = () => {
   const [isMax, setIsMax] = useState(false);
   const [isPinned, setIsPinned] = useState(false);
   const [zoomFactor, setZoomFactor] = useState(100);
-  const { settings, mirrorsStatus, isFindingMirrors, isCheckingMirrors, updateInfo, setUpdateModalOpen } = useSettingsStore();
+  const { settings, mirrorsStatus, isFindingMirrors, isCheckingMirrors, updateInfo, updateProgress, setUpdateModalOpen } = useSettingsStore();
   const isSearchingMirrors = isFindingMirrors || isCheckingMirrors;
   const { setPage, sidebarCollapsed, toggleSidebar } = useMediaStore();
   const { t } = useTranslation();
@@ -197,16 +197,31 @@ export const TitleBar: React.FC = () => {
           )}
         </button>
 
-        {/* Update available mini-pill */}
-        {updateInfo?.hasUpdate && updateInfo.updateTier !== 'patch' && (
-          <button
-            type="button"
-            onClick={() => setUpdateModalOpen(true)}
-            className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full btn-ember text-[10px] font-extrabold cursor-pointer"
-          >
-            <Sparkles className="w-3 h-3 text-[#FFE29A] animate-pulse" aria-hidden="true" />
-            <span>v{updateInfo.latestVersion}</span>
-          </button>
+        {/* Update available mini-pill (ember when active, subtle reminder when user opted out) */}
+        {updateInfo?.hasUpdate && (
+          settings.app?.checkUpdatesOnStart ? (
+            <button
+              type="button"
+              onClick={() => setUpdateModalOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full btn-ember text-[10px] font-extrabold cursor-pointer"
+              title={t.header.updateAvailable}
+            >
+              <Sparkles className="w-3 h-3 text-[#FFE29A] animate-pulse" aria-hidden="true" />
+              <span>
+                v{updateInfo.latestVersion}
+                {updateProgress?.status === 'downloading' ? ` · ${updateProgress.percent ?? 0}%` : ''}
+              </span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setUpdateModalOpen(true)}
+              className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/[0.12] text-zinc-300 hover:text-white text-[10px] font-semibold cursor-pointer"
+              title={t.header.updateQuietTooltip.replace('{version}', updateInfo.latestVersion)}
+            >
+              <span>↑ v{updateInfo.latestVersion}</span>
+            </button>
+          )
         )}
       </div>
 

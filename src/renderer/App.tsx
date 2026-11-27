@@ -43,6 +43,7 @@ export const App: React.FC = () => {
     settingsLoaded,
     loadSettings,
     updateInfo,
+    updateProgress,
     updateScheduledOnExit,
     isUpdateModalOpen,
     setUpdateModalOpen,
@@ -175,11 +176,10 @@ export const App: React.FC = () => {
       useSettingsStore.getState().findOnlineMirrors();
     }, 5 * 60 * 1000);
 
-    // Check for updates periodically every 30 minutes only if user has update reminders enabled
+    // Check for updates periodically every 30 minutes (downloads/modals suppressed if user opted out)
     const interval = setInterval(() => {
       const st = useSettingsStore.getState();
-      if (!st.settings.app?.checkUpdatesOnStart) return;
-      st.runAutoUpdateCheck().catch(() => {});
+      st.runAutoUpdateCheck('periodic', !usePlayerStore.getState().isOpen).catch(() => {});
     }, 30 * 60 * 1000);
     return () => {
       clearInterval(mirrorInterval);
@@ -228,26 +228,47 @@ export const App: React.FC = () => {
       <TitleBar />
 
       {/* Global Update Notification Strip */}
-      {updateInfo?.hasUpdate && updateInfo.updateTier !== 'patch' && !isUpdateModalOpen && (
-        <div className="btn-ember px-6 py-2 flex items-center justify-between text-xs font-semibold z-30 select-none border-b border-white/15">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <Sparkles className="w-4 h-4 text-[#FFE29A] animate-pulse flex-shrink-0" aria-hidden="true" />
-            <span className="truncate">
-              {t.header.updateBanner.replace('{version}', updateInfo.latestVersion)}
-              {updateScheduledOnExit ? t.updateModal.bannerOnExitSuffix : ''}
-            </span>
+      {updateInfo?.hasUpdate && settings.app?.checkUpdatesOnStart && !isUpdateModalOpen && (() => {
+        const isDownloading = updateProgress?.status === 'downloading';
+        const isReady = updateProgress?.status === 'ready';
+        const pct = Math.min(100, Math.max(0, updateProgress?.percent ?? 0));
+        const bannerText = isDownloading
+          ? t.header.updateDownloadingBanner
+              .replace('{version}', updateInfo.latestVersion)
+              .replace('{percent}', String(pct))
+          : isReady
+            ? `${t.header.updateReadyBanner.replace('{version}', updateInfo.latestVersion)}${updateScheduledOnExit ? t.updateModal.bannerOnExitSuffix : ''}`
+            : t.header.updateBanner.replace('{version}', updateInfo.latestVersion);
+        const ctaLabel = isDownloading
+          ? t.header.updateDetails
+          : isReady
+            ? t.header.updateNow
+            : t.header.downloadUpdateBtn;
+
+        return (
+          <div className="btn-ember relative overflow-hidden px-6 py-2 flex items-center justify-between text-xs font-semibold z-30 select-none border-b border-white/15">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Sparkles className="w-4 h-4 text-[#FFE29A] animate-pulse flex-shrink-0" aria-hidden="true" />
+              <span className="truncate">{bannerText}</span>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0 ml-4">
+              <button
+                type="button"
+                onClick={() => setUpdateModalOpen(true)}
+                className="px-3.5 py-1 rounded-full bg-white text-[#140A0E] font-extrabold text-[11px] hover:bg-amber-50 transition-all shadow-md active:scale-95 cursor-pointer"
+              >
+                {ctaLabel}
+              </button>
+            </div>
+            {isDownloading && (
+              <div
+                className="absolute bottom-0 left-0 h-[2px] bg-white/80 transition-[width] duration-200 pointer-events-none"
+                style={{ width: `${pct}%` }}
+              />
+            )}
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-            <button
-              type="button"
-              onClick={() => setUpdateModalOpen(true)}
-              className="px-3.5 py-1 rounded-full bg-white text-[#140A0E] font-extrabold text-[11px] hover:bg-amber-50 transition-all shadow-md active:scale-95 cursor-pointer"
-            >
-              {t.header.updateNow}
-            </button>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Main Cinema Layout */}
       <div className="flex flex-1 overflow-hidden">

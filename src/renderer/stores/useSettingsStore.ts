@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { UserSettings, MirrorStatus, UpdateInfo, UpdateProgress, ContentType, UserInterestsProfile } from '../../shared/types';
-import { DEFAULT_USER_SETTINGS, ANIME_MIRROR_SEEDS, getUpdateTier } from '../../shared/constants';
+import { DEFAULT_USER_SETTINGS, ANIME_MIRROR_SEEDS } from '../../shared/constants';
 import { getTranslation } from '../i18n';
 import {
   InteractionKind,
@@ -23,7 +23,7 @@ interface SettingsState {
   updateProgress: UpdateProgress | null;
   isUpdateModalOpen: boolean;
   updateScheduledOnExit: boolean;
-  dismissedMajorVersion: string | null;
+  dismissedUpdateVersion: string | null;
 
   // Adaptive Interests Modal
   isInterestsModalOpen: boolean;
@@ -44,7 +44,7 @@ interface SettingsState {
   removeCustomMirror: (mirror: string) => Promise<void>;
 
   checkForUpdates: (notifyIfAvailable?: boolean) => Promise<UpdateInfo | null>;
-  runAutoUpdateCheck: () => Promise<void>;
+  runAutoUpdateCheck: (trigger?: 'startup' | 'periodic', canOpenModal?: boolean) => Promise<void>;
   downloadUpdate: (scheduleOnExitAfter?: boolean) => Promise<void>;
   installUpdate: () => Promise<void>;
   scheduleUpdateOnExit: (enabled?: boolean) => Promise<boolean>;
@@ -74,7 +74,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   updateProgress: null,
   isUpdateModalOpen: false,
   updateScheduledOnExit: false,
-  dismissedMajorVersion: null,
+  dismissedUpdateVersion: null,
   isInterestsModalOpen: false,
 
   loadSettings: async () => {
@@ -83,10 +83,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         const s = await window.api.getSettings();
         set({ settings: s, settingsLoaded: true });
 
-        // Check updates silently on start using SemVer-tiered policy
-        if (s.app?.checkUpdatesOnStart) {
-          get().runAutoUpdateCheck().catch(() => {});
-        }
+        // Check updates on start (downloads only when user has update reminders & auto-download enabled)
+        get().runAutoUpdateCheck('startup').catch(() => {});
       } catch (err) {
         console.error('Failed to load settings:', err);
         set({ settingsLoaded: true });
@@ -267,22 +265,23 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  runAutoUpdateCheck: async () => {
+  runAutoUpdateCheck: async (trigger = 'startup', canOpenModal = true) => {
     const appSettings = get().settings.app;
-    if (!appSettings?.checkUpdatesOnStart) return;
     const info = await get().checkForUpdates(false);
     if (!info?.hasUpdate) return;
-    const tier = info.updateTier ?? getUpdateTier(info.currentVersion, info.latestVersion);
-    if (tier === 'major') {
-      if (get().dismissedMajorVersion !== info.latestVersion) {
-        set({ isUpdateModalOpen: true });
-      }
-    } else if (tier === 'minor') {
-      if (appSettings.autoInstallMinorUpdates !== false && info.assetUrl) {
-        get().downloadUpdate(true);
-      }
+
+    // User opted out ("не хочу обновляться"): never auto-download or show modal;
+    // keep updateInfo populated only for gentle in-app reminder badges.
+    if (!appSettings?.checkUpdatesOnStart) return;
+
+    if (trigger === 'startup' && appSettings.autoInstallMinorUpdates !== false && info.assetUrl) {
+      get().downloadUpdate(true);
+      return;
     }
-    // Patch updates never interrupt: they wait quietly in Settings -> Updates
+
+    if (canOpenModal && get().dismissedUpdateVersion !== info.latestVersion) {
+      set({ isUpdateModalOpen: true });
+    }
   },
 
   downloadUpdate: async (scheduleOnExitAfter = false) => {
@@ -420,9 +419,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   setUpdateModalOpen: (open: boolean) => {
     if (!open) {
       const info = get().updateInfo;
-      const tier = info ? (info.updateTier ?? getUpdateTier(info.currentVersion, info.latestVersion)) : null;
-      if (info?.hasUpdate && tier === 'major') {
-        set({ isUpdateModalOpen: false, dismissedMajorVersion: info.latestVersion });
+      if (info?.hasUpdate) {
+        set({ isUpdateModalOpen: false, dismissedUpdateVersion: info.latestVersion });
         return;
       }
     }

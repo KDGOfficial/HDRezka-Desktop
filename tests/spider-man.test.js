@@ -18,8 +18,8 @@ const fn = new Function('module', 'exports', 'require', moduleCode);
 fn(m, m.exports, require);
 const { getFallbackDetails } = m.exports;
 
-test('App version must be 0.2.6', () => {
-  assert.equal(packageJson.version, '0.2.6');
+test('App version must be 0.3.0', () => {
+  assert.equal(packageJson.version, '0.3.0');
 });
 
 test('Fallback stream must return empty streams (no Big Buck Bunny)', () => {

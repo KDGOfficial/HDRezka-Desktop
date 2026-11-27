@@ -99,8 +99,8 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.2.6 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.2.6');
+test('v0.3.0 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.3.0');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -342,15 +342,24 @@ test('getUpdateTier classifies major/minor/patch/prerelease/equal/downgrade and 
   const appSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/App.tsx'), 'utf8');
   const headerSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/Header.tsx'), 'utf8');
   const titleBarSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/TitleBar.tsx'), 'utf8');
+  const updateModalSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/UpdateModal.tsx'), 'utf8');
   const settingsPageSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/SettingsPage.tsx'), 'utf8');
   const settingsStoreSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/stores/useSettingsStore.ts'), 'utf8');
 
-  assert.match(appSrc, /updateTier\s*!==\s*'patch'/);
-  assert.match(headerSrc, /updateTier\s*!==\s*'patch'/);
-  assert.match(titleBarSrc, /updateTier\s*!==\s*'patch'/);
+  assert.match(appSrc, /settings\.app\?\.checkUpdatesOnStart/);
+  assert.match(appSrc, /updateDownloadingBanner/);
+  assert.match(appSrc, /updateReadyBanner/);
+  assert.match(appSrc, /runAutoUpdateCheck\('periodic'/);
+  assert.match(headerSrc, /updateQuietTooltip/);
+  assert.doesNotMatch(headerSrc, /updateTier\s*!==\s*'patch'/);
+  assert.match(titleBarSrc, /updateQuietTooltip/);
+  assert.doesNotMatch(titleBarSrc, /updateTier\s*!==\s*'patch'/);
   assert.match(settingsPageSrc, /autoInstallMinorUpdates/);
   assert.match(settingsStoreSrc, /runAutoUpdateCheck/);
-  assert.match(settingsStoreSrc, /dismissedMajorVersion/);
+  assert.match(settingsStoreSrc, /dismissedUpdateVersion/);
+  assert.match(settingsStoreSrc, /if \(!appSettings\?\.checkUpdatesOnStart\) return;/);
+  assert.match(settingsStoreSrc, /trigger === 'startup'/);
+  assert.match(updateModalSrc, /scheduleUpdateOnExit\(false\)/);
 });
 
 test('VideoPlayer guards drag-region mouseleave flicker, fades OSD cleanly, and keeps resume pill inside bounds', () => {

@@ -49,6 +49,9 @@ export const UpdateModal: React.FC = () => {
     : GITHUB_RELEASES_LATEST_URL;
 
   const handleDontRemind = async () => {
+    if (updateScheduledOnExit) {
+      await scheduleUpdateOnExit(false);
+    }
     await updateSettings({
       app: { ...settings.app, checkUpdatesOnStart: false },
     });

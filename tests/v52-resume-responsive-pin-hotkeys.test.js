@@ -287,7 +287,7 @@ test('Shortcut utilities build, parse, match, and format single keys & combinati
   assert.equal(defaultValues.length, 11);
   assert.equal(new Set(defaultValues).size, defaultValues.length);
   assert.deepEqual(DEFAULT_USER_SETTINGS.hotkeys, DEFAULT_HOTKEYS);
-  assert.equal(APP_VERSION, '0.2.6');
+  assert.equal(APP_VERSION, '0.3.0');
 });
 
 test('Responsive container queries, unpin bounds restore, customizable hotkeys, and i18n are wired across files', () => {

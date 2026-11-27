@@ -345,7 +345,7 @@ export const Header: React.FC = () => {
         >
           {resolvedIsLight ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
         </button>
-        {updateInfo?.hasUpdate && updateInfo.updateTier !== 'patch' ? (
+        {updateInfo?.hasUpdate && settings.app?.checkUpdatesOnStart ? (
           <button
             type="button"
             onClick={() => setUpdateModalOpen(true)}
@@ -358,12 +358,23 @@ export const Header: React.FC = () => {
         ) : (
           <button
             type="button"
-            onClick={() => setPage('settings')}
-            aria-label={t.header.notifications}
-            className="p-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-zinc-300 hover:text-white cursor-pointer"
-            title={t.header.notifications}
+            onClick={() => (updateInfo?.hasUpdate ? setUpdateModalOpen(true) : setPage('settings'))}
+            aria-label={
+              updateInfo?.hasUpdate
+                ? t.header.updateQuietTooltip.replace('{version}', updateInfo.latestVersion)
+                : t.header.notifications
+            }
+            className="relative p-2.5 rounded-full bg-white/[0.04] hover:bg-white/[0.1] border border-white/[0.06] text-zinc-300 hover:text-white cursor-pointer"
+            title={
+              updateInfo?.hasUpdate
+                ? t.header.updateQuietTooltip.replace('{version}', updateInfo.latestVersion)
+                : t.header.notifications
+            }
           >
             <Bell className="w-4 h-4" />
+            {updateInfo?.hasUpdate && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-brand-orange" aria-hidden="true" />
+            )}
           </button>
         )}
 
