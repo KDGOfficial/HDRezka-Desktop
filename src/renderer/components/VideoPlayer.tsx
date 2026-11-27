@@ -202,6 +202,8 @@ export const VideoPlayer: React.FC = () => {
   const lastVolumeRef = useRef(volume > 0 ? volume : 0.8);
   const isResizingRef = useRef(false);
   const resizeStartRef = useRef({ x: 0, y: 0, w: 0, h: 0 });
+  const isDraggingWindowRef = useRef(false);
+  const didDragWindowRef = useRef(false);
   const userSeekedRef = useRef(false);
   const lastUiSyncRef = useRef(0);
   const showControlsRef = useRef(showControls);
@@ -371,6 +373,48 @@ export const VideoPlayer: React.FC = () => {
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+  };
+
+  const handleVideoMouseDown = (e: React.MouseEvent<HTMLVideoElement>) => {
+    if (!isPinned || e.button !== 0 || !window.api?.getBounds || !window.api?.setBounds) return;
+    const startScreenX = e.screenX;
+    const startScreenY = e.screenY;
+    didDragWindowRef.current = false;
+    let moved = false;
+    let origin: { x: number; y: number } | null = null;
+    let cancelled = false;
+
+    const onMove = (moveEvt: MouseEvent) => {
+      if (cancelled || !origin) return;
+      const dx = moveEvt.screenX - startScreenX;
+      const dy = moveEvt.screenY - startScreenY;
+      if (!moved && Math.hypot(dx, dy) < 5) return;
+      moved = true;
+      didDragWindowRef.current = true;
+      window.api?.setBounds({ x: origin.x + dx, y: origin.y + dy });
+    };
+
+    const onUp = () => {
+      cancelled = true;
+      isDraggingWindowRef.current = false;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('blur', onUp);
+    };
+
+    isDraggingWindowRef.current = true;
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('blur', onUp);
+
+    window.api
+      .getBounds()
+      .then((cur) => {
+        if (!cancelled && cur) {
+          origin = { x: cur.x, y: cur.y };
+        }
+      })
+      .catch(() => onUp());
   };
 
   const cycleVideoFit = () => {
@@ -1322,12 +1366,12 @@ export const VideoPlayer: React.FC = () => {
       {currentEmbedUrl && !isLoading && !error ? (
         <div className="w-full h-full flex flex-col bg-[#070507] z-10">
           <div className="h-14 px-4 flex items-center justify-between gap-3 bg-[#0B070A] border-b border-white/[0.08] flex-shrink-0 drag-region">
-            <div className="flex items-center gap-3 min-w-0 no-drag">
+            <div className="flex items-center gap-3 min-w-0">
               <button
                 type="button"
                 onClick={handleClose}
                 aria-label={t.player.back}
-                className="p-2 rounded-full bg-[#140E12] hover:bg-white/[0.16] border border-white/10 text-white cursor-pointer active:scale-95 flex-shrink-0"
+                className="no-drag p-2 rounded-full bg-[#140E12] hover:bg-white/[0.16] border border-white/10 text-white cursor-pointer active:scale-95 flex-shrink-0"
               >
                 <ArrowLeft className="w-4 h-4" />
               </button>
@@ -1405,7 +1449,7 @@ export const VideoPlayer: React.FC = () => {
       /* Video Element */
       <video
         ref={videoRef}
-        className={`cursor-pointer transition-all duration-200 ${
+        className={`${isPinned ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} transition-all duration-200 ${
           videoFit === 'cover'
             ? 'w-full h-full object-cover'
             : videoFit === 'fill'
@@ -1418,7 +1462,14 @@ export const VideoPlayer: React.FC = () => {
                     ? 'w-[min(100%,calc(100dvh*4/3))] h-[min(100%,calc(100dvw*3/4))] object-cover'
                     : 'w-full h-full object-contain'
         }`}
-        onClick={togglePlay}
+        onMouseDown={handleVideoMouseDown}
+        onClick={() => {
+          if (didDragWindowRef.current) {
+            didDragWindowRef.current = false;
+            return;
+          }
+          togglePlay();
+        }}
         onTimeUpdate={() => {
           const v = videoRef.current;
           if (!v) return;
@@ -1673,13 +1724,19 @@ export const VideoPlayer: React.FC = () => {
         }`}
       >
         {/* Top Floating Glass Bar */}
-        <div className="player-top-bar flex items-center justify-between gap-2 pointer-events-auto bg-gradient-to-b from-[#070507]/90 via-[#070507]/50 to-transparent p-5 -m-6 mb-0 drag-region">
-          <div className="flex items-center gap-2.5 sm:gap-3.5 no-drag min-w-0 flex-1">
+        <div className="player-top-bar relative flex items-center justify-between gap-2 pointer-events-auto bg-gradient-to-b from-[#070507]/90 via-[#070507]/50 to-transparent p-5 -m-6 mb-0 drag-region">
+          {isPinned && (
+            <div
+              className="player-drag-grip absolute top-1.5 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/35 pointer-events-none"
+              aria-hidden="true"
+            />
+          )}
+          <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
             <button
               type="button"
               onClick={handleClose}
               aria-label={t.player.back}
-              className="player-ctrl-btn p-2.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] border border-white/10 text-white cursor-pointer active:scale-95 flex-shrink-0"
+              className="player-ctrl-btn no-drag p-2.5 rounded-full bg-[#140E12]/85 hover:bg-white/[0.2] border border-white/10 text-white cursor-pointer active:scale-95 flex-shrink-0"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>

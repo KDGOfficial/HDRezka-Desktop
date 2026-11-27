@@ -354,6 +354,13 @@ export function registerIpcHandlers(): void {
     if (!win) return null;
     if (win.isMaximized()) win.unmaximize();
     const cur = win.getBounds();
+    if (bounds.width === undefined && bounds.height === undefined && (bounds.x !== undefined || bounds.y !== undefined)) {
+      win.setPosition(
+        bounds.x !== undefined ? Math.round(bounds.x) : cur.x,
+        bounds.y !== undefined ? Math.round(bounds.y) : cur.y
+      );
+      return win.getBounds();
+    }
     win.setBounds({
       x: bounds.x !== undefined ? Math.round(bounds.x) : cur.x,
       y: bounds.y !== undefined ? Math.round(bounds.y) : cur.y,

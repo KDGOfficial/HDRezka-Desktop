@@ -99,8 +99,8 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.2.5 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.2.5');
+test('v0.2.6 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.2.6');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -383,4 +383,26 @@ test('Sidebar toggle is anchored in top-left TitleBar slot with Ctrl+B and share
 
   assert.match(mediaStoreSrc, /sidebarCollapsed:/);
   assert.match(mediaStoreSrc, /toggleSidebar:/);
+});
+
+test('Always-on-Top PiP supports drag-anywhere on video, unblocked top-bar drag region, grip & move pill, and setPosition', () => {
+  const ipcSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/ipc/index.ts'), 'utf8');
+  const playerSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/VideoPlayer.tsx'), 'utf8');
+  const browserSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/pages/BrowserPage.tsx'), 'utf8');
+  const cssSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/styles/globals.css'), 'utf8');
+
+  assert.match(ipcSrc, /win\.setPosition\(/);
+
+  assert.match(playerSrc, /handleVideoMouseDown/);
+  assert.match(playerSrc, /onMouseDown=\{handleVideoMouseDown\}/);
+  assert.match(playerSrc, /didDragWindowRef/);
+  assert.match(playerSrc, /player-drag-grip/);
+  assert.doesNotMatch(playerSrc, /flex items-center gap-2\.5 sm:gap-3\.5 no-drag min-w-0 flex-1/);
+
+  assert.match(browserSrc, /player-drag-grip/);
+  assert.doesNotMatch(browserSrc, /flex items-center gap-2\.5 sm:gap-3\.5 no-drag min-w-0 flex-1/);
+
+  const max920Block = cssSrc.match(/@container player \(max-width: 920px\)\s*\{[\s\S]*?display:\s*none;/);
+  assert.ok(max920Block, '@container player (max-width: 920px) display:none rule must exist');
+  assert.doesNotMatch(max920Block[0], /\.player-move-pill/);
 });

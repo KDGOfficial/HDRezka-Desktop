@@ -586,8 +586,7 @@ video::cue {
 
 @container player (max-width: 920px) {
   .player-skip-btn,
-  .player-translator-label,
-  .player-move-pill {
+  .player-translator-label {
     display: none;
   }
 

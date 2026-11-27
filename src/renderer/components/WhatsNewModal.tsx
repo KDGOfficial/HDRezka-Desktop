@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { PanelLeft, Activity, ShieldCheck, Layers, Sparkles, Check, X, ExternalLink, Send } from 'lucide-react';
+import { Move, Activity, ShieldCheck, Layers, Sparkles, Check, X, ExternalLink, Send } from 'lucide-react';
 import { useTranslation } from '../i18n';
 import { APP_VERSION, TELEGRAM_CHANNEL_URL } from '../../shared/constants';
 import appLogo from '../assets/logo.png';
@@ -28,7 +28,7 @@ export const WhatsNewModal: React.FC<WhatsNewModalProps> = ({ isOpen, onClose })
 
   const features = [
     {
-      icon: <PanelLeft className="w-4 h-4 text-brand-crimson" />,
+      icon: <Move className="w-4 h-4 text-brand-crimson" />,
       title: t.whatsNew.f1_title,
       desc: t.whatsNew.f1_desc,
     },

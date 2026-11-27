@@ -834,12 +834,18 @@ export const BrowserPage: React.FC = () => {
               showControls && !isUiLocked ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
           >
-            <div className="flex items-center gap-2.5 sm:gap-3.5 no-drag min-w-0 flex-1">
+            {isPinned && (
+              <div
+                className="player-drag-grip absolute top-1.5 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/35 pointer-events-none"
+                aria-hidden="true"
+              />
+            )}
+            <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0 flex-1">
               <button
                 type="button"
                 onClick={exitCinemaMode}
                 aria-label={t.player.back}
-                className="player-ctrl-btn p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-white backdrop-blur-xl cursor-pointer active:scale-95 flex-shrink-0"
+                className="player-ctrl-btn no-drag p-2.5 rounded-full bg-white/[0.1] hover:bg-white/[0.2] border border-white/10 text-white backdrop-blur-xl cursor-pointer active:scale-95 flex-shrink-0"
               >
                 <ArrowLeft className="w-5 h-5" />
               </button>
