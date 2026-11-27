@@ -99,8 +99,8 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.2.3 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.2.3');
+test('v0.2.4 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.2.4');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -351,4 +351,17 @@ test('getUpdateTier classifies major/minor/patch/prerelease/equal/downgrade and 
   assert.match(settingsPageSrc, /autoInstallMinorUpdates/);
   assert.match(settingsStoreSrc, /runAutoUpdateCheck/);
   assert.match(settingsStoreSrc, /dismissedMajorVersion/);
+});
+
+test('VideoPlayer guards drag-region mouseleave flicker, fades OSD cleanly, and keeps resume pill inside bounds', () => {
+  const playerSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/VideoPlayer.tsx'), 'utf8');
+
+  assert.match(playerSrc, /handlePlayerMouseLeave[\s\S]*closest\('\.drag-region'\)/);
+  assert.match(playerSrc, /window\.addEventListener\('blur',\s*handleWindowBlur\)/);
+  assert.match(playerSrc, /player-osd[\s\S]*transition-\[opacity,visibility\] duration-300[\s\S]*opacity-0 invisible/);
+
+  const resumeLineMatch = playerSrc.match(/<div className="player-resume-pill[^"]*"/);
+  assert.ok(resumeLineMatch, 'player-resume-pill element must exist in VideoPlayer.tsx');
+  assert.match(resumeLineMatch[0], /\banimate-fadeIn\b/);
+  assert.doesNotMatch(resumeLineMatch[0], /\banimate-fade-in\b/);
 });

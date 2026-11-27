@@ -579,13 +579,40 @@ export const VideoPlayer: React.FC = () => {
     resetHideTimer();
   };
 
-  const handlePlayerMouseLeave = () => {
+  const handlePlayerMouseLeave = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const insideBounds =
+      !!rect &&
+      e.clientX > rect.left &&
+      e.clientX < rect.right &&
+      e.clientY > rect.top &&
+      e.clientY < rect.bottom;
+    if (insideBounds) {
+      const el = document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null;
+      if (el?.closest('.drag-region')) {
+        resetHideTimer();
+        return;
+      }
+    }
     lastPointerPosRef.current = null;
     if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
     if (activeMenu === 'none' && !showScaleMenu) {
       setShowControls(false);
     }
   };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleWindowBlur = () => {
+      lastPointerPosRef.current = null;
+      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+      if (activeMenu === 'none' && !showScaleMenu) {
+        setShowControls(false);
+      }
+    };
+    window.addEventListener('blur', handleWindowBlur);
+    return () => window.removeEventListener('blur', handleWindowBlur);
+  }, [isOpen, activeMenu, showScaleMenu]);
 
   useEffect(() => {
     if (isOpen) {
@@ -1232,7 +1259,7 @@ export const VideoPlayer: React.FC = () => {
 
       {/* Auto-Resumed Status / Quick Jump Pill */}
       {resumeOfferTime && !isLoading && !error && (
-        <div className="player-resume-pill absolute bottom-28 left-6 z-40 flex items-center gap-2 px-4 py-2 rounded-full cinema-glass border border-brand-orange/40 shadow-elevated max-w-[calc(100%-1.5rem)] animate-fade-in">
+        <div className="player-resume-pill absolute bottom-28 left-6 z-40 flex items-center gap-2 px-4 py-2 rounded-full cinema-glass border border-brand-orange/40 shadow-elevated max-w-[calc(100%-3rem)] animate-fadeIn">
           {currentTime < 5 ? (
             <button
               type="button"
@@ -1641,7 +1668,7 @@ export const VideoPlayer: React.FC = () => {
       {/* Cinema OSD Controls Overlay (visibility:hidden when faded out prevents software compositor overdraw) */}
       {!currentEmbedUrl && (
       <div
-        className={`player-osd absolute inset-0 z-30 flex flex-col justify-between p-6 pointer-events-none transition-opacity duration-300 ${
+        className={`player-osd absolute inset-0 z-30 flex flex-col justify-between p-6 pointer-events-none transition-[opacity,visibility] duration-300 ${
           showControls && !error ? 'opacity-100 visible' : 'opacity-0 invisible'
         }`}
       >
@@ -1771,7 +1798,7 @@ export const VideoPlayer: React.FC = () => {
         <div className="player-bottom-dock pointer-events-auto bg-gradient-to-t from-[#070507]/95 via-[#070507]/65 to-transparent px-6 pb-5 pt-10 -m-6 mt-0 flex flex-col gap-3">
           {/* Ember Gradient Seekbar */}
           <div className="relative group w-full flex items-center py-1">
-            <div className="relative w-full h-1.5 group-hover:h-2 bg-white/20 rounded-full overflow-hidden cursor-pointer transition-all">
+            <div className="relative w-full h-1.5 group-hover:h-2 bg-white/20 rounded-full overflow-hidden cursor-pointer transition-[height]">
               <div
                 className="absolute top-0 left-0 bottom-0 bg-white/30"
                 style={{ width: `${bufferedPercent}%` }}
