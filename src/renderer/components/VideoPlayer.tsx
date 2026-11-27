@@ -383,6 +383,16 @@ export const VideoPlayer: React.FC = () => {
     let moved = false;
     let origin: { x: number; y: number } | null = null;
     let cancelled = false;
+    let rafId: number | null = null;
+    let pendingPos: { x: number; y: number } | null = null;
+
+    const flushMove = () => {
+      rafId = null;
+      if (cancelled || !pendingPos) return;
+      const pos = pendingPos;
+      pendingPos = null;
+      window.api?.setBounds(pos);
+    };
 
     const onMove = (moveEvt: MouseEvent) => {
       if (cancelled || !origin) return;
@@ -391,11 +401,19 @@ export const VideoPlayer: React.FC = () => {
       if (!moved && Math.hypot(dx, dy) < 5) return;
       moved = true;
       didDragWindowRef.current = true;
-      window.api?.setBounds({ x: origin.x + dx, y: origin.y + dy });
+      pendingPos = { x: origin.x + dx, y: origin.y + dy };
+      if (rafId === null) {
+        rafId = requestAnimationFrame(flushMove);
+      }
     };
 
     const onUp = () => {
       cancelled = true;
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      pendingPos = null;
       isDraggingWindowRef.current = false;
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);

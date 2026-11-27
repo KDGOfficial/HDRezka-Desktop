@@ -19,11 +19,11 @@ function loadTsModule(relPath) {
   return mod.exports;
 }
 
-test('v0.4.2 StartupSplash loading menu, instant boot placeholder, and animations are wired', () => {
+test('v0.4.3 StartupSplash loading menu, instant boot placeholder, and animations are wired', () => {
   const { APP_VERSION } = loadTsModule('src/shared/constants/index.ts');
   const { translations } = loadTsModule('src/renderer/i18n/translations.ts');
 
-  assert.equal(APP_VERSION, '0.4.2');
+  assert.equal(APP_VERSION, '0.4.3');
 
   for (const loc of ['ru', 'uk', 'en']) {
     const sp = translations[loc].splash;

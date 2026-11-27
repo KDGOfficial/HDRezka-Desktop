@@ -313,6 +313,63 @@ export function runPendingUpdateOnExit(): boolean {
   return true;
 }
 
+const lockedMoveSizes = new WeakMap<BrowserWindow, { width: number; height: number }>();
+
+export function clearLockedMoveSize(win: BrowserWindow): void {
+  lockedMoveSizes.delete(win);
+}
+
+export function applyWindowBounds(
+  win: BrowserWindow,
+  bounds: { x?: number; y?: number; width?: number; height?: number }
+): { x: number; y: number; width: number; height: number } {
+  if (win.isMaximized()) {
+    win.unmaximize();
+    clearLockedMoveSize(win);
+  }
+  const cur = win.getBounds();
+  if (bounds.width === undefined && bounds.height === undefined && (bounds.x !== undefined || bounds.y !== undefined)) {
+    const targetX = bounds.x !== undefined ? Math.round(bounds.x) : cur.x;
+    const targetY = bounds.y !== undefined ? Math.round(bounds.y) : cur.y;
+    if (
+      typeof win.getContentSize === 'function' &&
+      typeof win.getMinimumSize === 'function' &&
+      typeof win.getMaximumSize === 'function' &&
+      typeof win.setMinimumSize === 'function' &&
+      typeof win.setMaximumSize === 'function'
+    ) {
+      // Lock min/max content size during move so Windows fractional DPI rounding in setPosition cannot inflate the window
+      const [cw, ch] = win.getContentSize();
+      let locked = lockedMoveSizes.get(win);
+      if (!locked || Math.abs(cw - locked.width) > 2 || Math.abs(ch - locked.height) > 2) {
+        locked = { width: cw, height: ch };
+        lockedMoveSizes.set(win, locked);
+      }
+      const [minW, minH] = win.getMinimumSize();
+      const [maxW, maxH] = win.getMaximumSize();
+      win.setMinimumSize(locked.width, locked.height);
+      win.setMaximumSize(locked.width, locked.height);
+      try {
+        win.setPosition(targetX, targetY);
+      } finally {
+        win.setMinimumSize(minW, minH);
+        win.setMaximumSize(maxW, maxH);
+      }
+    } else {
+      win.setPosition(targetX, targetY);
+    }
+    return win.getBounds();
+  }
+  clearLockedMoveSize(win);
+  win.setBounds({
+    x: bounds.x !== undefined ? Math.round(bounds.x) : cur.x,
+    y: bounds.y !== undefined ? Math.round(bounds.y) : cur.y,
+    width: bounds.width !== undefined ? Math.max(320, Math.round(bounds.width)) : cur.width,
+    height: bounds.height !== undefined ? Math.max(180, Math.round(bounds.height)) : cur.height,
+  });
+  return win.getBounds();
+}
+
 export function registerIpcHandlers(): void {
   const providerManager = ProviderManager.getInstance();
   const db = AppDatabase.getInstance();
@@ -325,6 +382,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.WINDOW_MAXIMIZE, () => {
     const win = getMainWindow();
     if (win) {
+      clearLockedMoveSize(win);
       if (win.isMaximized()) {
         win.unmaximize();
       } else {
@@ -344,6 +402,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.WINDOW_UNMAXIMIZE, () => {
     const win = getMainWindow();
     if (win && win.isMaximized()) {
+      clearLockedMoveSize(win);
       win.unmaximize();
     }
     return true;
@@ -352,22 +411,7 @@ export function registerIpcHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.WINDOW_SET_BOUNDS, (_, bounds: { x?: number; y?: number; width?: number; height?: number }) => {
     const win = getMainWindow();
     if (!win) return null;
-    if (win.isMaximized()) win.unmaximize();
-    const cur = win.getBounds();
-    if (bounds.width === undefined && bounds.height === undefined && (bounds.x !== undefined || bounds.y !== undefined)) {
-      win.setPosition(
-        bounds.x !== undefined ? Math.round(bounds.x) : cur.x,
-        bounds.y !== undefined ? Math.round(bounds.y) : cur.y
-      );
-      return win.getBounds();
-    }
-    win.setBounds({
-      x: bounds.x !== undefined ? Math.round(bounds.x) : cur.x,
-      y: bounds.y !== undefined ? Math.round(bounds.y) : cur.y,
-      width: bounds.width !== undefined ? Math.max(320, Math.round(bounds.width)) : cur.width,
-      height: bounds.height !== undefined ? Math.max(180, Math.round(bounds.height)) : cur.height,
-    });
-    return win.getBounds();
+    return applyWindowBounds(win, bounds);
   });
 
   ipcMain.handle(IPC_CHANNELS.WINDOW_GET_BOUNDS, () => {
@@ -383,6 +427,7 @@ export function registerIpcHandlers(): void {
     win.setAlwaysOnTop(newState);
     if (wasPinned && !newState) {
       restoreDefaultWindowBounds(win);
+      clearLockedMoveSize(win);
     }
     return newState;
   });

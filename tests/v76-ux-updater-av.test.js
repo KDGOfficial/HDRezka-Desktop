@@ -99,8 +99,8 @@ test('selectUpdateAsset picks Portable .exe for Portable runtime and Setup .exe 
   assert.equal(mod.exports.selectUpdateAsset([], true), null);
 });
 
-test('v0.4.2 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
-  assert.equal(constants.APP_VERSION, '0.4.2');
+test('v0.4.3 UX, mirror latency, navigation, PiP, hover-controls, AV hardening, and release config are wired', () => {
+  assert.equal(constants.APP_VERSION, '0.4.3');
   assert.ok(constants.DEFAULT_USER_SETTINGS.app.requestTimeoutMs >= 20000);
 
   const mainSrc = fs.readFileSync(path.resolve(__dirname, '../src/main/main.ts'), 'utf8');
@@ -414,4 +414,111 @@ test('Always-on-Top PiP supports drag-anywhere on video, unblocked top-bar drag 
   const max920Block = cssSrc.match(/@container player \(max-width: 920px\)\s*\{[\s\S]*?display:\s*none;/);
   assert.ok(max920Block, '@container player (max-width: 920px) display:none rule must exist');
   assert.doesNotMatch(max920Block[0], /\.player-move-pill/);
+  assert.match(playerSrc, /requestAnimationFrame\(flushMove\)/);
+  assert.match(ipcSrc, /applyWindowBounds/);
+});
+
+test('applyWindowBounds locks content size during position-only moves on HiDPI and restores min/max bounds', () => {
+  const res = esbuild.buildSync({
+    entryPoints: [path.resolve(__dirname, '../src/main/ipc/index.ts')],
+    bundle: true,
+    platform: 'node',
+    format: 'cjs',
+    write: false,
+    external: ['electron', 'sql.js', 'cheerio'],
+  });
+  const fakeRequire = (id) =>
+    id === 'electron'
+      ? {
+          ipcMain: { handle: () => {} },
+          app: {
+            name: 'hdrezka-desktop',
+            setAppUserModelId: () => {},
+            disableHardwareAcceleration: () => {},
+            commandLine: { appendSwitch: () => {} },
+            requestSingleInstanceLock: () => false,
+            quit: () => {},
+            on: () => {},
+          },
+          BrowserWindow: class {},
+          shell: {},
+          session: {},
+          net: {},
+          webContents: {},
+          webFrameMain: {},
+        }
+      : require(id);
+  const mod = { exports: {} };
+  new Function('exports', 'require', 'module', res.outputFiles[0].text)(mod.exports, fakeRequire, mod);
+
+  const { applyWindowBounds } = mod.exports;
+  assert.equal(typeof applyWindowBounds, 'function');
+
+  // Simulate Windows 150%/175% DPI: setPosition inflates size unless maxSize === contentSize,
+  // and getContentSize reports +1px rounding drift between calls.
+  let state = { x: 100, y: 100, width: 480, height: 270, minW: 320, minH: 180, maxW: 0, maxH: 0, drift: 0 };
+  let throwOnSetPosition = false;
+  const mockWin = {
+    isMaximized: () => false,
+    unmaximize: () => {},
+    getBounds: () => ({ x: state.x, y: state.y, width: state.width, height: state.height }),
+    getContentSize: () => [state.width + state.drift, state.height + state.drift],
+    getMinimumSize: () => [state.minW, state.minH],
+    getMaximumSize: () => [state.maxW, state.maxH],
+    setMinimumSize: (w, h) => { state.minW = w; state.minH = h; },
+    setMaximumSize: (w, h) => { state.maxW = w; state.maxH = h; },
+    setPosition: (x, y) => {
+      if (throwOnSetPosition) throw new Error('boom');
+      state.x = x;
+      state.y = y;
+      // Only resist inflation when maxW/maxH are locked to the target size
+      if (state.maxW === 0 || state.maxW > state.width) {
+        state.width += 1;
+        state.height += 1;
+      }
+      state.drift = 1; // +1px fractional DPI rounding drift
+    },
+    setBounds: (b) => {
+      state.x = b.x;
+      state.y = b.y;
+      state.width = b.width;
+      state.height = b.height;
+      state.drift = 0;
+    },
+  };
+
+  for (let i = 0; i < 20; i++) {
+    const out = applyWindowBounds(mockWin, { x: 110 + i * 5, y: 120 + i * 3 });
+    assert.equal(out.width, 480);
+    assert.equal(out.height, 270);
+    assert.equal(out.x, 110 + i * 5);
+    assert.equal(out.y, 120 + i * 3);
+    assert.equal(state.minW, 320);
+    assert.equal(state.minH, 180);
+    assert.equal(state.maxW, 0);
+    assert.equal(state.maxH, 0);
+  }
+
+  // Exception in setPosition still restores original min/max constraints
+  throwOnSetPosition = true;
+  assert.throws(() => applyWindowBounds(mockWin, { x: 250, y: 250 }), /boom/);
+  assert.equal(state.minW, 320);
+  assert.equal(state.maxW, 0);
+  throwOnSetPosition = false;
+
+  // Explicit resize updates the size and clears any stale lock
+  const resized = applyWindowBounds(mockWin, { width: 640, height: 360 });
+  assert.equal(resized.width, 640);
+  assert.equal(resized.height, 360);
+  const afterResizeMove = applyWindowBounds(mockWin, { x: 300, y: 200 });
+  assert.equal(afterResizeMove.width, 640);
+  assert.equal(afterResizeMove.height, 360);
+
+  // Real OS-edge resize (>2px change) refreshes the locked size on next move
+  state.width = 720;
+  state.height = 405;
+  state.drift = 0;
+  const afterOsResizeMove = applyWindowBounds(mockWin, { x: 320, y: 220 });
+  assert.equal(afterOsResizeMove.width, 720);
+  assert.equal(afterOsResizeMove.height, 405);
 });
