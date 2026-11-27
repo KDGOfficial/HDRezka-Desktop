@@ -25,21 +25,24 @@ interface HeroBannerProps {
 }
 
 const SLIDE_INTERVAL_MS = 7500;
-const TRANSITION_CLEANUP_MS = 720;
+const TRANSITION_CLEANUP_MS = 820;
 
 interface HeroSlideLayerProps {
   slide: DynamicHeroSlide;
+  nextSlide?: DynamicHeroSlide;
   slideLabel?: string;
-  mode: 'enter' | 'exit' | 'static';
+  mode: 'enter' | 'exit' | 'static' | 'hidden';
   direction: 'next' | 'prev';
   isFav: boolean;
   onOpenDetails: (item: MediaItem) => void;
   onToggleFavorite: (item: MediaItem) => void;
   onOpenCollection: (item: MediaItem) => void;
+  onNextSlide: () => void;
 }
 
 const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
   slide,
+  nextSlide,
   slideLabel,
   mode,
   direction,
@@ -47,6 +50,7 @@ const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
   onOpenDetails,
   onToggleFavorite,
   onOpenCollection,
+  onNextSlide,
 }) => {
   const { t, translateGenre } = useTranslation();
   const slideItem = slide.item;
@@ -70,7 +74,8 @@ const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
   }, [slide, t.home.newBadge, t.home.recommendedForYou, t.home.premiere, translateGenre]);
 
   const BadgeIcon = badgeMeta.icon;
-  const isExiting = mode === 'exit';
+  const isActive = mode === 'enter' || mode === 'static';
+  const isHidden = mode === 'hidden';
 
   const textAnimClass =
     mode === 'enter'
@@ -94,19 +99,23 @@ const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
 
   return (
     <div
-      role={isExiting ? undefined : 'group'}
-      aria-roledescription={isExiting ? undefined : 'slide'}
-      aria-label={isExiting ? undefined : slideLabel}
-      aria-hidden={isExiting ? true : undefined}
-      {...(isExiting ? ({ inert: '' } as any) : {})}
+      role={isActive ? 'group' : undefined}
+      aria-roledescription={isActive ? 'slide' : undefined}
+      aria-label={isActive ? slideLabel : undefined}
+      aria-hidden={!isActive ? true : undefined}
+      {...(!isActive ? ({ inert: '' } as any) : {})}
       className={`col-start-1 row-start-1 flex items-center justify-between gap-8 ${
-        isExiting ? 'pointer-events-none select-none z-0' : 'relative z-10'
+        isActive
+          ? 'relative z-10'
+          : isHidden
+            ? 'opacity-0 invisible pointer-events-none select-none z-0'
+            : 'pointer-events-none select-none z-0'
       }`}
     >
-      {/* Left: Editorial Cinema Typography & Actions */}
+      {/* Left: Editorial Cinema Typography & Actions with Staggered Cascade */}
       <div className={`max-w-2xl flex flex-col justify-end text-left flex-1 min-w-0 ${textAnimClass}`}>
-        {/* Logo-inspired Dynamic Metadata Pill Row */}
-        <div className="flex items-center flex-wrap gap-2 mb-4">
+        {/* 1. Logo-inspired Dynamic Metadata Pill Row */}
+        <div className="hero-stagger-1 flex items-center flex-wrap gap-2 mb-4">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full btn-ember text-[11px] font-display font-black uppercase tracking-[0.12em]">
             <BadgeIcon className="w-3 h-3 text-[#FFE29A]" aria-hidden="true" />
             <span>{badgeMeta.label}</span>
@@ -145,21 +154,21 @@ const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
           </span>
         </div>
 
-        {/* Bold Geometric Display Title */}
-        <h1 className="font-display text-[clamp(1.7rem,3.1vw,3.1rem)] font-black text-white tracking-tight leading-[1.08] mb-3.5 line-clamp-2 drop-shadow-[0_6px_24px_rgba(0,0,0,0.85)]">
+        {/* 2. Bold Geometric Display Title */}
+        <h1 className="hero-stagger-2 font-display text-[clamp(1.75rem,3.2vw,3.15rem)] font-black text-white tracking-tight leading-[1.08] mb-3.5 line-clamp-2 drop-shadow-[0_6px_24px_rgba(0,0,0,0.88)]">
           {displayTitle}
         </h1>
 
-        {/* Synopsis */}
-        <p className="text-xs sm:text-sm text-zinc-300/95 line-clamp-3 mb-7 max-w-xl font-medium leading-relaxed drop-shadow">
+        {/* 3. Synopsis */}
+        <p className="hero-stagger-3 text-xs sm:text-sm text-zinc-200/95 line-clamp-3 mb-7 max-w-xl font-medium leading-relaxed drop-shadow">
           {slideItem.info || t.home.defaultHeroDesc}
         </p>
 
-        {/* Primary Cinema CTA Bar */}
-        <div className="flex items-center flex-wrap gap-3">
+        {/* 4. Primary Cinema CTA Bar (blur-free translucent obsidian glass for 60 FPS) */}
+        <div className="hero-stagger-4 flex items-center flex-wrap gap-3">
           <button
             type="button"
-            tabIndex={isExiting ? -1 : undefined}
+            tabIndex={!isActive ? -1 : undefined}
             onClick={() => onOpenDetails(slideItem)}
             className="flex items-center gap-2.5 px-7 py-3.5 rounded-full btn-ember text-white font-display font-black text-xs uppercase tracking-wider active:scale-95 cursor-pointer"
           >
@@ -169,9 +178,9 @@ const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
 
           <button
             type="button"
-            tabIndex={isExiting ? -1 : undefined}
+            tabIndex={!isActive ? -1 : undefined}
             onClick={() => onOpenDetails(slideItem)}
-            className="flex items-center gap-2 px-5 py-3.5 rounded-full bg-white/[0.08] hover:bg-white/[0.16] backdrop-blur-xl text-white font-bold text-xs border border-white/[0.15] active:scale-95 cursor-pointer"
+            className="flex items-center gap-2 px-5 py-3.5 rounded-full bg-[#160F14]/90 hover:bg-[#241820] text-white font-bold text-xs border border-white/[0.16] shadow-md active:scale-95 cursor-pointer"
           >
             <Info className="w-4 h-4 text-brand-orange" aria-hidden="true" />
             <span>{t.home.details}</span>
@@ -179,14 +188,14 @@ const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
 
           <button
             type="button"
-            tabIndex={isExiting ? -1 : undefined}
+            tabIndex={!isActive ? -1 : undefined}
             onClick={() => onToggleFavorite(slideItem)}
             aria-label={isFav ? t.home.inFavorites : t.home.addToFavorites}
             aria-pressed={isFav}
-            className={`p-3.5 rounded-full backdrop-blur-xl border active:scale-95 cursor-pointer ${
+            className={`p-3.5 rounded-full border shadow-md active:scale-95 cursor-pointer ${
               isFav
-                ? 'bg-brand-crimson/20 text-brand-crimson border-brand-crimson/55 shadow-glow-sm'
-                : 'bg-black/45 hover:bg-white/[0.14] text-zinc-200 border-white/[0.14]'
+                ? 'bg-brand-crimson/25 text-brand-crimson border-brand-crimson/60 shadow-glow-sm'
+                : 'bg-[#160F14]/90 hover:bg-[#241820] text-zinc-200 border-white/[0.15]'
             }`}
             title={isFav ? t.home.inFavorites : t.home.addToFavorites}
           >
@@ -195,10 +204,10 @@ const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
 
           <button
             type="button"
-            tabIndex={isExiting ? -1 : undefined}
+            tabIndex={!isActive ? -1 : undefined}
             onClick={() => onOpenCollection(slideItem)}
             aria-label={t.home.addToCollection}
-            className="p-3.5 rounded-full bg-black/45 hover:bg-white/[0.14] backdrop-blur-xl text-zinc-200 border border-white/[0.14] active:scale-95 cursor-pointer"
+            className="p-3.5 rounded-full bg-[#160F14]/90 hover:bg-[#241820] text-zinc-200 border border-white/[0.15] shadow-md active:scale-95 cursor-pointer"
             title={t.home.addToCollection}
           >
             <Plus className="w-4 h-4" />
@@ -206,22 +215,49 @@ const HeroSlideLayer: React.FC<HeroSlideLayerProps> = ({
         </div>
       </div>
 
-      {/* Right: Floating Vertical Poster Frame with Neon Ember Halo */}
-      <div className={`hidden md:flex relative flex-shrink-0 items-center justify-center pr-2 ${posterAnimClass}`}>
-        {/* Glowing Neon Ember Ring Accent behind poster */}
+      {/* Right: 3D Layered Poster Deck with Next-Slide Peek & Pure Radial Ember Halo */}
+      <div className={`hidden md:flex relative flex-shrink-0 items-center justify-center pr-6 ${posterAnimClass}`}>
+        {/* Pure Radial Gradient Neon Ember Halo (zero CPU filter:blur cost) */}
         <div
-          className="absolute -inset-3 rounded-[28px] opacity-40 blur-2xl pointer-events-none"
-          style={{ background: 'linear-gradient(135deg, #FF124F 0%, #FF7A00 100%)' }}
+          aria-hidden="true"
+          className="absolute -inset-12 pointer-events-none"
+          style={{
+            background:
+              'radial-gradient(closest-side, rgba(255, 42, 66, 0.34) 0%, rgba(255, 122, 0, 0.16) 52%, transparent 100%)',
+          }}
         />
+
+        {/* Tilted 3D Next-Slide Deck Peek Card behind primary poster */}
+        {nextSlide && nextSlide.item.id !== slideItem.id && (
+          <button
+            type="button"
+            tabIndex={!isActive ? -1 : undefined}
+            onClick={onNextSlide}
+            aria-label={t.home.nextSlide}
+            title={nextSlide.item.title}
+            className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-4 scale-[0.88] rotate-[3deg] opacity-40 hover:opacity-75 hover:translate-x-5 hover:scale-[0.9] transition-all duration-500 rounded-[20px] p-[1.5px] bg-gradient-to-br from-white/20 via-brand-orange/35 to-brand-crimson/35 shadow-elevated cursor-pointer"
+          >
+            <div className="rounded-[19px] overflow-hidden bg-dark-surface">
+              <img
+                src={nextSlide.item.poster}
+                alt=""
+                aria-hidden="true"
+                className="w-56 lg:w-64 h-[335px] lg:h-[380px] object-cover block brightness-75"
+              />
+            </div>
+          </button>
+        )}
+
+        {/* Primary Floating Vertical Poster Card */}
         <button
           type="button"
-          tabIndex={isExiting ? -1 : undefined}
-          className="relative cursor-pointer group/poster transition-transform duration-500 hover:scale-[1.03] hover:-translate-y-1 rounded-[22px] text-left"
+          tabIndex={!isActive ? -1 : undefined}
+          className="relative z-10 cursor-pointer group/poster transition-transform duration-500 hover:scale-[1.03] hover:-translate-y-1 rounded-[22px] text-left"
           onClick={() => onOpenDetails(slideItem)}
           aria-label={`${t.home.watch} ${slideItem.title}`}
         >
-          <div className="p-[2px] rounded-[22px] bg-gradient-to-br from-white/30 via-brand-ember/50 to-brand-crimson/50 shadow-[0_26px_64px_rgba(0,0,0,0.92)]">
-            <div className="relative rounded-[20px] overflow-hidden bg-dark-surface">
+          <div className="p-[2px] rounded-[22px] bg-gradient-to-br from-white/35 via-brand-ember/60 to-brand-crimson/60 shadow-[0_26px_64px_rgba(0,0,0,0.92)]">
+            <div className="relative rounded-[20px] overflow-hidden bg-dark-surface cinema-card-sheen">
               <img
                 src={slideItem.poster}
                 alt={slideItem.title}
@@ -265,13 +301,14 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [prevIndex, setPrevIndex] = useState<number | null>(null);
   const [slideDirection, setSlideDirection] = useState<'next' | 'prev'>('next');
-  const [transitionKey, setTransitionKey] = useState(0);
+  const [hasTransitioned, setHasTransitioned] = useState(false);
   const [isHoveredOrFocused, setIsHoveredOrFocused] = useState(false);
   const [isUserPaused, setIsUserPaused] = useState(false);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [statusAnnouncement, setStatusAnnouncement] = useState('');
   const manualNavigationRef = useRef(false);
   const cleanupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerStartXRef = useRef<number | null>(null);
 
   const deckKey = deck.map((s) => s.item.id || s.item.title).join('|');
 
@@ -282,7 +319,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
     }
     setActiveIndex(0);
     setPrevIndex(null);
-    setTransitionKey(0);
+    setHasTransitioned(false);
     setStatusAnnouncement('');
   }, [deckKey]);
 
@@ -310,7 +347,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
       setPrevIndex(safeIndex);
       setSlideDirection(dir);
       setActiveIndex(nextIdx);
-      setTransitionKey((k) => k + 1);
+      setHasTransitioned(true);
       cleanupTimerRef.current = setTimeout(() => {
         setPrevIndex(null);
         cleanupTimerRef.current = null;
@@ -332,8 +369,6 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
 
   const activeSlide = deck[safeIndex] || deck[0];
   const activeItem = activeSlide.item;
-  const exitingSlide =
-    prevIndex !== null && prevIndex !== safeIndex && deck[prevIndex] ? deck[prevIndex] : null;
 
   useEffect(() => {
     if (activeItem && window.api?.prefetchDetails) {
@@ -355,14 +390,29 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
     commitSlideChange(nextIdx, nextIdx > safeIndex ? 'next' : 'prev');
   };
 
-  const goPrev = () => {
+  const goPrev = useCallback(() => {
     manualNavigationRef.current = true;
     commitSlideChange((safeIndex - 1 + deck.length) % deck.length, 'prev');
-  };
+  }, [commitSlideChange, safeIndex, deck.length]);
 
-  const goNext = () => {
+  const goNext = useCallback(() => {
     manualNavigationRef.current = true;
     commitSlideChange((safeIndex + 1) % deck.length, 'next');
+  }, [commitSlideChange, safeIndex, deck.length]);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLElement>) => {
+    if ((e.target as HTMLElement)?.closest('button')) return;
+    pointerStartXRef.current = e.clientX;
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLElement>) => {
+    if (pointerStartXRef.current === null) return;
+    const deltaX = e.clientX - pointerStartXRef.current;
+    pointerStartXRef.current = null;
+    if (Math.abs(deltaX) >= 48) {
+      if (deltaX < 0) goNext();
+      else goPrev();
+    }
   };
 
   const slideLabel = t.home.slidePosition
@@ -379,7 +429,12 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
       aria-roledescription="carousel"
       aria-label={t.settings.secHero}
       onMouseEnter={() => setIsHoveredOrFocused(true)}
-      onMouseLeave={() => setIsHoveredOrFocused(false)}
+      onMouseLeave={() => {
+        setIsHoveredOrFocused(false);
+        pointerStartXRef.current = null;
+      }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
       onFocusCapture={() => setIsHoveredOrFocused(true)}
       onBlurCapture={(e) => {
         if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
@@ -388,7 +443,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
       }}
       className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 mb-9 min-h-[clamp(360px,46dvh,540px)] overflow-hidden select-none border-b border-white/[0.06]"
     >
-      {/* Persistent Full-Bleed Atmospheric Cinema Backdrop Crossfade Stack (zero flash) */}
+      {/* Persistent Full-Bleed Cinema Backdrop Crossfade Stack (zero blur-filter lag, 60 FPS) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         {deck.map((slide, idx) => {
           const isCurrent = idx === safeIndex;
@@ -399,64 +454,81 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
               src={src}
               alt=""
               aria-hidden="true"
-              className={`hero-backdrop-layer absolute inset-0 w-full h-full object-cover object-center filter blur-2xl brightness-[0.65] saturate-125 ${
+              className={`hero-backdrop-layer absolute inset-0 w-full h-full object-cover object-center ${
                 isCurrent ? 'hero-backdrop-layer--active' : ''
               }`}
             />
           );
         })}
-        {/* Warm Neon Ember Cinema Ambient Glow (mirrors logo halo) */}
+        {/* Pure Radial Neon Ember Spotlights (no filter:blur CPU overhead) */}
         <div
-          className="absolute -top-24 right-8 w-[460px] h-[460px] rounded-full opacity-35 blur-3xl"
-          style={{ background: 'radial-gradient(circle, rgba(255,122,0,0.55) 0%, rgba(255,18,79,0.4) 48%, transparent 72%)' }}
+          aria-hidden="true"
+          className="absolute -top-28 right-0 w-[620px] h-[540px]"
+          style={{
+            background:
+              'radial-gradient(closest-side, rgba(255, 122, 0, 0.24) 0%, rgba(255, 18, 79, 0.16) 52%, transparent 100%)',
+          }}
         />
         <div
-          className="absolute -bottom-32 left-1/4 w-[420px] h-[320px] rounded-full opacity-25 blur-3xl"
-          style={{ background: 'radial-gradient(circle, rgba(255,18,79,0.55) 0%, transparent 70%)' }}
+          aria-hidden="true"
+          className="absolute -bottom-36 left-1/4 w-[560px] h-[420px]"
+          style={{
+            background: 'radial-gradient(closest-side, rgba(255, 18, 79, 0.22) 0%, transparent 100%)',
+          }}
         />
       </div>
 
-      {/* Multi-stop Cinematic Vignettes melting into canvas */}
-      <div className="absolute inset-0 bg-gradient-to-r from-[#0B070A] via-[#0B070A]/88 via-52% to-[#0B070A]/25 pointer-events-none" />
-      <div className="absolute inset-0 bg-gradient-to-t from-[#0B070A] via-[#0B070A]/25 to-[#070507]/45 pointer-events-none" />
+      {/* Multi-stop Cinematic Vignettes: dark on left for crisp text, open in center/right for artwork */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'linear-gradient(90deg, #0B070A 0%, rgba(11, 7, 10, 0.92) 38%, rgba(11, 7, 10, 0.44) 70%, rgba(11, 7, 10, 0.78) 100%)',
+        }}
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#0B070A] via-[#0B070A]/25 to-[#070507]/55 pointer-events-none" />
 
       {/* Polite status region for assistive technology */}
       <p className="sr-only" role="status" aria-live="polite">
         {statusAnnouncement}
       </p>
 
-      {/* Main Content Stage: Single-cell Grid overlay for silky simultaneous exit + entry */}
-      <div className="relative z-10 w-full min-h-[clamp(360px,46dvh,540px)] px-7 lg:px-12 py-8 lg:py-10 flex flex-col justify-between gap-6">
-        <div className="grid grid-cols-1 grid-rows-1 flex-1 items-center">
-          {exitingSlide && (
-            <HeroSlideLayer
-              key={`exit-${transitionKey}-${exitingSlide.item.id || prevIndex}`}
-              slide={exitingSlide}
-              mode="exit"
-              direction={slideDirection}
-              isFav={favorites.some((f) => f.mediaId === exitingSlide.item.id)}
-              onOpenDetails={handleOpenDetails}
-              onToggleFavorite={toggleFavorite}
-              onOpenCollection={openCollectionModal}
-            />
-          )}
+      {/* Main Content Stage: All deck slides stay permanently mounted in the 1-cell Grid */}
+      <div className="relative z-10 w-full min-h-[clamp(360px,46dvh,540px)] px-7 lg:px-12 py-8 lg:py-10 flex flex-col justify-center">
+        <div className="grid grid-cols-1 grid-rows-1 items-center">
+          {deck.map((slide, idx) => {
+            const isCurrent = idx === safeIndex;
+            const isExiting = prevIndex !== null && idx === prevIndex && prevIndex !== safeIndex;
+            const mode: 'enter' | 'exit' | 'static' | 'hidden' = isCurrent
+              ? hasTransitioned
+                ? 'enter'
+                : 'static'
+              : isExiting
+                ? 'exit'
+                : 'hidden';
+            const nextDeckSlide = deck.length > 1 ? deck[(idx + 1) % deck.length] : undefined;
 
-          <HeroSlideLayer
-            key={`enter-${transitionKey}-${activeItem.id || safeIndex}`}
-            slide={activeSlide}
-            slideLabel={slideLabel}
-            mode={transitionKey > 0 ? 'enter' : 'static'}
-            direction={slideDirection}
-            isFav={favorites.some((f) => f.mediaId === activeItem.id)}
-            onOpenDetails={handleOpenDetails}
-            onToggleFavorite={toggleFavorite}
-            onOpenCollection={openCollectionModal}
-          />
+            return (
+              <HeroSlideLayer
+                key={slide.item.id || idx}
+                slide={slide}
+                nextSlide={nextDeckSlide}
+                slideLabel={isCurrent ? slideLabel : undefined}
+                mode={mode}
+                direction={slideDirection}
+                isFav={favorites.some((f) => f.mediaId === slide.item.id)}
+                onOpenDetails={handleOpenDetails}
+                onToggleFavorite={toggleFavorite}
+                onOpenCollection={openCollectionModal}
+                onNextSlide={goNext}
+              />
+            );
+          })}
         </div>
 
-        {/* Pinned Slide Navigation Dots & Controls (never flash or shift during slide transitions) */}
+        {/* Pinned Slide Navigation Dots & Controls right below the CTA area */}
         {deck.length > 1 && (
-          <div className="relative z-20 flex items-center flex-wrap gap-3">
+          <div className="relative z-20 flex items-center flex-wrap gap-3 mt-7">
             <div className="flex items-center gap-0.5">
               {deck.map((slide, idx) => {
                 const active = idx === safeIndex;
@@ -470,9 +542,9 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
                     className="min-w-[24px] min-h-[24px] px-1 flex items-center justify-center cursor-pointer rounded-full touch-manipulation"
                   >
                     <span
-                      className={`block h-1.5 rounded-full overflow-hidden transition-all duration-300 ${
+                      className={`block h-1.5 rounded-full overflow-hidden transition-all duration-500 ${
                         active
-                          ? 'w-11 bg-white/25 ring-1 ring-brand-orange/45'
+                          ? 'w-12 bg-white/25 ring-1 ring-brand-orange/50'
                           : 'w-2.5 bg-white/30 hover:bg-white/60'
                       }`}
                     >
@@ -500,7 +572,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
                 type="button"
                 onClick={goPrev}
                 aria-label={t.home.prevSlide}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.18] border border-white/[0.12] text-zinc-200 hover:text-white cursor-pointer active:scale-95 touch-manipulation"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-[#160F14]/90 hover:bg-[#241820] border border-white/[0.14] text-zinc-200 hover:text-white cursor-pointer active:scale-95 touch-manipulation"
               >
                 <ChevronLeft className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -508,7 +580,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
                 type="button"
                 onClick={goNext}
                 aria-label={t.home.nextSlide}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.18] border border-white/[0.12] text-zinc-200 hover:text-white cursor-pointer active:scale-95 touch-manipulation"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-[#160F14]/90 hover:bg-[#241820] border border-white/[0.14] text-zinc-200 hover:text-white cursor-pointer active:scale-95 touch-manipulation"
               >
                 <ChevronRight className="w-4 h-4" aria-hidden="true" />
               </button>
@@ -518,7 +590,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
                 aria-label={isUserPaused ? t.home.resumeRotation : t.home.pauseRotation}
                 aria-pressed={isUserPaused}
                 title={isUserPaused ? t.home.resumeRotation : t.home.pauseRotation}
-                className="w-8 h-8 flex items-center justify-center rounded-full bg-white/[0.08] hover:bg-white/[0.18] border border-white/[0.12] text-zinc-200 hover:text-white cursor-pointer active:scale-95 touch-manipulation"
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-[#160F14]/90 hover:bg-[#241820] border border-white/[0.14] text-zinc-200 hover:text-white cursor-pointer active:scale-95 touch-manipulation"
               >
                 {isUserPaused ? (
                   <Play className="w-3.5 h-3.5 fill-current ml-0.5" aria-hidden="true" />

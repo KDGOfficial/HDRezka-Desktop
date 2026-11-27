@@ -1375,30 +1375,30 @@ html[data-theme="light"] .ember-range:not(.cinema-player-surface *) {
   }
 }
 
-/* Smooth Hero Carousel Backdrop Crossfade & Directional Slide Transitions */
+/* Smooth Hero Carousel Backdrop Crossfade & Directional Slide Transitions (60 FPS blur-free compositor) */
 .hero-backdrop-layer {
   opacity: 0;
-  transform: scale(1.12);
+  transform: scale(1.055) translate3d(14px, 0, 0);
   transition:
-    opacity 0.85s cubic-bezier(0.22, 1, 0.36, 1),
-    transform 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+    opacity 0.9s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 1.35s cubic-bezier(0.16, 1, 0.3, 1);
   will-change: opacity, transform;
 }
 
 .hero-backdrop-layer--active {
-  opacity: 0.45;
-  transform: scale(1.06);
+  opacity: 0.56;
+  transform: scale(1) translate3d(0, 0, 0);
 }
 
 @media (prefers-reduced-motion: reduce) {
   .hero-backdrop-layer {
-    transform: scale(1.08);
+    transform: none;
     transition: opacity 0.25s ease;
   }
 
   .hero-backdrop-layer--active {
-    opacity: 0.45;
-    transform: scale(1.08);
+    opacity: 0.52;
+    transform: none;
   }
 }
 
@@ -1413,124 +1413,155 @@ html[data-theme="light"] .ember-range:not(.cinema-player-surface *) {
 }
 
 @keyframes heroSlideInNext {
-  from {
+  0% {
     opacity: 0;
-    transform: translate3d(44px, 0, 0);
+    transform: translate3d(52px, 0, 0);
   }
-  to {
+  100% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
   }
 }
 
 @keyframes heroSlideOutNext {
-  from {
+  0% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
   }
-  to {
+  100% {
     opacity: 0;
-    transform: translate3d(-36px, 0, 0);
+    transform: translate3d(-44px, 0, 0);
   }
 }
 
 @keyframes heroSlideInPrev {
-  from {
+  0% {
     opacity: 0;
-    transform: translate3d(-44px, 0, 0);
+    transform: translate3d(-52px, 0, 0);
   }
-  to {
+  100% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
   }
 }
 
 @keyframes heroSlideOutPrev {
-  from {
+  0% {
     opacity: 1;
     transform: translate3d(0, 0, 0);
   }
-  to {
+  100% {
     opacity: 0;
-    transform: translate3d(36px, 0, 0);
+    transform: translate3d(44px, 0, 0);
   }
 }
 
 @keyframes heroPosterInNext {
-  from {
+  0% {
     opacity: 0;
-    transform: translate3d(68px, 0, 0) scale(0.94);
+    transform: translate3d(72px, 6px, 0) scale(0.92);
   }
-  to {
+  100% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 @keyframes heroPosterOutNext {
-  from {
+  0% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
   }
-  to {
+  100% {
     opacity: 0;
-    transform: translate3d(-52px, 0, 0) scale(0.95);
+    transform: translate3d(-56px, 4px, 0) scale(0.93);
   }
 }
 
 @keyframes heroPosterInPrev {
-  from {
+  0% {
     opacity: 0;
-    transform: translate3d(-68px, 0, 0) scale(0.94);
+    transform: translate3d(-72px, 6px, 0) scale(0.92);
   }
-  to {
+  100% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
   }
 }
 
 @keyframes heroPosterOutPrev {
-  from {
+  0% {
     opacity: 1;
     transform: translate3d(0, 0, 0) scale(1);
   }
-  to {
+  100% {
     opacity: 0;
-    transform: translate3d(52px, 0, 0) scale(0.95);
+    transform: translate3d(56px, 4px, 0) scale(0.93);
+  }
+}
+
+@keyframes heroCascadeUp {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+  }
+  100% {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
   }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .hero-slide-in-next {
-    animation: heroSlideInNext 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: heroSlideInNext 740ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-slide-out-next {
-    animation: heroSlideOutNext 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: heroSlideOutNext 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-slide-in-prev {
-    animation: heroSlideInPrev 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: heroSlideInPrev 740ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-slide-out-prev {
-    animation: heroSlideOutPrev 640ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: heroSlideOutPrev 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-poster-in-next {
-    animation: heroPosterInNext 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: heroPosterInNext 780ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-poster-out-next {
-    animation: heroPosterOutNext 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: heroPosterOutNext 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-poster-in-prev {
-    animation: heroPosterInPrev 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: heroPosterInPrev 780ms cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
   .hero-poster-out-prev {
-    animation: heroPosterOutPrev 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: heroPosterOutPrev 620ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .hero-slide-in-next .hero-stagger-1,
+  .hero-slide-in-prev .hero-stagger-1 {
+    animation: heroCascadeUp 560ms cubic-bezier(0.16, 1, 0.3, 1) 20ms both;
+  }
+
+  .hero-slide-in-next .hero-stagger-2,
+  .hero-slide-in-prev .hero-stagger-2 {
+    animation: heroCascadeUp 600ms cubic-bezier(0.16, 1, 0.3, 1) 70ms both;
+  }
+
+  .hero-slide-in-next .hero-stagger-3,
+  .hero-slide-in-prev .hero-stagger-3 {
+    animation: heroCascadeUp 620ms cubic-bezier(0.16, 1, 0.3, 1) 120ms both;
+  }
+
+  .hero-slide-in-next .hero-stagger-4,
+  .hero-slide-in-prev .hero-stagger-4 {
+    animation: heroCascadeUp 640ms cubic-bezier(0.16, 1, 0.3, 1) 170ms both;
   }
 }
 
