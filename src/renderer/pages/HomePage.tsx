@@ -76,7 +76,10 @@ export const HomePage: React.FC = () => {
   }, [tasteKey, settings.app.activeMirror, verificationEpoch]);
 
   const loadHomeData = async () => {
-    if (!window.api) return;
+    if (!window.api) {
+      useMediaStore.getState().setHomeInitialLoaded();
+      return;
+    }
     setLoading(true);
     try {
       const data = await window.api.getHomeSections();
@@ -99,6 +102,7 @@ export const HomePage: React.FC = () => {
       console.error('Failed to load home sections:', err);
     } finally {
       setLoading(false);
+      useMediaStore.getState().setHomeInitialLoaded();
     }
   };
 
@@ -154,18 +158,58 @@ export const HomePage: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[540px]">
-        <div className="relative w-20 h-20 mb-5 flex items-center justify-center">
-          <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
-          <img
-            src={appLogo}
-            alt=""
-            className="w-12 h-12 rounded-full object-cover shadow-glow"
-          />
+      <div className="w-full pb-16 space-y-10 select-none" role="status" aria-live="polite">
+        {/* Neon Ember Shimmering Hero Showcase Skeleton */}
+        <div className="cinema-player-surface relative -mx-7 lg:-mx-9 -mt-6 min-h-[clamp(360px,46dvh,520px)] overflow-hidden border-b border-white/[0.06] flex items-center justify-between gap-8 px-7 lg:px-12 py-10">
+          <div className="max-w-xl flex-1 space-y-4">
+            <div className="flex items-center gap-2">
+              <span className="h-6 w-28 rounded-full ember-shimmer" />
+              <span className="h-6 w-16 rounded-full ember-shimmer" />
+              <span className="h-6 w-20 rounded-full ember-shimmer" />
+            </div>
+            <div className="h-10 w-3/4 rounded-2xl ember-shimmer" />
+            <div className="h-4 w-full rounded-full ember-shimmer" />
+            <div className="h-4 w-4/5 rounded-full ember-shimmer" />
+            <div className="flex items-center gap-3 pt-3">
+              <div className="h-11 w-36 rounded-full ember-shimmer" />
+              <div className="h-11 w-32 rounded-full ember-shimmer" />
+            </div>
+          </div>
+
+          <div className="hidden md:block w-56 lg:w-64 h-[335px] lg:h-[380px] rounded-[22px] ember-shimmer flex-shrink-0" />
+
+          {/* Centered Branded Loading Pill */}
+          <div className="absolute inset-x-0 bottom-5 flex justify-center pointer-events-none">
+            <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full cinema-glass border border-brand-ember/35 shadow-elevated">
+              <div className="relative w-5 h-5 flex items-center justify-center flex-shrink-0">
+                <div className="absolute inset-0 rounded-full border-2 border-brand-crimson/25 border-t-brand-orange border-r-brand-crimson animate-spin" />
+                <img src={appLogo} alt="" className="w-3 h-3 rounded-full object-cover" />
+              </div>
+              <span className="text-zinc-200 text-[11px] font-bold tracking-wider uppercase">
+                {t.home.loadingCatalog}
+              </span>
+            </div>
+          </div>
         </div>
-        <span className="text-zinc-300 text-xs font-bold tracking-wider uppercase animate-pulse">
-          {t.home.loadingCatalog}
-        </span>
+
+        {/* Two Shimmering Poster Rows */}
+        {[0, 1].map((row) => (
+          <div key={row} className="space-y-4">
+            <div className="flex items-center gap-3">
+              <span className="w-1.5 h-5 rounded-full ember-shimmer" />
+              <span className="h-6 w-48 rounded-xl ember-shimmer" />
+            </div>
+            <div className="flex items-start gap-4 overflow-hidden">
+              {Array.from({ length: 7 }).map((_, idx) => (
+                <div key={idx} className="flex-shrink-0 w-[168px] md:w-[192px] space-y-2.5">
+                  <div className="w-full aspect-[2/3] rounded-2xl ember-shimmer border border-white/[0.06]" />
+                  <div className="h-3.5 w-4/5 rounded-full ember-shimmer" />
+                  <div className="h-3 w-1/2 rounded-full ember-shimmer" />
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -296,7 +340,7 @@ export const HomePage: React.FC = () => {
               <p className="text-xs text-zinc-400 mt-1.5 max-w-sm leading-relaxed">{t.history.emptyDesc}</p>
             </div>
           ) : (
-            <div className="cinema-grid">
+            <div className="cinema-grid cinema-stagger">
               {continueWatchingItems.map((item) => (
                 <div key={item.historyId || item.id} className="flex justify-center">
                   <MediaCard item={item} showProgress={true} onRemove={handleRemoveContinueItem} />

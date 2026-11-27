@@ -82,7 +82,7 @@ export const MediaSlider: React.FC<MediaSliderProps> = ({
       {/* Horizontal Filmstrip */}
       <div
         ref={scrollRef}
-        className="flex items-start gap-4 overflow-x-auto pb-4 pt-1.5 px-0.5 scrollbar-none scroll-smooth"
+        className="flex items-start gap-4 overflow-x-auto pb-4 pt-1.5 px-0.5 scrollbar-none scroll-smooth cinema-stagger"
       >
         {items.map((item, idx) => (
           <div key={item.historyId || (item.id ? `${item.id}-${idx}` : idx)} className="flex-shrink-0 w-[168px] md:w-[192px]">

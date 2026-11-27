@@ -363,7 +363,7 @@ export const HeroBanner: React.FC<HeroBannerProps> = ({ item, slides }) => {
         </div>
 
         {/* Right: Floating Vertical Poster Frame with Neon Ember Halo */}
-        <div className="hidden md:flex relative flex-shrink-0 items-center justify-center pr-2">
+        <div className="hidden md:flex relative flex-shrink-0 items-center justify-center pr-2 hero-poster-enter">
           {/* Glowing Neon Ember Ring Accent behind poster */}
           <div
             className="absolute -inset-3 rounded-[28px] opacity-40 blur-2xl pointer-events-none"

@@ -147,17 +147,28 @@ export const CatalogPage: React.FC<CatalogPageProps> = ({ initialType = 'films' 
 
       {/* Media Grid */}
       {loading ? (
-        <div className="flex flex-col items-center justify-center py-28">
-          <div className="relative w-16 h-16 mb-4 flex items-center justify-center">
-            <div className="absolute inset-0 rounded-full border-[3px] border-brand-crimson/20 border-t-brand-orange border-r-brand-crimson animate-spin" />
-            <img src={appLogo} alt="" className="w-10 h-10 rounded-full object-cover shadow-glow" />
+        <div className="space-y-6" role="status" aria-live="polite">
+          <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-full cinema-panel border border-brand-ember/30">
+            <div className="relative w-5 h-5 flex items-center justify-center flex-shrink-0">
+              <div className="absolute inset-0 rounded-full border-2 border-brand-crimson/25 border-t-brand-orange border-r-brand-crimson animate-spin" />
+              <img src={appLogo} alt="" className="w-3 h-3 rounded-full object-cover" />
+            </div>
+            <span className="text-zinc-300 text-xs font-bold">{t.home.loadingCatalog}</span>
           </div>
-          <span className="text-zinc-400 text-xs font-bold">{t.home.loadingCatalog}</span>
+          <div className="cinema-grid">
+            {Array.from({ length: 12 }).map((_, idx) => (
+              <div key={idx} className="w-full min-w-[152px] max-w-[198px] mx-auto space-y-2.5">
+                <div className="w-full aspect-[2/3] rounded-2xl ember-shimmer border border-white/[0.06]" />
+                <div className="h-3.5 w-4/5 rounded-full ember-shimmer" />
+                <div className="h-3 w-1/2 rounded-full ember-shimmer" />
+              </div>
+            ))}
+          </div>
         </div>
       ) : items.length === 0 ? (
         <div className="text-center py-28 text-zinc-500 text-sm font-semibold">{t.catalog.noItems}</div>
       ) : (
-        <div className="cinema-grid">
+        <div className="cinema-grid cinema-stagger">
           {items.map((item, idx) => (
             <div key={item.id ? `${item.id}-${idx}` : idx} className="flex justify-center">
               <MediaCard item={item} />

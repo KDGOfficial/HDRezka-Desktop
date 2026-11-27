@@ -115,7 +115,7 @@
   }
 }
 
-/* Native <dialog> modal scroll containment & backdrop */
+/* Native <dialog> modal scroll containment, backdrop & top-layer entry/exit animations */
 dialog:modal {
   overscroll-behavior: contain;
   background: transparent;
@@ -126,14 +126,68 @@ dialog:modal {
   width: 100%;
   overflow: visible;
   color: #ffffff;
+  opacity: 0;
+  transition-property: opacity, transform, display, overlay;
+  transition-duration: 0.26s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog:modal {
+    transform: scale(0.95) translateY(8px);
+  }
+}
+
+dialog[open]:modal {
+  opacity: 1;
+}
+
+@starting-style {
+  dialog[open]:modal {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  dialog[open]:modal {
+    transform: scale(1) translateY(0);
+  }
+
+  @starting-style {
+    dialog[open]:modal {
+      transform: scale(0.95) translateY(8px);
+    }
+  }
 }
 
 dialog::backdrop {
-  background: rgba(5, 3, 6, 0.8);
+  background-color: rgba(5, 3, 6, 0);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   overflow: hidden;
   overscroll-behavior: contain;
+  transition-property: opacity, background-color, display, overlay;
+  transition-duration: 0.26s;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-behavior: allow-discrete;
+}
+
+dialog[open]::backdrop {
+  background-color: rgba(5, 3, 6, 0.8);
+}
+
+@starting-style {
+  dialog[open]::backdrop {
+    background-color: rgba(5, 3, 6, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  dialog:modal,
+  dialog::backdrop {
+    transition-duration: 0.1s;
+  }
 }
 
 /* Warm Obsidian Cinema Canvas with subtle logo-derived neon ambient bleed */
@@ -161,6 +215,16 @@ dialog::backdrop {
 .btn-ember:hover:not(:disabled) {
   background: var(--gradient-ember-hover);
   box-shadow: 0 14px 32px -6px rgba(255, 58, 42, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.36);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .btn-ember:hover:not(:disabled) {
+    transform: translateY(-1px);
+  }
+
+  .btn-ember:active:not(:disabled) {
+    transform: scale(0.97);
+  }
 }
 
 /* Logo-inspired dark pill badge with luminous white rim (mirrors "[Win] PC" pill in logo) */
@@ -194,12 +258,41 @@ dialog::backdrop {
 
 /* Tactile Poster Card elevation with warm ember rim (lift inner content only so outer hover hitbox never jitters) */
 .cinema-card-inner {
-  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
 }
 
 .cinema-card:hover .cinema-card-inner {
   transform: translateY(-6px);
+}
+
+.cinema-card-sheen {
+  position: relative;
+}
+
+.cinema-card-sheen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+  opacity: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 28%,
+    rgba(255, 255, 255, 0.14) 48%,
+    transparent 68%
+  );
+  transform: translateX(-110%);
+  transition: opacity 0.25s ease;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cinema-card:hover .cinema-card-sheen::before {
+    opacity: 1;
+    transform: translateX(110%);
+    transition: transform 0.75s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  }
 }
 
 /* 3D Glossy Play Squircle (inspired by bottom-left Play button in logo.png) */
@@ -813,12 +906,52 @@ video::cue {
   }
 }
 
-@keyframes splashBarSweep {
+@keyframes splashCardIn {
   0% {
-    transform: scaleX(0);
+    opacity: 0;
+    transform: translateY(18px) scale(0.97);
   }
   100% {
-    transform: scaleX(1);
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes splashOrbitSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes splashGlowDrift {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(18px, -14px, 0) scale(1.06);
+  }
+}
+
+@keyframes splashShimmerSweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(220%);
+  }
+}
+
+@keyframes splashDotPulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.72);
   }
 }
 
@@ -841,15 +974,21 @@ video::cue {
 }
 
 .startup-splash__glow--crimson {
-  top: 18%;
-  left: 26%;
+  top: 16%;
+  left: 24%;
   background: radial-gradient(circle, rgba(255, 18, 79, 0.72) 0%, transparent 70%);
 }
 
 .startup-splash__glow--amber {
-  bottom: 16%;
-  right: 24%;
+  bottom: 14%;
+  right: 22%;
   background: radial-gradient(circle, rgba(255, 122, 0, 0.58) 0%, transparent 70%);
+}
+
+.startup-splash__sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(125deg, transparent 35%, rgba(255, 92, 56, 0.06) 50%, transparent 65%);
 }
 
 .startup-splash__ring {
@@ -861,38 +1000,89 @@ video::cue {
   pointer-events: none;
 }
 
-.startup-splash__bar {
+.startup-splash__orbit {
+  position: absolute;
+  inset: -7px;
+  border-radius: 9999px;
+  border: 1.5px solid transparent;
+  border-top-color: rgba(255, 184, 48, 0.85);
+  border-right-color: rgba(255, 18, 79, 0.65);
+  pointer-events: none;
+}
+
+.startup-splash__progress-fill {
   background: var(--gradient-ember);
   transform-origin: left center;
+  transition: transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: transform;
+}
+
+.startup-splash__bar-shimmer {
+  position: absolute;
+  inset: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .startup-splash {
+    transition-duration: 0.14s;
+  }
+
+  .startup-splash__orbit {
+    opacity: 0.5;
+  }
 }
 
 @media (prefers-reduced-motion: no-preference) {
   .startup-splash--exit {
-    transform: scale(1.04);
+    transform: scale(1.035);
   }
 
   .startup-splash__logo {
     animation: splashLogoIn 0.72s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
 
+  .startup-splash__orbit {
+    animation: splashOrbitSpin 2.6s linear infinite;
+  }
+
+  .startup-splash__glow--crimson {
+    animation: splashGlowDrift 7s ease-in-out infinite;
+  }
+
+  .startup-splash__glow--amber {
+    animation: splashGlowDrift 8.5s ease-in-out infinite reverse;
+  }
+
   .startup-splash__ring--outer {
-    animation: splashRingPulse 1.25s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+    animation: splashRingPulse 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
   }
 
   .startup-splash__ring--inner {
-    animation: splashRingPulse 1.25s cubic-bezier(0.16, 1, 0.3, 1) 0.42s both;
+    animation: splashRingPulse 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.42s both;
   }
 
   .startup-splash__title {
-    animation: splashTextIn 0.58s cubic-bezier(0.16, 1, 0.3, 1) 0.22s both;
+    animation: splashTextIn 0.58s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
   }
 
   .startup-splash__subtitle {
-    animation: splashTextIn 0.58s cubic-bezier(0.16, 1, 0.3, 1) 0.36s both;
+    animation: splashTextIn 0.58s cubic-bezier(0.16, 1, 0.3, 1) 0.32s both;
   }
 
-  .startup-splash__bar {
-    animation: splashBarSweep 1.15s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both;
+  .startup-splash__card {
+    animation: splashCardIn 0.56s cubic-bezier(0.16, 1, 0.3, 1) 0.36s both;
+  }
+
+  .startup-splash__bar-shimmer {
+    animation: splashShimmerSweep 1.6s ease-in-out infinite;
+  }
+
+  .startup-splash__dot-pulse {
+    animation: splashDotPulse 1.2s ease-in-out infinite;
   }
 }
 
@@ -1137,14 +1327,197 @@ html[data-theme="light"] .ember-range:not(.cinema-player-surface *) {
   }
 }
 
+/* Page Stage, Toast, Hero & Staggered Card Animations (compositor-only, reduced-motion safe) */
+@keyframes pageStageIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pageFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.page-stage-enter {
+  animation: pageFadeIn 0.14s ease-out both;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .page-stage-enter {
+    animation: pageStageIn 0.26s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+@keyframes heroPosterIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .hero-poster-enter {
+    animation: heroPosterIn 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+}
+
+/* Floating Toast / Status Pill Entry (@starting-style) */
+.toast-enter {
+  opacity: 1;
+  translate: 0 0;
+  transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1), translate 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@starting-style {
+  .toast-enter {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+  .toast-enter {
+    translate: none;
+    transition-duration: 0.1s;
+  }
+
+  @starting-style {
+    .toast-enter {
+      translate: none;
+    }
+  }
+}
+
+/* Staggered Cinema Card Reveal (sibling-index() progressive enhancement + nth-child fallback) */
+@keyframes cinemaCardEnter {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .cinema-stagger > * {
+    --stagger-step: 26ms;
+    animation: cinemaCardEnter 0.36s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @supports (animation-delay: calc(sibling-index() * 0.1s)) {
+    .cinema-stagger > * {
+      animation-delay: calc(min(sibling-index(), 10) * var(--stagger-step));
+    }
+  }
+
+  @supports not (animation-delay: calc(sibling-index() * 0.1s)) {
+    .cinema-stagger > *:nth-child(1) { animation-delay: 26ms; }
+    .cinema-stagger > *:nth-child(2) { animation-delay: 52ms; }
+    .cinema-stagger > *:nth-child(3) { animation-delay: 78ms; }
+    .cinema-stagger > *:nth-child(4) { animation-delay: 104ms; }
+    .cinema-stagger > *:nth-child(5) { animation-delay: 130ms; }
+    .cinema-stagger > *:nth-child(6) { animation-delay: 156ms; }
+    .cinema-stagger > *:nth-child(7) { animation-delay: 182ms; }
+    .cinema-stagger > *:nth-child(8) { animation-delay: 208ms; }
+    .cinema-stagger > *:nth-child(9) { animation-delay: 234ms; }
+    .cinema-stagger > *:nth-child(10) { animation-delay: 260ms; }
+    .cinema-stagger > *:nth-child(n+11) { animation-delay: 260ms; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cinema-stagger > * {
+    animation: none;
+  }
+}
+
+/* Branded Neon Ember Shimmer Skeleton */
+@keyframes emberShimmerMove {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.ember-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(255, 255, 255, 0.045);
+}
+
+.ember-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 51, 61, 0.08) 38%,
+    rgba(255, 122, 0, 0.11) 52%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ember-shimmer::after {
+    animation: emberShimmerMove 1.45s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+}
+
+html[data-theme="light"] .ember-shimmer:not(.cinema-player-surface *) {
+  background-color: rgba(24, 16, 22, 0.06);
+}
+
+html[data-theme="light"] .ember-shimmer:not(.cinema-player-surface *)::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 18, 79, 0.09) 45%,
+    rgba(255, 122, 0, 0.08) 58%,
+    transparent 100%
+  );
+}
+
+/* Reduced motion: disable scroll-smooth & infinite/spatial decorative motion while keeping subtle color transitions */
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body,
+  [data-main-scroll],
+  .slider-track {
     scroll-behavior: auto !important;
+  }
+
+  .animate-fadeIn,
+  .animate-fade-in,
+  .animate-slideDown,
+  .animate-emberPulse,
+  .wtw-card-enter,
+  .hero-poster-enter {
+    animation: none !important;
+  }
+
+  .cinema-card:hover .cinema-card-inner {
+    transform: none;
   }
 }
 

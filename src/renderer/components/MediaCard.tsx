@@ -21,10 +21,13 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
   const ageRating = inferAgeRating(item);
   const isFav = favorites.some((f) => f.mediaId === item.id);
   const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imgRef = useRef<HTMLImageElement>(null);
   const [posterFailed, setPosterFailed] = useState(false);
+  const [posterLoaded, setPosterLoaded] = useState(false);
 
   useEffect(() => {
     setPosterFailed(false);
+    setPosterLoaded(Boolean(imgRef.current?.complete && imgRef.current?.naturalWidth > 0));
   }, [item.poster]);
 
   useEffect(() => {
@@ -93,14 +96,18 @@ export const MediaCard: React.FC<MediaCardProps> = ({ item, size = 'medium', sho
       <div className="cinema-card-inner flex flex-col w-full">
       {/* 2:3 Cinema Poster Frame (always dark cinema glass over artwork in both themes) */}
       <div
-        className="cinema-player-surface relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-dark-surface border border-white/[0.08] shadow-card group-hover:border-brand-ember/60 group-hover:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.88),0_0_26px_-6px_rgba(255,42,66,0.45)] transition-all duration-300"
+        className="cinema-player-surface cinema-card-sheen relative w-full aspect-[2/3] rounded-2xl overflow-hidden bg-dark-surface border border-white/[0.08] shadow-card group-hover:border-brand-ember/60 group-hover:shadow-[0_18px_40px_-8px_rgba(0,0,0,0.88),0_0_26px_-6px_rgba(255,42,66,0.45)] transition-all duration-300"
       >
         {item.poster && !posterFailed ? (
           <img
+            ref={imgRef}
             src={item.poster}
             alt={displayTitle}
             loading="lazy"
-            className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
+            onLoad={() => setPosterLoaded(true)}
+            className={`w-full h-full object-cover transition-[transform,opacity] duration-500 ease-out group-hover:scale-[1.06] ${
+              posterLoaded ? 'opacity-100' : 'opacity-0'
+            }`}
             onError={() => setPosterFailed(true)}
           />
         ) : (

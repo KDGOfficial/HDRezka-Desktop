@@ -26,8 +26,8 @@ const recommendations = loadTsModule('src/shared/recommendations.ts');
 const localization = loadTsModule('src/core/providers/rezka/localization.ts');
 const { translations, GENRE_TRANSLATIONS } = loadTsModule('src/renderer/i18n/translations.ts');
 
-test('v0.3.0 version and unified Erotica 18+ category, genre & translations are configured', () => {
-  assert.equal(constants.APP_VERSION, '0.3.0');
+test('v0.4.0 version and unified Erotica 18+ category, genre & translations are configured', () => {
+  assert.equal(constants.APP_VERSION, '0.4.0');
   assert.ok(constants.GENRES.some((g) => g.id === 'erotica' && g.title === 'Эротика 18+'));
   assert.ok(!constants.GENRES.some((g) => g.id === 'adult'), 'Duplicate adult genre must be merged into erotica');
   assert.equal(recommendations.normalizeGenreToId('18+'), 'erotica');

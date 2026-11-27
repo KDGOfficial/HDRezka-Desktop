@@ -36,10 +36,10 @@ const {
   pickBetterQualityStream,
 } = loadTsModule('../src/core/providers/rezka/provider.ts', ['cheerio', 'electron']);
 
-test('v0.3.0 version synchronization and About Author configuration', () => {
+test('v0.4.0 version synchronization and About Author configuration', () => {
   const provider = new RezkaProvider();
-  assert.equal(APP_VERSION, '0.3.0');
-  assert.equal(provider.version, '0.3.0');
+  assert.equal(APP_VERSION, '0.4.0');
+  assert.equal(provider.version, '0.4.0');
   assert.equal(AUTHOR_YOUTUBE_URL, 'https://www.youtube.com/@KanalDobrogoGamera');
   assert.equal(AUTHOR_TELEGRAM_URL, 'https://t.me/kdg_yt');
   assert.equal(AUTHOR_GITHUB_URL, 'https://github.com/KDGOfficial');

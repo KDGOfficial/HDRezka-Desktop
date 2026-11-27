@@ -91,7 +91,7 @@ export const Sidebar: React.FC = () => {
               } rounded-2xl text-[12.5px] font-bold cursor-pointer group ${
                 isActive
                   ? 'btn-ember text-white'
-                  : 'text-zinc-400 hover:text-white hover:bg-white/[0.05]'
+                  : `text-zinc-400 hover:text-white hover:bg-white/[0.05] ${collapsed ? '' : 'hover:translate-x-0.5'}`
               }`}
             >
               <Icon

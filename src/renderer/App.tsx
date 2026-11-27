@@ -31,12 +31,14 @@ export const App: React.FC = () => {
   const {
     currentPage,
     lastContentPage,
+    selectedMediaId,
     pendingScrollTop,
     clearPendingScroll,
     goBack,
     goForward,
     loadFavorites,
     loadWatchHistory,
+    splashDone,
   } = useMediaStore();
   const {
     settings,
@@ -100,15 +102,16 @@ export const App: React.FC = () => {
     };
   }, [goBack, goForward]);
 
-  // Prompt user once about their favorite genres/categories when onboarding hasn't been completed yet
+  // Prompt user once about their favorite genres/categories after splash finishes and onboarding hasn't been completed yet
   useEffect(() => {
-    if (!settingsLoaded || !whatsNewChecked || promptedInterestsRef.current) return;
+    if (!splashDone || !settingsLoaded || !whatsNewChecked || promptedInterestsRef.current) return;
     if (isWhatsNewOpen || isUpdateModalOpen || isInterestsModalOpen) return;
     if (!settings.interests?.onboardingCompleted) {
       promptedInterestsRef.current = true;
       setInterestsModalOpen(true);
     }
   }, [
+    splashDone,
     settingsLoaded,
     whatsNewChecked,
     settings.interests?.onboardingCompleted,
@@ -287,9 +290,15 @@ export const App: React.FC = () => {
             className="flex-1 overflow-y-auto px-7 lg:px-9 py-6 scroll-smooth"
           >
             <div className={currentPage === 'details' ? 'hidden' : ''}>
-              {renderContentPage(lastContentPage)}
+              <div key={lastContentPage} className="page-stage-enter">
+                {renderContentPage(lastContentPage)}
+              </div>
             </div>
-            {currentPage === 'details' && <DetailsPage />}
+            {currentPage === 'details' && (
+              <div key={selectedMediaId || 'details'} className="page-stage-enter">
+                <DetailsPage />
+              </div>
+            )}
           </main>
         </div>
       </div>
@@ -299,7 +308,7 @@ export const App: React.FC = () => {
         <div
           role="status"
           aria-live="polite"
-          className="fixed bottom-5 right-5 z-40 inline-flex items-center gap-2.5 px-4 py-2.5 rounded-full cinema-glass border border-brand-ember/45 shadow-elevated text-xs font-bold text-zinc-100 pointer-events-none select-none animate-fadeIn"
+          className="toast-enter fixed bottom-5 right-5 z-40 inline-flex items-center gap-2.5 px-4 py-2.5 rounded-full cinema-glass border border-brand-ember/45 shadow-elevated text-xs font-bold text-zinc-100 pointer-events-none select-none"
         >
           <span
             className="w-4 h-4 rounded-full border-[2.5px] border-brand-crimson/25 border-t-brand-orange border-r-brand-crimson animate-spin flex-shrink-0"
@@ -314,7 +323,7 @@ export const App: React.FC = () => {
       <VideoPlayer />
       <CollectionModal />
       <UpdateModal />
-      <WhatsNewModal isOpen={isWhatsNewOpen} onClose={() => setIsWhatsNewOpen(false)} />
+      <WhatsNewModal isOpen={isWhatsNewOpen && splashDone} onClose={() => setIsWhatsNewOpen(false)} />
       <InterestsModal />
     </div>
   );

@@ -53,8 +53,12 @@ interface MediaState {
   favorites: FavoriteItem[];
   watchHistory: WatchHistoryEntry[];
   collectionModalItem: MediaItem | null;
+  homeInitialLoaded: boolean;
+  splashDone: boolean;
 
   setPage: (page: AppPage) => void;
+  setHomeInitialLoaded: () => void;
+  setSplashDone: () => void;
   goBack: () => boolean;
   goForward: () => boolean;
   saveCurrentScroll: (scrollTop: number) => void;
@@ -89,6 +93,11 @@ export const useMediaStore = create<MediaState>((set, get) => ({
   favorites: [],
   watchHistory: [],
   collectionModalItem: null,
+  homeInitialLoaded: false,
+  splashDone: false,
+
+  setHomeInitialLoaded: () => set({ homeInitialLoaded: true }),
+  setSplashDone: () => set({ splashDone: true }),
 
   saveCurrentScroll: (scrollTop) => {
     const { navHistory, navIndex } = get();
