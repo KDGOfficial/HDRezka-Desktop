@@ -31,3 +31,16 @@ test('v0.0.69 SeasonScrollTrack slider is wired in SeriesNavigationPanel, VideoP
   assert.match(cssSrc, /\.ember-range::-moz-range-thumb/);
   assert.match(cssSrc, /@supports not \(opacity: progress\(1, 0, 100\)\)/);
 });
+
+test('VideoPlayer volume control uses native .ember-range without transition lag', () => {
+  const playerSrc = fs.readFileSync(path.resolve(__dirname, '../src/renderer/components/VideoPlayer.tsx'), 'utf8');
+  const volBlockMatch = playerSrc.match(/<div className="player-vol-track[\s\S]*?<\/div>/);
+  assert.ok(volBlockMatch, 'Volume slider block (.player-vol-track) must exist in VideoPlayer.tsx');
+  const volBlock = volBlockMatch[0];
+
+  assert.match(volBlock, /<input[\s\S]*className="ember-range"/);
+  assert.match(volBlock, /aria-label=\{t\.player\.volumeControl\}/);
+  assert.match(volBlock, /aria-valuetext=\{`\$\{effectivePercent\}%`\}/);
+  assert.match(volBlock, /'--control-value': effectivePercent/);
+  assert.doesNotMatch(volBlock, /transition-all duration-75/);
+});

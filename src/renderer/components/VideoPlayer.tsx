@@ -1868,29 +1868,24 @@ export const VideoPlayer: React.FC = () => {
                   )}
                 </button>
 
-                <div className="player-vol-track relative flex items-center w-24 h-6">
-                  <div className="w-full h-1.5 bg-white/20 rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-all duration-75"
-                      style={{
-                        width: `${effectivePercent}%`,
-                        background: 'linear-gradient(90deg, #FF124F 0%, #FF7A00 100%)',
-                      }}
-                    />
-                  </div>
+                <div className="player-vol-track flex items-center w-24 h-6">
                   <input
                     type="range"
                     min={0}
-                    max={1}
-                    step={0.01}
-                    value={effectiveVolume}
-                    onChange={(e) => handleVolumeChange(parseFloat(e.target.value))}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                    max={100}
+                    step={1}
+                    value={effectivePercent}
+                    onChange={(e) => handleVolumeChange(Number(e.target.value) / 100)}
                     aria-label={t.player.volumeControl}
-                  />
-                  <div
-                    className="absolute w-3.5 h-3.5 bg-white rounded-full shadow-md pointer-events-none transform -translate-x-1/2 transition-all duration-75"
-                    style={{ left: `${effectivePercent}%` }}
+                    aria-valuetext={`${effectivePercent}%`}
+                    style={
+                      {
+                        '--attr-min': 0,
+                        '--attr-max': 100,
+                        '--control-value': effectivePercent,
+                      } as React.CSSProperties
+                    }
+                    className="ember-range"
                   />
                 </div>
 
